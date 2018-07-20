@@ -14,6 +14,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/sched/topology.h>
+#include <linux/cpuset.h>
 
 DEFINE_PER_CPU(unsigned long, freq_scale) = SCHED_CAPACITY_SCALE;
 
@@ -66,6 +67,13 @@ static int register_cpu_capacity_sysctl(void)
 	return 0;
 }
 subsys_initcall(register_cpu_capacity_sysctl);
+
+static int update_topology;
+
+int topology_update_cpu_topology(void)
+{
+	return update_topology;
+}
 
 static u32 capacity_scale;
 static u32 *raw_capacity;
