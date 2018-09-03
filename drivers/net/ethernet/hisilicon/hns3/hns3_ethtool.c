@@ -125,7 +125,7 @@ static int hns3_lp_up(struct net_device *ndev, enum hnae3_loop loop_mode)
 	ret = hns3_lp_setup(ndev, loop_mode, true);
 	usleep_range(HNS3_NIC_LB_SETUP_USEC, HNS3_NIC_LB_SETUP_USEC * 2);
 
-	return ret;
+	return 0;
 }
 
 static int hns3_lp_down(struct net_device *ndev, enum hnae3_loop loop_mode)
