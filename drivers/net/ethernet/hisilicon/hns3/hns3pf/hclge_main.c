@@ -2424,7 +2424,7 @@ static u8 hclge_check_speed_dup(u8 duplex, int speed)
 	return duplex;
 }
 
-static int hclge_cfg_mac_speed_dup_hw(struct hclge_dev *hdev, int speed,
+int hclge_cfg_mac_speed_dup_hw(struct hclge_dev *hdev, int speed,
 				      u8 duplex)
 {
 	struct hclge_config_mac_speed_dup_cmd *req;
