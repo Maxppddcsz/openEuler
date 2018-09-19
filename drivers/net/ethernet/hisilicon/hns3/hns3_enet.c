@@ -100,6 +100,10 @@ static irqreturn_t hns3_irq_handle(int irq, void *vector)
 	return IRQ_HANDLED;
 }
 
+/* This callback function is used to set affinity changes to the irq affinity
+ * masks when the irq_set_affinity_notifier function is used.
+ */
+
 static void hns3_nic_uninit_irq(struct hns3_nic_priv *priv)
 {
 	struct hns3_enet_tqp_vector *tqp_vectors;
@@ -3670,6 +3674,8 @@ static int hns3_nic_init_vector_data(struct hns3_nic_priv *priv)
 	struct hns3_enet_tqp_vector *tqp_vector;
 	int ret = 0;
 	int i;
+
+	hns3_nic_set_cpumask(priv);
 
 	hns3_nic_set_cpumask(priv);
 
