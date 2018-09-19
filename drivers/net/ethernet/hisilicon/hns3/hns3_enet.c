@@ -1282,16 +1282,12 @@ static int hns3_skb_linearize(struct hns3_enet_ring *ring, struct sk_buff *skb,
 	 */
 	if (skb->len > HNS3_MAX_TSO_SIZE ||
 	    (!skb_is_gso(skb) && skb->len > HNS3_MAX_NON_TSO_SIZE)) {
-		u64_stats_update_begin(&ring->syncp);
-		ring->stats.hw_limitation++;
-		u64_stats_update_end(&ring->syncp);
+		hns3_ring_stats_update(ring, hw_limitation);
 		return -ENOMEM;
 	}
 
 	if (__skb_linearize(skb)) {
-		u64_stats_update_begin(&ring->syncp);
-		ring->stats.sw_err_cnt++;
-		u64_stats_update_end(&ring->syncp);
+		hns3_ring_stats_update(ring, sw_err_cnt);
 		return -ENOMEM;
 	}
 
