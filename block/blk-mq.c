@@ -203,7 +203,7 @@ void blk_mq_unfreeze_queue(struct request_queue *q)
 
 	WARN_ON_ONCE(q_wrapper->mq_freeze_depth < 0);
 	if (!q_wrapper->mq_freeze_depth) {
-		percpu_ref_reinit(&q->q_usage_counter);
+		percpu_ref_resurrect(&q->q_usage_counter);
 		wake_up_all(&q->mq_freeze_wq);
 	}
 
