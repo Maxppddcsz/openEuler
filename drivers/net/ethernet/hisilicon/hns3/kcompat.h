@@ -383,26 +383,6 @@ static inline __must_check size_t array3_size(size_t a, size_t b, size_t c)
 
 #include <linux/bitmap.h>
 
-static inline void linkmode_set_bit(int nr, volatile unsigned long *addr)
-{
-	__set_bit(nr, addr);
-}
-
-static inline void linkmode_copy(unsigned long *dst, const unsigned long *src)
-{
-	bitmap_copy(dst, src, __ETHTOOL_LINK_MODE_MASK_NBITS);
-}
-
-static inline void linkmode_clear_bit(int nr, volatile unsigned long *addr)
-{
-	__clear_bit(nr, addr);
-}
-
-static inline void linkmode_zero(unsigned long *dst)
-{
-	bitmap_zero(dst, __ETHTOOL_LINK_MODE_MASK_NBITS);
-}
-
 #else
 
 #define HAS_LINK_MODE_OPS
