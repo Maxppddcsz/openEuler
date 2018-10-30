@@ -107,6 +107,13 @@ struct blk_mq_tag_set {
 #else
 	struct blk_mq_queue_map map[HCTX_MAX_TYPES];
 #endif
+	/*
+	 * map[] holds ctx -> hctx mappings, one map exists for each type
+	 * that the driver wishes to support. There are no restrictions
+	 * on maps being of the same size, and it's perfectly legal to
+	 * share maps between types.
+	 */
+	unsigned int		nr_maps;	/* nr entries in map[] */
 	const struct blk_mq_ops	*ops;
 	unsigned int		nr_hw_queues;	/* nr hw queues across maps */
 	unsigned int		queue_depth;	/* max hw supported */
@@ -141,6 +148,8 @@ struct blk_mq_queue_data {
 
 typedef blk_status_t (queue_rq_fn)(struct blk_mq_hw_ctx *,
 		const struct blk_mq_queue_data *);
+/* takes rq->cmd_flags as input, returns a hardware type index */
+typedef int (rq_flags_to_type_fn)(struct request_queue *, unsigned int);
 typedef bool (get_budget_fn)(struct blk_mq_hw_ctx *);
 typedef void (put_budget_fn)(struct blk_mq_hw_ctx *);
 typedef enum blk_eh_timer_return (timeout_fn)(struct request *, bool);
@@ -164,6 +173,11 @@ struct blk_mq_ops {
 	 * Queue request
 	 */
 	queue_rq_fn		*queue_rq;
+
+	/*
+	 * Return a queue map type for the given request/bio flags
+	 */
+	rq_flags_to_type_fn	*rq_flags_to_type;
 
 	/*
 	 * Reserve budget before queue request, once .queue_rq is
