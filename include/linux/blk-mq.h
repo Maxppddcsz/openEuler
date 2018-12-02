@@ -98,8 +98,12 @@ struct blk_mq_queue_map {
 	unsigned int queue_offset;
 };
 
-enum {
-	HCTX_MAX_TYPES = 2,
+enum hctx_type {
+	HCTX_TYPE_DEFAULT,	/* all I/O not otherwise accounted for */
+	HCTX_TYPE_READ,		/* just for READ I/O */
+	HCTX_TYPE_POLL,		/* polled I/O of any kind */
+
+	HCTX_MAX_TYPES,
 };
 
 struct blk_mq_tag_set {
@@ -146,8 +150,6 @@ struct blk_mq_queue_data {
 
 typedef blk_status_t (queue_rq_fn)(struct blk_mq_hw_ctx *,
 		const struct blk_mq_queue_data *);
-/* takes rq->cmd_flags as input, returns a hardware type index */
-typedef int (rq_flags_to_type_fn)(struct request_queue *, unsigned int);
 typedef bool (get_budget_fn)(struct blk_mq_hw_ctx *);
 typedef void (put_budget_fn)(struct blk_mq_hw_ctx *);
 typedef enum blk_eh_timer_return (timeout_fn)(struct request *, bool);
@@ -231,14 +233,7 @@ struct blk_mq_ops {
 	void (*show_rq)(struct seq_file *m, struct request *rq);
 #endif
 
-#ifndef __GENKSYMS__
-	/*
-	 * Return a queue map type for the given request/bio flags
-	 */
-	rq_flags_to_type_fn      *rq_flags_to_type;
-#else
 	KABI_RESERVE(1)
-#endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
