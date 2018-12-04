@@ -180,7 +180,7 @@ struct irq_affinity_desc *
 irq_create_affinity_masks(int nvecs, const struct irq_affinity *affd)
 {
 	int affvecs = nvecs - affd->pre_vectors - affd->post_vectors;
-	int curvec, usedvecs;
+	int curvec, usedvecs, i;
 	cpumask_var_t nmsk, npresmsk, *node_to_cpumask;
 	struct irq_affinity_desc *masks = NULL;
 
@@ -241,6 +241,10 @@ irq_create_affinity_masks(int nvecs, const struct irq_affinity *affd)
 		curvec = affd->pre_vectors + usedvecs;
 	for (; curvec < nvecs; curvec++)
 		cpumask_copy(&masks[curvec].mask, irq_default_affinity);
+
+	/* Mark the managed interrupts */
+	for (i = affd->pre_vectors; i < nvecs - affd->post_vectors; i++)
+		masks[i].is_managed = 1;
 
 outnodemsk:
 	free_node_to_cpumask(node_to_cpumask);
