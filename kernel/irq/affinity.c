@@ -99,7 +99,7 @@ static int irq_build_affinity_masks(const struct irq_affinity *affd,
 				    cpumask_var_t *node_to_cpumask,
 				    const struct cpumask *cpu_mask,
 				    struct cpumask *nmsk,
-				    struct cpumask *masks)
+				    struct irq_affinity_desc *masks)
 {
 	int n, nodes, cpus_per_vec, extra_vecs, done = 0;
 	int last_affv = affd->pre_vectors + numvecs;
@@ -117,7 +117,9 @@ static int irq_build_affinity_masks(const struct irq_affinity *affd,
 	 */
 	if (numvecs <= nodes) {
 		for_each_node_mask(n, nodemsk) {
-			cpumask_or(masks + curvec, masks + curvec, node_to_cpumask[n]);
+			cpumask_or(&masks[curvec].mask,
+					&masks[curvec].mask,
+					node_to_cpumask[n]);
 			if (++curvec == last_affv)
 				curvec = affd->pre_vectors;
 		}
@@ -150,7 +152,8 @@ static int irq_build_affinity_masks(const struct irq_affinity *affd,
 				cpus_per_vec++;
 				--extra_vecs;
 			}
-			irq_spread_init_one(masks + curvec, nmsk, cpus_per_vec);
+			irq_spread_init_one(&masks[curvec].mask, nmsk,
+						cpus_per_vec);
 		}
 
 		done += v;
@@ -165,20 +168,21 @@ out:
 	return done;
 }
 
+
 /**
  * irq_create_affinity_masks - Create affinity masks for multiqueue spreading
  * @nvecs:	The total number of vectors
  * @affd:	Description of the affinity requirements
  *
- * Returns the masks pointer or NULL if allocation failed.
+ * Returns the irq_affinity_desc pointer or NULL if allocation failed.
  */
-struct cpumask *
+struct irq_affinity_desc *
 irq_create_affinity_masks(int nvecs, const struct irq_affinity *affd)
 {
 	int affvecs = nvecs - affd->pre_vectors - affd->post_vectors;
 	int curvec, usedvecs;
 	cpumask_var_t nmsk, npresmsk, *node_to_cpumask;
-	struct cpumask *masks = NULL;
+	struct irq_affinity_desc *masks = NULL;
 
 	/*
 	 * If there aren't any vectors left after applying the pre/post
@@ -203,7 +207,7 @@ irq_create_affinity_masks(int nvecs, const struct irq_affinity *affd)
 
 	/* Fill out vectors at the beginning that don't need affinity */
 	for (curvec = 0; curvec < affd->pre_vectors; curvec++)
-		cpumask_copy(masks + curvec, irq_default_affinity);
+		cpumask_copy(&masks[curvec].mask, irq_default_affinity);
 
 	/* Stabilize the cpumasks */
 	get_online_cpus();
@@ -236,7 +240,7 @@ irq_create_affinity_masks(int nvecs, const struct irq_affinity *affd)
 	else
 		curvec = affd->pre_vectors + usedvecs;
 	for (; curvec < nvecs; curvec++)
-		cpumask_copy(masks + curvec, irq_default_affinity);
+		cpumask_copy(&masks[curvec].mask, irq_default_affinity);
 
 outnodemsk:
 	free_node_to_cpumask(node_to_cpumask);
