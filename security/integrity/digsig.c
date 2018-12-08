@@ -35,6 +35,7 @@ static const char *keyring_name[INTEGRITY_KEYRING_MAX] = {
 	".ima",
 #endif
 	"_module",
+	".platform",
 };
 
 #ifdef CONFIG_INTEGRITY_TRUSTED_KEYRING
@@ -79,26 +80,17 @@ int integrity_digsig_verify(const unsigned int id, const char *sig, int siglen,
 	return -EOPNOTSUPP;
 }
 
-int __init integrity_init_keyring(const unsigned int id)
+static int __integrity_init_keyring(const unsigned int id, key_perm_t perm,
+					struct key_restriction *restriction)
 {
 	const struct cred *cred = current_cred();
-	struct key_restriction *restriction;
 	int err = 0;
 
 	if (!init_keyring)
 		return 0;
 
-	restriction = kzalloc(sizeof(struct key_restriction), GFP_KERNEL);
-	if (!restriction)
-		return -ENOMEM;
-
-	restriction->check = restrict_link_to_ima;
-
 	keyring[id] = keyring_alloc(keyring_name[id], KUIDT_INIT(0),
-				    KGIDT_INIT(0), cred,
-				    ((KEY_POS_ALL & ~KEY_POS_SETATTR) |
-				     KEY_USR_VIEW | KEY_USR_READ |
-				     KEY_USR_WRITE | KEY_USR_SEARCH),
+					KGIDT_INIT(0), cred, perm,
 				    KEY_ALLOC_NOT_IN_QUOTA,
 				    restriction, NULL);
 	if (IS_ERR(keyring[id])) {
@@ -107,7 +99,35 @@ int __init integrity_init_keyring(const unsigned int id)
 			keyring_name[id], err);
 		keyring[id] = NULL;
 	}
+
 	return err;
+}
+
+int __init integrity_init_keyring(const unsigned int id)
+{
+	struct key_restriction *restriction;
+	key_perm_t perm;
+
+	perm = (KEY_POS_ALL & ~KEY_POS_SETATTR) | KEY_USR_VIEW
+		| KEY_USR_READ | KEY_USR_SEARCH;
+
+	if (id == INTEGRITY_KEYRING_PLATFORM) {
+		restriction = NULL;
+		goto out;
+	}
+
+	if (!IS_ENABLED(CONFIG_INTEGRITY_TRUSTED_KEYRING))
+		return 0;
+
+	restriction = kzalloc(sizeof(struct key_restriction), GFP_KERNEL);
+	if (!restriction)
+		return -ENOMEM;
+
+	restriction->check = restrict_link_to_ima;
+	perm |= KEY_USR_WRITE;
+
+out:
+	return __integrity_init_keyring(id, perm, restriction);
 }
 
 int __init integrity_load_x509(const unsigned int id, const char *path)
