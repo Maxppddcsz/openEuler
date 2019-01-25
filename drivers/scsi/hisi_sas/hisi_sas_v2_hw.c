@@ -2889,30 +2889,6 @@ static const struct hisi_sas_hw_error port_ecc_axi_error[] = {
 	},
 };
 
-static void wait_phyup_timedout_v2_hw(struct timer_list *t)
-{
-	struct hisi_sas_phy *phy = from_timer(phy, t, timer);
-	struct hisi_hba *hisi_hba = phy->hisi_hba;
-	struct device *dev = hisi_hba->dev;
-	int phy_no = phy->sas_phy.id;
-
-	dev_warn(dev, "phy%d wait phyup timeout, issuing link reset\n", phy_no);
-	hisi_sas_notify_phy_event(phy, HISI_PHYE_LINK_RESET);
-}
-
-static void phy_oob_ready_v2_hw(struct hisi_hba *hisi_hba, int phy_no)
-{
-	struct hisi_sas_phy *phy = &hisi_hba->phy[phy_no];
-	struct device *dev = hisi_hba->dev;
-
-	if (!timer_pending(&phy->timer)) {
-		dev_dbg(dev, "phy%d OOB ready\n", phy_no);
-		phy->timer.function = wait_phyup_timedout_v2_hw;
-		phy->timer.expires = jiffies + HISI_SAS_WAIT_PHYUP_TIMEOUT;
-		add_timer(&phy->timer);
-	}
-}
-
 static irqreturn_t int_chnl_int_v2_hw(int irq_no, void *p)
 {
 	struct hisi_hba *hisi_hba = p;
@@ -2974,7 +2950,7 @@ static irqreturn_t int_chnl_int_v2_hw(int irq_no, void *p)
 				phy_bcast_v2_hw(phy_no, hisi_hba);
 
 			if (irq_value0 & CHL_INT0_PHY_RDY_MSK)
-				phy_oob_ready_v2_hw(hisi_hba, phy_no);
+				hisi_sas_phy_oob_ready(hisi_hba, phy_no);
 
 			hisi_sas_phy_write32(hisi_hba, phy_no,
 					CHL_INT0, irq_value0
