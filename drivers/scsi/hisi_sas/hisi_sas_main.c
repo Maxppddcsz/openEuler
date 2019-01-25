@@ -915,6 +915,30 @@ bool hisi_sas_notify_phy_event(struct hisi_sas_phy *phy,
 }
 EXPORT_SYMBOL_GPL(hisi_sas_notify_phy_event);
 
+static void hisi_sas_wait_phyup_timedout(struct timer_list *t)
+{
+	struct hisi_sas_phy *phy = from_timer(phy, t, timer);
+	struct hisi_hba *hisi_hba = phy->hisi_hba;
+	struct device *dev = hisi_hba->dev;
+	int phy_no = phy->sas_phy.id;
+
+	dev_warn(dev, "phy%d wait phyup timeout, issuing link reset\n", phy_no);
+	hisi_sas_notify_phy_event(phy, HISI_PHYE_LINK_RESET);
+}
+
+void hisi_sas_phy_oob_ready(struct hisi_hba *hisi_hba, int phy_no)
+{
+	struct hisi_sas_phy *phy = &hisi_hba->phy[phy_no];
+	struct device *dev = hisi_hba->dev;
+
+	if (!timer_pending(&phy->timer)) {
+		dev_dbg(dev, "phy%d OOB ready\n", phy_no);
+		phy->timer.expires = jiffies + HISI_SAS_WAIT_PHYUP_TIMEOUT * HZ;
+		add_timer(&phy->timer);
+	}
+}
+EXPORT_SYMBOL_GPL(hisi_sas_phy_oob_ready);
+
 static void hisi_sas_phy_init(struct hisi_hba *hisi_hba, int phy_no)
 {
 	struct hisi_sas_phy *phy = &hisi_hba->phy[phy_no];
@@ -944,7 +968,7 @@ static void hisi_sas_phy_init(struct hisi_hba *hisi_hba, int phy_no)
 
 	spin_lock_init(&phy->lock);
 
-	timer_setup(&phy->timer, NULL, 0);
+	timer_setup(&phy->timer, hisi_sas_wait_phyup_timedout, 0);
 }
 
 /* Wrapper to ensure we track hisi_sas_phy.enable properly */

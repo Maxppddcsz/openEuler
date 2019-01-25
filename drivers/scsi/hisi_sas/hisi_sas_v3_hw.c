@@ -1916,38 +1916,13 @@ static void handle_chl_int2_v3_hw(struct hisi_hba *hisi_hba, int phy_no)
 	hisi_sas_phy_write32(hisi_hba, phy_no, CHL_INT2, irq_value);
 }
 
-static void wait_phyup_timedout_v3_hw(struct timer_list *t)
-{
-	struct hisi_sas_phy *phy = from_timer(phy, t, timer);
-	struct hisi_hba *hisi_hba = phy->hisi_hba;
-	struct device *dev = hisi_hba->dev;
-	int phy_no = phy->sas_phy.id;
-
-	dev_warn(dev, "phy%d wait phyup timeout, issuing link reset\n", phy_no);
-	hisi_sas_notify_phy_event(phy, HISI_PHYE_LINK_RESET);
-}
-
 static void handle_chl_int0_v3_hw(struct hisi_hba *hisi_hba, int phy_no)
 {
 	u32 irq_value0 = hisi_sas_phy_read32(hisi_hba, phy_no, CHL_INT0);
-	struct device *dev = hisi_hba->dev;
 
-	if (irq_value0 & CHL_INT0_PHY_RDY_MSK) {
-		struct hisi_sas_phy *phy = &hisi_hba->phy[phy_no];
+	if (irq_value0 & CHL_INT0_PHY_RDY_MSK)
+		hisi_sas_phy_oob_ready(hisi_hba, phy_no);
 
-		dev_dbg(dev, "phy%d OOB ready\n", phy_no);
-		if (phy->phy_attached)
-			goto out;
-
-		if (!timer_pending(&phy->timer)) {
-			phy->timer.function = wait_phyup_timedout_v3_hw;
-			phy->timer.expires = jiffies +
-					HISI_SAS_WAIT_PHYUP_TIMEOUT;
-			add_timer(&phy->timer);
-		}
-	}
-
-out:
 	hisi_sas_phy_write32(hisi_hba, phy_no, CHL_INT0,
 			     irq_value0 & (~CHL_INT0_SL_RX_BCST_ACK_MSK)
 			     & (~CHL_INT0_SL_PHY_ENABLE_MSK)
