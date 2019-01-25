@@ -437,6 +437,7 @@ struct hisi_hba {
 	unsigned int dq_idx[NR_CPUS];
 	int nvecs;
 	unsigned int dq_num_per_node;
+	bool debugfs_snapshot;
 };
 
 /* Generic HW DMA host memory structures */
