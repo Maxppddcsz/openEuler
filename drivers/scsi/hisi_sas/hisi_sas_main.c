@@ -1621,8 +1621,7 @@ static int hisi_sas_controller_reset(struct hisi_hba *hisi_hba)
 	if (test_and_set_bit(HISI_SAS_RESET_BIT, &hisi_hba->flags))
 		return -EPERM;
 
-	if (hisi_sas_debugfs_enable && hisi_hba->debugfs_itct &&
-	    !hisi_hba->debugfs_dump_dentry)
+	if (hisi_sas_debugfs_enable && hisi_hba->debugfs_itct)
 		hisi_hba->hw->debugfs_work_handler(&hisi_hba->debugfs_work);
 
 	dev_info(dev, "controller resetting...\n");
@@ -3499,67 +3498,51 @@ static void hisi_sas_debugfs_create_files(struct hisi_hba *hisi_hba)
 
 	/* Create dump dir inside device dir */
 	dump_dentry = debugfs_create_dir("dump", hisi_hba->debugfs_dir);
-	if (!dump_dentry)
-		goto fail;
 
 	hisi_hba->debugfs_dump_dentry = dump_dentry;
 
-	if (!debugfs_create_file("global", 0400, dump_dentry, hisi_hba,
-				 &hisi_sas_debugfs_global_fops))
-		goto fail;
+	debugfs_create_file("global", 0400, dump_dentry, hisi_hba,
+			    &hisi_sas_debugfs_global_fops);
 
 	/* Create port dir and files */
 	dentry = debugfs_create_dir("port", dump_dentry);
-	if (!dentry)
-		goto fail;
 
 	for (p = 0; p < hisi_hba->n_phy; p++) {
 		snprintf(name, sizeof(name), "%d", p);
-		if (!debugfs_create_file(name, 0400, dentry,
-					 &hisi_hba->phy[p],
-					 &hisi_sas_debugfs_port_fops))
-			goto fail;
+		debugfs_create_file(name, 0400, dentry,
+				    &hisi_hba->phy[p],
+				    &hisi_sas_debugfs_port_fops);
 	}
 
 	/* Create CQ dir and files */
 	dentry = debugfs_create_dir("cq", dump_dentry);
-	if (!dentry)
-		goto fail;
 
 	for (c = 0; c < hisi_hba->queue_count; c++) {
 		snprintf(name, sizeof(name), "%d", c);
 
-		if (!debugfs_create_file(name, 0400, dentry,
-					 &hisi_hba->cq[c],
-					 &hisi_sas_debugfs_cq_fops))
-			goto fail;
+		debugfs_create_file(name, 0400, dentry,
+				    &hisi_hba->cq[c],
+				    &hisi_sas_debugfs_cq_fops);
 	}
 
 	/* Create DQ dir and files */
 	dentry = debugfs_create_dir("dq", dump_dentry);
-	if (!dentry)
-		goto fail;
 
 	for (d = 0; d < hisi_hba->queue_count; d++) {
 		snprintf(name, sizeof(name), "%d", d);
 
-		if (!debugfs_create_file(name, 0400, dentry,
-					 &hisi_hba->dq[d],
-					 &hisi_sas_debugfs_dq_fops))
-			goto fail;
+		debugfs_create_file(name, 0400, dentry,
+				    &hisi_hba->dq[d],
+				    &hisi_sas_debugfs_dq_fops);
 	}
 
-	if (!debugfs_create_file("iost", 0400, dump_dentry, hisi_hba,
-				 &hisi_sas_debugfs_iost_fops))
-		goto fail;
+	debugfs_create_file("iost", 0400, dump_dentry, hisi_hba,
+			    &hisi_sas_debugfs_iost_fops);
 
-	if (!debugfs_create_file("itct", 0400, dump_dentry, hisi_hba,
-				 &hisi_sas_debugfs_itct_fops))
-		goto fail;
+	debugfs_create_file("itct", 0400, dump_dentry, hisi_hba,
+				 &hisi_sas_debugfs_itct_fops);
 
 	return;
-fail:
-	hisi_sas_debugfs_exit(hisi_hba);
 }
 
 static void hisi_sas_debugfs_snapshot_regs(struct hisi_hba *hisi_hba)
@@ -3620,6 +3603,10 @@ void hisi_sas_debugfs_work_handler(struct work_struct *work)
 	struct hisi_hba *hisi_hba =
 		container_of(work, struct hisi_hba, debugfs_work);
 
+	if (hisi_hba->debugfs_snapshot)
+		return;
+	hisi_hba->debugfs_snapshot = true;
+
 	hisi_sas_debugfs_snapshot_regs(hisi_hba);
 }
 EXPORT_SYMBOL_GPL(hisi_sas_debugfs_work_handler);
@@ -3633,9 +3620,6 @@ void hisi_sas_debugfs_init(struct hisi_hba *hisi_hba)
 
 	hisi_hba->debugfs_dir = debugfs_create_dir(dev_name(dev),
 						   hisi_sas_debugfs_dir);
-
-	if (!hisi_hba->debugfs_dir)
-		return;
 
 	debugfs_create_file("trigger_dump", 0600,
 			    hisi_hba->debugfs_dir,
