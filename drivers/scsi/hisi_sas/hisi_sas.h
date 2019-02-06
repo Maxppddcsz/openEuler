@@ -192,6 +192,7 @@ struct hisi_sas_port {
 
 struct hisi_sas_cq {
 	struct hisi_hba *hisi_hba;
+	const struct cpumask *pci_irq_mask;
 	struct tasklet_struct tasklet;
 	int	rd_point;
 	int	id;
@@ -214,8 +215,8 @@ struct hisi_sas_device {
 	enum sas_device_type	dev_type;
 	unsigned int device_id;
 	int sata_idx;
-	spinlock_t lock;
 	enum dev_status dev_status;
+	spinlock_t lock; /* For protecting slots */
 };
 
 struct hisi_sas_tmf_task {
@@ -420,6 +421,7 @@ struct hisi_hba {
 	int bist_loopback_enable;
 
 	int enable_dix_dif;
+	unsigned int *reply_map;
 
 	/* debugfs memories */
 	u32 *debugfs_global_reg;

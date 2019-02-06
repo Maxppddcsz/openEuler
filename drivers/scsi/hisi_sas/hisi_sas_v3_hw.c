@@ -556,6 +556,11 @@ module_param(user_ctl_irq, bool, 0444);
 MODULE_PARM_DESC(user_ctl_irq, "Enable user control irq affinity:\n"
 			       "default is auto-control irq affinity");
 
+static bool auto_affine_msi_experimental;
+module_param(auto_affine_msi_experimental, bool, 0444);
+MODULE_PARM_DESC(auto_affine_msi_experimental, "Enable auto-affinity of MSI IRQs as experimental:\n"
+		 "default is off");
+
 static u32 hisi_sas_read32(struct hisi_hba *hisi_hba, u32 off)
 {
 	void __iomem *regs = hisi_hba->regs + off;
@@ -2677,33 +2682,66 @@ static irqreturn_t cq_interrupt_v3_hw(int irq_no, void *p)
 	return IRQ_HANDLED;
 }
 
+static void setup_reply_map_v3_hw(struct hisi_hba *hisi_hba, int nvecs)
+{
+	const struct cpumask *mask;
+	int queue, cpu;
+
+	for (queue = 0; queue < nvecs; queue++) {
+		struct hisi_sas_cq *cq = &hisi_hba->cq[queue];
+
+		mask = pci_irq_get_affinity(hisi_hba->pci_dev, queue +
+					    HISI_SAS_CQ_INT_BASE_VECTORS_V3_HW);
+		if (!mask)
+			goto fallback;
+		cq->pci_irq_mask = mask;
+		for_each_cpu(cpu, mask)
+			hisi_hba->reply_map[cpu] = queue;
+	}
+	return;
+
+fallback:
+	for_each_possible_cpu(cpu)
+		hisi_hba->reply_map[cpu] = cpu % hisi_hba->queue_count;
+	/* Don't clean all CQ masks */
+}
+
 static int interrupt_init_v3_hw(struct hisi_hba *hisi_hba)
 {
 	struct device *dev = hisi_hba->dev;
 	struct pci_dev *pdev = hisi_hba->pci_dev;
 	int vectors, rc;
 	int i, k;
-	int max_msi = HISI_SAS_MSI_COUNT_V3_HW;
 	int max_dq_num, online_numa_num;
-	struct irq_affinity desc = {
-		.pre_vectors = HISI_SAS_CQ_INT_BASE_VECTORS_V3_HW,
-	};
+	int max_msi = HISI_SAS_MSI_COUNT_V3_HW, min_msi;
 
-	if (user_ctl_irq) {
-		vectors = pci_alloc_irq_vectors(hisi_hba->pci_dev, 1,
-						max_msi, PCI_IRQ_MSI);
-	} else {
+	if (auto_affine_msi_experimental) {
+		struct irq_affinity desc = {
+			.pre_vectors = HISI_SAS_CQ_INT_BASE_VECTORS_V3_HW,
+		};
+
+		min_msi = HISI_SAS_MIN_VECTORS_V3_HW;
+
+		hisi_hba->reply_map = devm_kcalloc(dev, nr_cpu_ids,
+						   sizeof(unsigned int),
+						   GFP_KERNEL);
+		if (!hisi_hba->reply_map)
+			return -ENOMEM;
 		vectors = pci_alloc_irq_vectors_affinity(hisi_hba->pci_dev,
-				HISI_SAS_MIN_VECTORS_V3_HW,
-				max_msi,
-				PCI_IRQ_MSI |
-				PCI_IRQ_AFFINITY,
-				&desc);
-	}
-
-	if (vectors < HISI_SAS_MIN_VECTORS_V3_HW) {
-		dev_err(dev, "allocate msi (%d) not enough\n", vectors);
-		return -ENOENT;
+							 min_msi, max_msi,
+							 PCI_IRQ_MSI |
+							 PCI_IRQ_AFFINITY,
+							 &desc);
+		if (vectors < 0)
+			return -ENOENT;
+		setup_reply_map_v3_hw(hisi_hba,
+				      vectors - HISI_SAS_CQ_INT_BASE_VECTORS_V3_HW);
+	} else {
+		min_msi = max_msi;
+		vectors = pci_alloc_irq_vectors(hisi_hba->pci_dev, min_msi,
+						max_msi, PCI_IRQ_MSI);
+		if (vectors < 0)
+			return vectors;
 	}
 
 	hisi_hba->nvecs = vectors - HISI_SAS_CQ_INT_BASE_VECTORS_V3_HW;
