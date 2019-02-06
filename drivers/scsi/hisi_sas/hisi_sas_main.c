@@ -456,9 +456,6 @@ static int hisi_sas_task_prep(struct sas_task *task,
 	unsigned long flags;
 	int wr_q_index;
 	unsigned int curr_node_id = numa_node_id();
-	unsigned int dq_index =
-		(hisi_hba->dq_idx[curr_node_id] % hisi_hba->dq_num_per_node) +
-		(hisi_hba->dq_num_per_node * curr_node_id);
 
 	if (DEV_IS_GONE(sas_dev)) {
 		if (sas_dev)
@@ -471,10 +468,14 @@ static int hisi_sas_task_prep(struct sas_task *task,
 		return -ECOMM;
 	}
 
-	if (hisi_hba->user_ctl_irq)
-		*dq_pointer = dq = sas_dev->dq;
-	else
+	if (hisi_hba->reply_map) {
+		int cpu = raw_smp_processor_id();
+		unsigned int dq_index = hisi_hba->reply_map[cpu];
+
 		*dq_pointer = dq = &hisi_hba->dq[dq_index];
+	} else {
+		*dq_pointer = dq = sas_dev->dq;
+	}
 
 	port = to_hisi_sas_port(sas_port);
 	if (port && !port->port_attached) {
@@ -2207,11 +2208,8 @@ hisi_sas_internal_task_abort(struct hisi_hba *hisi_hba,
 						     abort_flag, tag, dq);
 	case HISI_SAS_INT_ABT_DEV:
 		for (i = 0; i < hisi_hba->nvecs; i++) {
-			const struct cpumask *mask = NULL;
-
-			if (hisi_hba->hw->get_managed_irq_aff)
-				mask = hisi_hba->hw->get_managed_irq_aff(
-						hisi_hba, i);
+			struct hisi_sas_cq *cq = &hisi_hba->cq[i];
+			const struct cpumask *mask = cq->pci_irq_mask;
 			/*
 			 * The kernel will not permit unmanaged (MSI are
 			 * managed) IRQ affinity to offline CPUs, so
