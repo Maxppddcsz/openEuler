@@ -113,7 +113,9 @@ struct vfio_pci_device {
 	bool			has_vga;
 	bool			needs_reset;
 	bool			nointx;
+	bool			needs_pm_restore;
 	struct pci_saved_state	*pci_saved_state;
+	struct pci_saved_state	*pm_save;
 	struct vfio_pci_reflck	*reflck;
 	int			refcnt;
 	int			ioeventfds_nr;
@@ -163,6 +165,9 @@ extern int vfio_pci_register_dev_region(struct vfio_pci_device *vdev,
 					unsigned int type, unsigned int subtype,
 					const struct vfio_pci_regops *ops,
 					size_t size, u32 flags, void *data);
+
+extern int vfio_pci_set_power_state(struct vfio_pci_device *vdev,
+				    pci_power_t state);
 
 extern bool __vfio_pci_memory_enabled(struct vfio_pci_device *vdev);
 extern void vfio_pci_zap_and_down_write_memory_lock(struct vfio_pci_device
