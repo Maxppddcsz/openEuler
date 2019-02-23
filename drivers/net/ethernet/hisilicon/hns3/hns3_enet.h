@@ -185,6 +185,8 @@ enum hns3_nic_state {
 #define HNS3_TXD_MSS_M				(0x3fff << HNS3_TXD_MSS_S)
 #define HNS3_TXD_HW_CS_B			14
 
+#define HNS3_TX_LAST_SIZE_M                    0xffff
+
 #define HNS3_VECTOR_TX_IRQ			BIT_ULL(0)
 #define HNS3_VECTOR_RX_IRQ			BIT_ULL(1)
 
@@ -196,6 +198,7 @@ enum hns3_nic_state {
 #define HNS3_MAX_TSO_BD_NUM			63U
 #define HNS3_MAX_TSO_SIZE			1048576U
 #define HNS3_MAX_NON_TSO_SIZE			9728U
+#define HNS3_MAX_BD_SIZE_OFFSET			16
 
 #define HNS3_VECTOR_GL0_OFFSET			0x100
 #define HNS3_VECTOR_GL1_OFFSET			0x200

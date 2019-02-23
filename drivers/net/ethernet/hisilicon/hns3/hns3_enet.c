@@ -913,6 +913,7 @@ static int hns3_set_tso(struct sk_buff *skb, u32 *paylen_fdop_ol4cs,
 
 	/* normal or tunnel packet */
 	l4_offset = l4.hdr - skb->data;
+	hdr_len = (l4.tcp->doff << 2) + l4_offset;
 
 	/* remove payload length from inner pseudo checksum when tso */
 	l4_paylen = skb->len - l4_offset;
@@ -1466,8 +1467,8 @@ static int hns3_fill_desc(struct hns3_enet_ring *ring, dma_addr_t dma,
 		return HNS3_LIKELY_BD_NUM;
 	}
 
-	frag_buf_num = hns3_tx_bd_count(size);
-	sizeoflast = size % HNS3_MAX_BD_SIZE;
+	frag_buf_num = (size + HNS3_MAX_BD_SIZE - 1) >> HNS3_MAX_BD_SIZE_OFFSET;
+	sizeoflast = size & HNS3_TX_LAST_SIZE_M;
 	sizeoflast = sizeoflast ? sizeoflast : HNS3_MAX_BD_SIZE;
 
 	/* When frag size is bigger than hardware limit, split this frag */
