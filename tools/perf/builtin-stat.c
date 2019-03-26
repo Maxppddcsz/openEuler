@@ -206,11 +206,6 @@ static struct perf_stat_config stat_config = {
 	.scale		= true,
 };
 
-static bool is_duration_time(struct perf_evsel *evsel)
-{
-	return !strcmp(evsel->name, "duration_time");
-}
-
 static inline void diff_timespec(struct timespec *r, struct timespec *a,
 				 struct timespec *b)
 {
@@ -1385,8 +1380,6 @@ static void print_aggr(struct perf_stat_config *config,
 		ad.id = id = aggr_map->map[s];
 		first = true;
 		evlist__for_each_entry(evsel_list, counter) {
-			if (is_duration_time(counter))
-				continue;
 
 			ad.val = ad.ena = ad.run = 0;
 			ad.nr = 0;
@@ -1599,8 +1592,6 @@ static void print_no_aggr_metric(struct perf_stat_config *config,
 		if (prefix)
 			fputs(prefix, config->output);
 		evlist__for_each_entry(evsel_list, counter) {
-			if (is_duration_time(counter))
-				continue;
 			if (first) {
 				aggr_printout(config, counter, cpu, 0);
 				first = false;
@@ -1656,8 +1647,6 @@ static void print_metric_headers(struct perf_stat_config *config,
 
 	/* Print metrics headers only */
 	evlist__for_each_entry(evsel_list, counter) {
-		if (is_duration_time(counter))
-			continue;
 		os.evsel = counter;
 		out.ctx = &os;
 		out.print_metric = print_metric_header;
@@ -1879,15 +1868,11 @@ perf_evlist__print_counters(struct perf_evlist *evlist,
 		break;
 	case AGGR_THREAD:
 		evlist__for_each_entry(evlist, counter) {
-			if (is_duration_time(counter))
-				continue;
 			print_aggr_thread(config, counter, prefix);
 		}
 		break;
 	case AGGR_GLOBAL:
 		evlist__for_each_entry(evlist, counter) {
-			if (is_duration_time(counter))
-				continue;
 			print_counter_aggr(config, counter, prefix);
 		}
 		if (metric_only)
@@ -1898,8 +1883,6 @@ perf_evlist__print_counters(struct perf_evlist *evlist,
 			print_no_aggr_metric(config, prefix);
 		else {
 			evlist__for_each_entry(evlist, counter) {
-				if (is_duration_time(counter))
-					continue;
 				print_counter(config, counter, prefix);
 			}
 		}
