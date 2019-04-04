@@ -7565,7 +7565,7 @@ int hclge_add_uc_addr_common(struct hclge_vport *vport,
 	struct hclge_dev *hdev = vport->back;
 	struct hclge_mac_vlan_tbl_entry_cmd req;
 	u16 egress_port = 0;
-	int ret;
+	int ret = 0;
 
 	/* mac addr check */
 	if (is_zero_ether_addr(addr) ||
@@ -7603,6 +7603,14 @@ int hclge_add_uc_addr_common(struct hclge_vport *vport,
 	if (!(vport->overflow_promisc_flags & HNAE3_OVERFLOW_UPE))
 		dev_err(&hdev->pdev->dev, "UC MAC table full(%u)\n",
 			hdev->priv_umv_size);
+
+	/* check if we just hit the duplicate */
+	if (!ret)
+		return -EEXIST;
+
+	dev_err(&hdev->pdev->dev,
+		"PF failed to add unicast entry(%pM) in the MAC table\n",
+		addr);
 
 	return -ENOSPC;
 }
