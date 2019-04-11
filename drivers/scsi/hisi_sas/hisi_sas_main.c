@@ -2600,22 +2600,19 @@ int hisi_sas_get_fw_info(struct hisi_hba *hisi_hba)
 
 		if (device_property_read_u32(dev, "ctrl-reset-reg",
 					     &hisi_hba->ctrl_reset_reg)) {
-			dev_err(dev,
-				"could not get property ctrl-reset-reg\n");
+			dev_err(dev, "could not get property ctrl-reset-reg\n");
 			return -ENOENT;
 		}
 
 		if (device_property_read_u32(dev, "ctrl-reset-sts-reg",
 					     &hisi_hba->ctrl_reset_sts_reg)) {
-			dev_err(dev,
-				"could not get property ctrl-reset-sts-reg\n");
+			dev_err(dev, "could not get property ctrl-reset-sts-reg\n");
 			return -ENOENT;
 		}
 
 		if (device_property_read_u32(dev, "ctrl-clock-ena-reg",
 					     &hisi_hba->ctrl_clock_ena_reg)) {
-			dev_err(dev,
-				"could not get property ctrl-clock-ena-reg\n");
+			dev_err(dev, "could not get property ctrl-clock-ena-reg\n");
 			return -ENOENT;
 		}
 	}
