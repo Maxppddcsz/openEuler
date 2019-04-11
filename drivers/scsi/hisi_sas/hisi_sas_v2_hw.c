@@ -2413,14 +2413,12 @@ slot_complete_v2_hw(struct hisi_hba *hisi_hba, struct hisi_sas_slot *slot)
 			slot_err_v2_hw(hisi_hba, task, slot, 2);
 
 		if (ts->stat != SAS_DATA_UNDERRUN)
-			dev_info(dev, "erroneous completion iptt=%d task=%pK dev id=%d "
-				"CQ hdr: 0x%x 0x%x 0x%x 0x%x "
-				"Error info: 0x%x 0x%x 0x%x 0x%x\n",
-				slot->idx, task, sas_dev->device_id,
-				dw0, complete_hdr->dw1,
-				complete_hdr->act, complete_hdr->dw3,
-				error_info[0], error_info[1],
-				error_info[2], error_info[3]);
+			dev_info(dev, "erroneous completion iptt=%d task=%pK dev id=%d CQ hdr: 0x%x 0x%x 0x%x 0x%x Error info: 0x%x 0x%x 0x%x 0x%x\n",
+				 slot->idx, task, sas_dev->device_id,
+				 dw0, complete_hdr->dw1,
+				 complete_hdr->act, complete_hdr->dw3,
+				 error_info[0], error_info[1],
+				 error_info[2], error_info[3]);
 
 		if (unlikely(slot->abort)) {
 			sas_task_abort(task);
@@ -2495,7 +2493,7 @@ out:
 		spin_lock_irqsave(&device->done_lock, flags);
 		if (test_bit(SAS_HA_FROZEN, &ha->state)) {
 			spin_unlock_irqrestore(&device->done_lock, flags);
-			dev_info(dev, "slot complete: task(%pK) ignored\n ",
+			dev_info(dev, "slot complete: task(%pK) ignored\n",
 				 task);
 			return sts;
 		}
@@ -2936,7 +2934,7 @@ static irqreturn_t int_chnl_int_v2_hw(int irq_no, void *p)
 
 			if (irq_value2 & BIT(CHL_INT2_SL_IDAF_TOUT_CONF_OFF)) {
 				dev_warn(dev, "phy%d identify timeout\n",
-						phy_no);
+					 phy_no);
 				hisi_sas_notify_phy_event(phy,
 						HISI_PHYE_LINK_RESET);
 			}
@@ -3039,7 +3037,7 @@ static const struct hisi_sas_hw_error axi_error[] = {
 	{ .msk = BIT(5), .msg = "SATA_AXI_R_ERR" },
 	{ .msk = BIT(6), .msg = "DQE_AXI_R_ERR" },
 	{ .msk = BIT(7), .msg = "CQE_AXI_W_ERR" },
-	{},
+	{}
 };
 
 static const struct hisi_sas_hw_error fifo_error[] = {
@@ -3048,7 +3046,7 @@ static const struct hisi_sas_hw_error fifo_error[] = {
 	{ .msk = BIT(10), .msg = "GETDQE_FIFO" },
 	{ .msk = BIT(11), .msg = "CMDP_FIFO" },
 	{ .msk = BIT(12), .msg = "AWTCTRL_FIFO" },
-	{},
+	{}
 };
 
 static const struct hisi_sas_hw_error fatal_axi_errors[] = {
@@ -3112,12 +3110,12 @@ static irqreturn_t fatal_axi_int_v2_hw(int irq_no, void *p)
 				if (!(err_value & sub->msk))
 					continue;
 				dev_err(dev, "%s (0x%x) found!\n",
-					 sub->msg, irq_value);
+					sub->msg, irq_value);
 				queue_work(hisi_hba->wq, &hisi_hba->rst_work);
 			}
 		} else {
 			dev_err(dev, "%s (0x%x) found!\n",
-				 axi_error->msg, irq_value);
+				axi_error->msg, irq_value);
 			queue_work(hisi_hba->wq, &hisi_hba->rst_work);
 		}
 	}
@@ -3255,7 +3253,7 @@ static irqreturn_t sata_int_v2_hw(int irq_no, void *p)
 	/* check ERR bit of Status Register */
 	if (fis->status & ATA_ERR) {
 		dev_warn(dev, "sata int: phy%d FIS status: 0x%x\n", phy_no,
-				fis->status);
+			 fis->status);
 		hisi_sas_notify_phy_event(phy, HISI_PHYE_LINK_RESET);
 		res = IRQ_NONE;
 		goto end;
@@ -3346,8 +3344,7 @@ static int interrupt_init_v2_hw(struct hisi_hba *hisi_hba)
 		rc = devm_request_irq(dev, irq, phy_interrupts[i], 0,
 				      DRV_NAME " phy", hisi_hba);
 		if (rc) {
-			dev_err(dev, "irq init: could not request "
-				"phy interrupt %d, rc=%d\n",
+			dev_err(dev, "irq init: could not request phy interrupt %d, rc=%d\n",
 				irq, rc);
 			rc = -ENOENT;
 			goto free_phy_int_irqs;
@@ -3361,8 +3358,7 @@ static int interrupt_init_v2_hw(struct hisi_hba *hisi_hba)
 		rc = devm_request_irq(dev, irq, sata_int_v2_hw, 0,
 				      DRV_NAME " sata", phy);
 		if (rc) {
-			dev_err(dev, "irq init: could not request "
-				"sata interrupt %d, rc=%d\n",
+			dev_err(dev, "irq init: could not request sata interrupt %d, rc=%d\n",
 				irq, rc);
 			rc = -ENOENT;
 			goto free_sata_int_irqs;
@@ -3374,8 +3370,7 @@ static int interrupt_init_v2_hw(struct hisi_hba *hisi_hba)
 		rc = devm_request_irq(dev, irq, fatal_interrupts[fatal_no], 0,
 				      DRV_NAME " fatal", hisi_hba);
 		if (rc) {
-			dev_err(dev,
-				"irq init: could not request fatal interrupt %d, rc=%d\n",
+			dev_err(dev, "irq init: could not request fatal interrupt %d, rc=%d\n",
 				irq, rc);
 			rc = -ENOENT;
 			goto free_fatal_int_irqs;
@@ -3390,8 +3385,7 @@ static int interrupt_init_v2_hw(struct hisi_hba *hisi_hba)
 		rc = devm_request_irq(dev, irq, cq_interrupt_v2_hw, 0,
 				      DRV_NAME " cq", cq);
 		if (rc) {
-			dev_err(dev,
-				"irq init: could not request cq interrupt %d, rc=%d\n",
+			dev_err(dev, "irq init: could not request cq interrupt %d, rc=%d\n",
 				irq, rc);
 			rc = -ENOENT;
 			goto free_cq_int_irqs;
@@ -3543,7 +3537,7 @@ static int write_gpio_v2_hw(struct hisi_hba *hisi_hba, u8 reg_type,
 		break;
 	default:
 		dev_err(dev, "write gpio: unsupported or bad reg type %d\n",
-				reg_type);
+			reg_type);
 		return -EINVAL;
 	}
 
