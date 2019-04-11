@@ -323,8 +323,8 @@ static const struct hclge_comm_stats_str g_mac_stats_string[] = {
 static const struct hclge_mac_mgr_tbl_entry_cmd hclge_mgr_table[] = {
 	{
 		.flags = HCLGE_MAC_MGR_MASK_VLAN_B,
-		.ethter_type = cpu_to_le16(HCLGE_MAC_ETHERTYPE_LLDP),
 		.mac_addr = {0x01, 0x80, 0xc2, 0x00, 0x00, 0x0e},
+		.ethter_type = cpu_to_le16(ETH_P_LLDP),
 		.i_port_bitmap = 0x1,
 	},
 };
