@@ -47,7 +47,7 @@ EXPORT_SYMBOL_GPL(blk_mq_pci_map_queues_by_qmap);
 
 /**
  * blk_mq_pci_map_queues - provide a default queue mapping for PCI device
- * @set:	tagset to provide the mapping for
+ * @qmap:	CPU to hardware queue map.
  * @pdev:	PCI device associated with @set.
  * @offset:	Offset to use for the pci irq vector
  *
