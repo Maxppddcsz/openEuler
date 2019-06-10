@@ -890,7 +890,7 @@ static void setup_itct_v3_hw(struct hisi_hba *hisi_hba,
 		break;
 	case SAS_SATA_DEV:
 	case SAS_SATA_PENDING:
-		if (parent_dev && DEV_IS_EXPANDER(parent_dev->dev_type))
+		if (parent_dev && dev_is_expander(parent_dev->dev_type))
 			qw0 = HISI_SAS_DEV_TYPE_STP << ITCT_HDR_DEV_TYPE_OFF;
 		else
 			qw0 = HISI_SAS_DEV_TYPE_SATA << ITCT_HDR_DEV_TYPE_OFF;
@@ -1532,7 +1532,7 @@ static void prep_ata_v3_hw(struct hisi_hba *hisi_hba,
 	u32 dw1 = 0, dw2 = 0, hdr_tag = 0;
 
 	hdr->dw0 = cpu_to_le32(port->id << CMD_HDR_PORT_OFF);
-	if (parent_dev && DEV_IS_EXPANDER(parent_dev->dev_type)) {
+	if (parent_dev && dev_is_expander(parent_dev->dev_type)) {
 		hdr->dw0 |= cpu_to_le32(3 << CMD_HDR_CMD_OFF); /* STP */
 	} else {
 		int phy_id = device->phy->identify.phy_identifier;
@@ -2560,7 +2560,7 @@ static void slot_complete_v3_hw(struct hisi_hba *hisi_hba,
 
 		sas_ssp_task_response(dev, task, iu);
 		if ((!(device->parent &&
-				DEV_IS_EXPANDER(device->parent->dev_type))) &&
+				dev_is_expander(device->parent->dev_type))) &&
 			ssp_need_spin_up(slot)) {
 			int phy_no;
 
