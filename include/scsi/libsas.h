@@ -225,6 +225,12 @@ struct sas_work {
 	struct work_struct work;
 };
 
+static inline bool dev_is_expander(enum sas_device_type type)
+{
+	return type == SAS_EDGE_EXPANDER_DEVICE ||
+	       type == SAS_FANOUT_EXPANDER_DEVICE;
+}
+
 static inline void INIT_SAS_WORK(struct sas_work *sw, void (*fn)(struct work_struct *))
 {
 	INIT_WORK(&sw->work, fn);
