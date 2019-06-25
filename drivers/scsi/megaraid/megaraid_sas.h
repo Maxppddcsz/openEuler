@@ -1547,6 +1547,7 @@ enum FW_BOOT_CONTEXT {
 #define MR_CAN_HANDLE_SYNC_CACHE_OFFSET		0X01000000
 
 #define MR_CAN_HANDLE_64_BIT_DMA_OFFSET		(1 << 25)
+#define MR_INTR_COALESCING_SUPPORT_OFFSET	(1 << 26)
 
 enum MR_ADAPTER_TYPE {
 	MFI_SERIES = 1,
@@ -2147,6 +2148,9 @@ enum MR_PD_TYPE {
 #define MR_DEFAULT_NVME_MDTS_KB		128
 #define MR_NVME_PAGE_SIZE_MASK		0x000000FF
 
+/*Aero performance parameters*/
+#define MR_HIGH_IOPS_QUEUE_COUNT	8
+
 struct megasas_instance {
 
 	unsigned int *reply_map;
@@ -2317,6 +2321,8 @@ struct megasas_instance {
 	bool support_nvme_passthru;
 	u8 task_abort_tmo;
 	u8 max_reset_tmo;
+	u8  low_latency_index_start;
+	bool balanced_mode;
 };
 struct MR_LD_VF_MAP {
 	u32 size;
