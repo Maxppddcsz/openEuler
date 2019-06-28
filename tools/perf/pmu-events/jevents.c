@@ -239,6 +239,7 @@ static struct map {
 	{ "L3PMC", "amd_l3" },
 	{ "DFPMC", "amd_df" },
 	{ "hisi_sccl,ddrc", "hisi_sccl,ddrc" },
+	{ "hisi_sccl,hha", "hisi_sccl,hha" },
 	{}
 };
 
