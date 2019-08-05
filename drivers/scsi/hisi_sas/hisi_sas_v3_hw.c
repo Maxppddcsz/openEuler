@@ -3543,8 +3543,6 @@ hisi_sas_shost_alloc_pci(struct pci_dev *pdev)
 	else
 		hisi_hba->enable_dix_dif = enable_dix_dif;
 
-	timer_setup(&hisi_hba->timer, NULL, 0);
-
 	if (hisi_sas_get_fw_info(hisi_hba) < 0)
 		goto err_out;
 
@@ -3636,7 +3634,6 @@ hisi_sas_v3_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	sha->lldd_module = THIS_MODULE;
 	sha->sas_addr = &hisi_hba->sas_addr[0];
 	sha->num_phys = hisi_hba->n_phy;
-	sha->core.shost = hisi_hba->shost;
 
 	for (i = 0; i < hisi_hba->n_phy; i++) {
 		sha->sas_phy[i] = &hisi_hba->phy[i].sas_phy;
