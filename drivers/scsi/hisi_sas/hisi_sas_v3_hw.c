@@ -2706,8 +2706,7 @@ static int interrupt_init_v3_hw(struct hisi_hba *hisi_hba)
 {
 	struct device *dev = hisi_hba->dev;
 	struct pci_dev *pdev = hisi_hba->pci_dev;
-	int vectors, rc;
-	int i, k;
+	int vectors, rc, i;
 	int max_dq_num, online_numa_num;
 	int max_msi = HISI_SAS_MSI_COUNT_V3_HW, min_msi;
 
@@ -2765,7 +2764,7 @@ static int interrupt_init_v3_hw(struct hisi_hba *hisi_hba)
 	if (rc) {
 		dev_err(dev, "could not request chnl interrupt, rc=%d\n", rc);
 		rc = -ENOENT;
-		goto free_phy_irq;
+		goto free_irq_vectors;
 	}
 
 	rc = devm_request_irq(dev, pci_irq_vector(pdev, PCI_IRQ_AXI_FATAL),
@@ -2774,7 +2773,7 @@ static int interrupt_init_v3_hw(struct hisi_hba *hisi_hba)
 	if (rc) {
 		dev_err(dev, "could not request fatal interrupt, rc=%d\n", rc);
 		rc = -ENOENT;
-		goto free_chnl_interrupt;
+		goto free_irq_vectors;
 	}
 
 	/* Init tasklets for cq only */
@@ -2792,7 +2791,7 @@ static int interrupt_init_v3_hw(struct hisi_hba *hisi_hba)
 			dev_err(dev, "could not request cq%d interrupt, rc=%d\n",
 				i, rc);
 			rc = -ENOENT;
-			goto free_cq_irqs;
+			goto free_irq_vectors;
 		}
 
 		tasklet_init(t, cq_tasklet_v3_hw, (uintptr_t)cq);
@@ -2800,19 +2799,6 @@ static int interrupt_init_v3_hw(struct hisi_hba *hisi_hba)
 
 	return 0;
 
-free_cq_irqs:
-	for (k = 0; k < i; k++) {
-		struct hisi_sas_cq *cq = &hisi_hba->cq[k];
-		int nr = hisi_sas_intr_conv ? PCI_IRQ_CQ_BASE :
-					      PCI_IRQ_CQ_BASE + k;
-
-		free_irq(pci_irq_vector(pdev, nr), cq);
-	}
-	free_irq(pci_irq_vector(pdev, PCI_IRQ_AXI_FATAL), hisi_hba);
-free_chnl_interrupt:
-	free_irq(pci_irq_vector(pdev, PCI_IRQ_CHANNEL), hisi_hba);
-free_phy_irq:
-	free_irq(pci_irq_vector(pdev, PCI_IRQ_PHY), hisi_hba);
 free_irq_vectors:
 	pci_free_irq_vectors(pdev);
 	return rc;
