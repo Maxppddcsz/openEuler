@@ -3404,8 +3404,8 @@ static const struct file_operations hisi_sas_debugfs_port_fops = {
 	.owner = THIS_MODULE,
 };
 
-static int hisi_sas_show_row_64(struct seq_file *s, int index,
-				int sz, __le64 *ptr)
+static void hisi_sas_show_row_64(struct seq_file *s, int index,
+				 int sz, __le64 *ptr)
 {
 	int i;
 
@@ -3419,12 +3419,10 @@ static int hisi_sas_show_row_64(struct seq_file *s, int index,
 	}
 
 	seq_puts(s, "\n");
-
-	return 0;
 }
 
-static int hisi_sas_show_row_32(struct seq_file *s, int index,
-				int sz, __le32 *ptr)
+static void hisi_sas_show_row_32(struct seq_file *s, int index,
+				 int sz, __le32 *ptr)
 {
 	int i;
 
@@ -3437,11 +3435,9 @@ static int hisi_sas_show_row_32(struct seq_file *s, int index,
 			seq_puts(s, "\n\t");
 	}
 	seq_puts(s, "\n");
-
-	return 0;
 }
 
-static int hisi_sas_cq_show_slot(struct seq_file *s, int slot, void *cq_ptr)
+static void hisi_sas_cq_show_slot(struct seq_file *s, int slot, void *cq_ptr)
 {
 	struct hisi_sas_cq *cq = cq_ptr;
 	struct hisi_hba *hisi_hba = cq->hisi_hba;
@@ -3449,20 +3445,18 @@ static int hisi_sas_cq_show_slot(struct seq_file *s, int slot, void *cq_ptr)
 	u64 offset = hisi_hba->hw->complete_hdr_size * slot;
 	__le32 *complete_hdr = complete_queue + offset;
 
-	return hisi_sas_show_row_32(s, slot,
-				hisi_hba->hw->complete_hdr_size,
-				complete_hdr);
+	hisi_sas_show_row_32(s, slot,
+			     hisi_hba->hw->complete_hdr_size,
+			     complete_hdr);
 }
 
 static int hisi_sas_debugfs_cq_show(struct seq_file *s, void *p)
 {
 	struct hisi_sas_cq *cq = s->private;
-	int slot, ret;
+	int slot;
 
 	for (slot = 0; slot < HISI_SAS_QUEUE_SLOTS; slot++) {
-		ret = hisi_sas_cq_show_slot(s, slot, cq);
-		if (ret)
-			return ret;
+		hisi_sas_cq_show_slot(s, slot, cq);
 	}
 	return 0;
 }
@@ -3480,7 +3474,7 @@ static const struct file_operations hisi_sas_debugfs_cq_fops = {
 	.owner = THIS_MODULE,
 };
 
-static int hisi_sas_dq_show_slot(struct seq_file *s, int slot, void *dq_ptr)
+static void hisi_sas_dq_show_slot(struct seq_file *s, int slot, void *dq_ptr)
 {
 	struct hisi_sas_dq *dq = dq_ptr;
 	struct hisi_hba *hisi_hba = dq->hisi_hba;
@@ -3488,18 +3482,15 @@ static int hisi_sas_dq_show_slot(struct seq_file *s, int slot, void *dq_ptr)
 	u64 offset = sizeof(struct hisi_sas_cmd_hdr) * slot;
 	__le32 *cmd_hdr = cmd_queue + offset;
 
-	return hisi_sas_show_row_32(s, slot, sizeof(struct hisi_sas_cmd_hdr),
-				    cmd_hdr);
+	hisi_sas_show_row_32(s, slot, sizeof(struct hisi_sas_cmd_hdr), cmd_hdr);
 }
 
 static int hisi_sas_debugfs_dq_show(struct seq_file *s, void *p)
 {
-	int slot, ret;
+	int slot;
 
 	for (slot = 0; slot < HISI_SAS_QUEUE_SLOTS; slot++) {
-		ret = hisi_sas_dq_show_slot(s, slot, s->private);
-		if (ret)
-			return ret;
+		hisi_sas_dq_show_slot(s, slot, s->private);
 	}
 	return 0;
 }
@@ -3521,15 +3512,12 @@ static int hisi_sas_debugfs_iost_show(struct seq_file *s, void *p)
 {
 	struct hisi_hba *hisi_hba = s->private;
 	struct hisi_sas_iost *debugfs_iost = hisi_hba->debugfs_iost;
-	int i, ret, max_command_entries = HISI_SAS_MAX_COMMANDS;
+	int i, max_command_entries = HISI_SAS_MAX_COMMANDS;
 
 	for (i = 0; i < max_command_entries; i++, debugfs_iost++) {
 		__le64 *iost = &debugfs_iost->qw0;
 
-		ret = hisi_sas_show_row_64(s, i, sizeof(*debugfs_iost),
-					   iost);
-		if (ret)
-			return ret;
+		hisi_sas_show_row_64(s, i, sizeof(*debugfs_iost), iost);
 	}
 
 	return 0;
@@ -3590,17 +3578,14 @@ static const struct file_operations hisi_sas_debugfs_iost_cache_fops = {
 
 static int hisi_sas_debugfs_itct_show(struct seq_file *s, void *p)
 {
-	int i, ret;
+	int i;
 	struct hisi_hba *hisi_hba = s->private;
 	struct hisi_sas_itct *debugfs_itct = hisi_hba->debugfs_itct;
 
 	for (i = 0; i < HISI_SAS_MAX_ITCT_ENTRIES; i++, debugfs_itct++) {
 		__le64 *itct = &debugfs_itct->qw0;
 
-		ret = hisi_sas_show_row_64(s, i, sizeof(*debugfs_itct),
-					   itct);
-		if (ret)
-			return ret;
+		hisi_sas_show_row_64(s, i, sizeof(*debugfs_itct), itct);
 	}
 
 	return 0;
