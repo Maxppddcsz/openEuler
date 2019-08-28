@@ -93,6 +93,7 @@ struct egroup {
 	const char **ids;
 	const char *metric_name;
 	const char *metric_expr;
+	const char *metric_unit;
 };
 
 static bool record_evsel(int *ind, struct perf_evsel **start,
@@ -191,6 +192,7 @@ static int metricgroup__setup_events(struct list_head *groups,
 		}
 		expr->metric_expr = eg->metric_expr;
 		expr->metric_name = eg->metric_name;
+		expr->metric_unit = eg->metric_unit;
 		expr->metric_events = metric_events;
 		list_add(&expr->nd, &me->head);
 	}
@@ -463,6 +465,7 @@ static int metricgroup__add_metric(const char *metric, struct strbuf *events,
 			eg->idnum = idnum;
 			eg->metric_name = pe->metric_name;
 			eg->metric_expr = pe->metric_expr;
+			eg->metric_unit = pe->unit;
 			list_add_tail(&eg->nd, group_list);
 			ret = 0;
 		}
