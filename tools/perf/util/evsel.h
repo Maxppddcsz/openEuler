@@ -149,6 +149,7 @@ struct perf_evsel {
 	const char *		metric_expr;
 	const char *		metric_name;
 	struct perf_evsel	**metric_events;
+	struct perf_evsel	*metric_leader;
 	bool			collect_stat;
 	bool			weak_group;
 	const char		*pmu_name;
