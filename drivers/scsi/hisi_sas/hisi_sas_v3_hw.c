@@ -2978,7 +2978,7 @@ static int write_gpio_v3_hw(struct hisi_hba *hisi_hba, u8 reg_type,
 	return 0;
 }
 
-static int wait_cmds_complete_timeout_v3_hw(struct hisi_hba *hisi_hba,
+static void wait_cmds_complete_timeout_v3_hw(struct hisi_hba *hisi_hba,
 					     int delay_ms, int timeout_ms)
 {
 	struct device *dev = hisi_hba->dev;
@@ -2993,12 +2993,12 @@ static int wait_cmds_complete_timeout_v3_hw(struct hisi_hba *hisi_hba,
 		msleep(delay_ms);
 	}
 
-	if (time >= timeout_ms)
-		return -ETIMEDOUT;
+	if (time >= timeout_ms) {
+		dev_dbg(dev, "Wait commands complete timeout!\n");
+		return;
+	}
 
 	dev_dbg(dev, "wait commands complete %dms\n", time);
-
-	return 0;
 }
 
 static ssize_t intr_conv_show(struct device *dev,
@@ -3280,15 +3280,12 @@ static const struct hisi_sas_debugfs_reg debugfs_ras_reg = {
 
 static void debugfs_snapshot_prepare_v3_hw(struct hisi_hba *hisi_hba)
 {
-	struct device *dev = hisi_hba->dev;
-
 	set_bit(HISI_SAS_REJECT_CMD_BIT, &hisi_hba->flags);
 
 	hisi_sas_write32(hisi_hba, DLVRY_QUEUE_ENABLE, 0);
 
 	/* delay:100ms, timeout:5s */
-	if (wait_cmds_complete_timeout_v3_hw(hisi_hba, 100, 5000) == -ETIMEDOUT)
-		dev_dbg(dev, "Wait commands complete timeout!\n");
+	wait_cmds_complete_timeout_v3_hw(hisi_hba, 100, 5000);
 
 	hisi_sas_kill_tasklets(hisi_hba);
 }
