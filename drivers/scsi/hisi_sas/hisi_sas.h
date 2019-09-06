@@ -331,8 +331,6 @@ struct hisi_sas_hw {
 			   struct hisi_sas_slot *slot,
 			   unsigned int device_id,
 			   int abort_flag, int tag_to_abort);
-	int (*slot_complete)(struct hisi_hba *hisi_hba,
-			     struct hisi_sas_slot *slot);
 	void (*phys_init)(struct hisi_hba *hisi_hba);
 	void (*phy_start)(struct hisi_hba *hisi_hba, int phy_no);
 	void (*phy_disable)(struct hisi_hba *hisi_hba, int phy_no);
