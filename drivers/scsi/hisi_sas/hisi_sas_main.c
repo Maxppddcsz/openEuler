@@ -3182,7 +3182,7 @@ static struct {
 	int		value;
 	char		*name;
 } hisi_sas_debugfs_loop_modes[] = {
-	{ HISI_SAS_BIST_LOOPBACK_MODE_DIGITAL,		"digial" },
+	{ HISI_SAS_BIST_LOOPBACK_MODE_DIGITAL,		"digital" },
 	{ HISI_SAS_BIST_LOOPBACK_MODE_SERDES,		"serdes" },
 	{ HISI_SAS_BIST_LOOPBACK_MODE_REMOTE,	"remote" },
 };
