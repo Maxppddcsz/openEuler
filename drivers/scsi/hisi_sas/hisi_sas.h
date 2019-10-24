@@ -499,8 +499,8 @@ struct hisi_hba {
 	struct hisi_sas_debugfs_itct_cache
 		debugfs_itct_cache[HISI_SAS_MAX_DEBUGFS_DUMP];
 
-	u64 debugfs_timestamp;
-
+	u64 debugfs_timestamp[HISI_SAS_MAX_DEBUGFS_DUMP];
+	int debugfs_dump_index;
 	struct dentry *debugfs_dir;
 	struct dentry *debugfs_dump_dentry;
 	struct dentry *debugfs_bist_dentry;
@@ -509,7 +509,6 @@ struct hisi_hba {
 	unsigned int dq_idx[NR_CPUS];
 	int nvecs;
 	unsigned int dq_num_per_node;
-	bool debugfs_snapshot;
 };
 
 /* Generic HW DMA host memory structures */
