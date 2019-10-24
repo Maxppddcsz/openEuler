@@ -3812,9 +3812,6 @@ static int hisi_sas_debugfs_alloc(struct hisi_hba *hisi_hba)
 	int p, c, d;
 	size_t sz;
 
-	hisi_hba->debugfs_dump_dentry =
-			debugfs_create_dir("dump", hisi_hba->debugfs_dir);
-
 	/* create bist structures */
 	hisi_hba->debugfs_bist_dentry = debugfs_create_dir("bist",
 						hisi_hba->debugfs_dir);
