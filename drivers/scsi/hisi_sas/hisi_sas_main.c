@@ -2775,7 +2775,7 @@ static void hisi_sas_debugfs_snapshot_cq_reg(struct hisi_hba *hisi_hba)
 	int i;
 
 	for (i = 0; i < hisi_hba->queue_count; i++)
-		memcpy(hisi_hba->debugfs_complete_hdr[i],
+		memcpy(hisi_hba->debugfs_cq[i].complete_hdr,
 		       hisi_hba->complete_hdr[i],
 		       HISI_SAS_QUEUE_SLOTS * queue_entry_size);
 }
@@ -3438,13 +3438,13 @@ static void hisi_sas_show_row_32(struct seq_file *s, int index,
 	seq_puts(s, "\n");
 }
 
-static void hisi_sas_cq_show_slot(struct seq_file *s, int slot, void *cq_ptr)
+static void hisi_sas_cq_show_slot(struct seq_file *s, int slot,
+				  struct hisi_sas_debugfs_cq *debugfs_cq)
 {
-	struct hisi_sas_cq *cq = cq_ptr;
+	struct hisi_sas_cq *cq = debugfs_cq->cq;
 	struct hisi_hba *hisi_hba = cq->hisi_hba;
-	void *complete_queue = hisi_hba->debugfs_complete_hdr[cq->id];
 	u64 offset = hisi_hba->hw->complete_hdr_size * slot;
-	__le32 *complete_hdr = complete_queue + offset;
+	__le32 *complete_hdr = debugfs_cq->complete_hdr + offset;
 
 	hisi_sas_show_row_32(s, slot,
 			     hisi_hba->hw->complete_hdr_size,
@@ -3453,11 +3453,11 @@ static void hisi_sas_cq_show_slot(struct seq_file *s, int slot, void *cq_ptr)
 
 static int hisi_sas_debugfs_cq_show(struct seq_file *s, void *p)
 {
-	struct hisi_sas_cq *cq = s->private;
+	struct hisi_sas_debugfs_cq *debugfs_cq = s->private;
 	int slot;
 
 	for (slot = 0; slot < HISI_SAS_QUEUE_SLOTS; slot++) {
-		hisi_sas_cq_show_slot(s, slot, cq);
+		hisi_sas_cq_show_slot(s, slot, debugfs_cq);
 	}
 	return 0;
 }
@@ -3684,7 +3684,7 @@ static void hisi_sas_debugfs_create_files(struct hisi_hba *hisi_hba)
 		snprintf(name, sizeof(name), "%d", c);
 
 		debugfs_create_file(name, 0400, dentry,
-				    &hisi_hba->cq[c],
+				    &hisi_hba->debugfs_cq[c],
 				    &hisi_sas_debugfs_cq_fops);
 	}
 
@@ -3804,7 +3804,7 @@ static void hisi_sas_debugfs_release(struct hisi_hba *hisi_hba)
 		devm_kfree(dev, hisi_hba->debugfs_cmd_hdr[i]);
 
 	for (i = 0; i < hisi_hba->queue_count; i++)
-		devm_kfree(dev, hisi_hba->debugfs_complete_hdr[i]);
+		devm_kfree(dev, hisi_hba->debugfs_cq[i].complete_hdr);
 
 	for (i = 0; i < DEBUGFS_REGS_NUM; i++)
 		devm_kfree(dev, hisi_hba->debugfs_regs[i]);
@@ -3885,11 +3885,13 @@ static int hisi_sas_debugfs_alloc(struct hisi_hba *hisi_hba)
 
 	sz = hw->complete_hdr_size * HISI_SAS_QUEUE_SLOTS;
 	for (c = 0; c < hisi_hba->queue_count; c++) {
-		hisi_hba->debugfs_complete_hdr[c] =
-			devm_kmalloc(dev, sz, GFP_KERNEL);
+		struct hisi_sas_debugfs_cq *cq =
+				&hisi_hba->debugfs_cq[c];
 
-		if (!hisi_hba->debugfs_complete_hdr[c])
+		cq->complete_hdr = devm_kmalloc(dev, sz, GFP_KERNEL);
+		if (!cq->complete_hdr)
 			goto fail;
+		cq->cq = &hisi_hba->cq[c];
 	}
 
 	sz = sizeof(struct hisi_sas_cmd_hdr) * HISI_SAS_QUEUE_SLOTS;
