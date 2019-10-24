@@ -27,6 +27,7 @@
 #include <linux/property.h>
 #include <linux/regmap.h>
 #include <scsi/scsi_common.h>
+#include <linux/timer.h>
 #include <scsi/sas_ata.h>
 #include <scsi/libsas.h>
 
@@ -452,6 +453,7 @@ struct hisi_hba {
 	struct hisi_sas_iost *debugfs_iost;
 	struct hisi_sas_itct *debugfs_itct;
 	u64 *debugfs_iost_cache;
+	u64 debugfs_timestamp;
 	u64 *debugfs_itct_cache;
 
 	struct dentry *debugfs_dir;
