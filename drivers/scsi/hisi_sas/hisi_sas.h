@@ -649,6 +649,7 @@ struct hisi_sas_slot_dif_buf_table {
 };
 
 extern bool hisi_sas_debugfs_enable;
+extern u32 hisi_sas_debugfs_dump_count;
 extern struct dentry *hisi_sas_debugfs_dir;
 extern int skip_bus_flag;
 extern struct scsi_transport_template *hisi_sas_stt;
