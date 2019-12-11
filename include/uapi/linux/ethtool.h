@@ -641,6 +641,7 @@ enum ethtool_link_ext_substate_cable_issue {
  * @ETH_SS_RSS_HASH_FUNCS: RSS hush function names
  * @ETH_SS_PHY_STATS: Statistic names, for use with %ETHTOOL_GPHYSTATS
  * @ETH_SS_PHY_TUNABLES: PHY tunable names
+ * @ETH_SS_LINK_MODES: link mode names
  */
 enum ethtool_stringset {
 	ETH_SS_TEST		= 0,
@@ -652,6 +653,7 @@ enum ethtool_stringset {
 	ETH_SS_TUNABLES,
 	ETH_SS_PHY_STATS,
 	ETH_SS_PHY_TUNABLES,
+	ETH_SS_LINK_MODES,
 };
 
 /**
@@ -1576,7 +1578,7 @@ enum ethtool_link_mode_bit_indices {
 	 * macro for bits > 31. The only way to use indices > 31 is to
 	 * use the new ETHTOOL_GLINKSETTINGS/ETHTOOL_SLINKSETTINGS API.
 	 */
-
+	__ETHTOOL_LINK_MODE_MASK_NBITS,
 	__ETHTOOL_LINK_MODE_LAST
 	  = ETHTOOL_LINK_MODE_FEC_BASER_BIT,
 };
