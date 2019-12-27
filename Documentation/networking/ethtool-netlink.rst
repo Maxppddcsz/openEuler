@@ -76,6 +76,8 @@ of the flag should be interpreted the way the client expects. A client must
 not set flags it does not understand.
 
 
+Bit sets
+========
 
 For short bitmaps of (reasonably) fixed length, standard ``NLA_BITFIELD32``
 type is used. For arbitrary length bitmaps, ethtool netlink uses a nested
