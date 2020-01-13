@@ -1255,6 +1255,9 @@ long vfio_pci_ioctl(void *device_data,
 		info.num_irqs = VFIO_PCI_NUM_IRQS + vdev->num_ext_irqs +
 						vdev->num_vendor_irqs;
 
+		if (dev_is_keepalive(&vdev->pdev->dev))
+			info.flags |= VFIO_DEVICE_FLAGS_KEEPALIVE;
+
 		if (IS_ENABLED(CONFIG_VFIO_PCI_ZDEV)) {
 			int ret = vfio_pci_info_zdev_add_caps(vdev, &caps);
 
