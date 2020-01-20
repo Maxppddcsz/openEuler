@@ -540,6 +540,13 @@ struct hisi_sas_err_record_v3 {
 	(op == READ_16) || (op == WRITE_16) || \
 	(op == READ_32) || (op == WRITE_32))
 
+#define CHNL_INT_STS_MSK	0xeeeeeeee
+#define CHNL_INT_STS_PHY_MSK	0xe
+#define CHNL_INT_STS_INT0_MSK BIT(1)
+#define CHNL_INT_STS_INT1_MSK BIT(2)
+#define CHNL_INT_STS_INT2_MSK BIT(3)
+#define CHNL_WIDTH 4
+
 enum {
 	DSM_FUNC_ERR_HANDLE_MSI = 0,
 };
@@ -1945,22 +1952,23 @@ static irqreturn_t int_chnl_int_v3_hw(int irq_no, void *p)
 	int phy_no = 0;
 
 	irq_msk = hisi_sas_read32(hisi_hba, CHNL_INT_STATUS)
-				& 0xeeeeeeee;
+		  & CHNL_INT_STS_MSK;
+
 	/*
 	 * These three irqs mask save at high 3 bit, the last bit
 	 * is reserved. So we use 0xe to clear those after handle.
 	 */
 	while (irq_msk) {
-		if (irq_msk & (2 << (phy_no * 4)))
+		if (irq_msk & (CHNL_INT_STS_INT0_MSK << (phy_no * CHNL_WIDTH)))
 			handle_chl_int0_v3_hw(hisi_hba, phy_no);
 
-		if (irq_msk & (4 << (phy_no * 4)))
+		if (irq_msk & (CHNL_INT_STS_INT1_MSK << (phy_no * CHNL_WIDTH)))
 			handle_chl_int1_v3_hw(hisi_hba, phy_no);
 
-		if (irq_msk & (8 << (phy_no * 4)))
+		if (irq_msk & (CHNL_INT_STS_INT2_MSK << (phy_no * CHNL_WIDTH)))
 			handle_chl_int2_v3_hw(hisi_hba, phy_no);
 
-		irq_msk &= ~(0xe << (phy_no * 4));
+		irq_msk &= ~(CHNL_INT_STS_PHY_MSK << (phy_no * CHNL_WIDTH));
 		phy_no++;
 	}
 
