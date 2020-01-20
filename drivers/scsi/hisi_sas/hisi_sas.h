@@ -199,7 +199,7 @@ struct hisi_sas_port {
 
 struct hisi_sas_cq {
 	struct hisi_hba *hisi_hba;
-	const struct cpumask *pci_irq_mask;
+	const struct cpumask *irq_mask;
 	struct tasklet_struct tasklet;
 	int	rd_point;
 	int	id;

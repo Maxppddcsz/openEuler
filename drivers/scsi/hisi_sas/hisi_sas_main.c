@@ -2196,7 +2196,7 @@ hisi_sas_internal_task_abort(struct hisi_hba *hisi_hba,
 	case HISI_SAS_INT_ABT_DEV:
 		for (i = 0; i < hisi_hba->nvecs; i++) {
 			struct hisi_sas_cq *cq = &hisi_hba->cq[i];
-			const struct cpumask *mask = cq->pci_irq_mask;
+			const struct cpumask *mask = cq->irq_mask;
 			/*
 			 * The kernel will not permit unmanaged (MSI are
 			 * managed) IRQ affinity to offline CPUs, so
