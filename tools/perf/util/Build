@@ -106,6 +106,7 @@ libperf-y += drv_configs.o
 libperf-y += units.o
 libperf-y += time-utils.o
 libperf-y += expr-bison.o
+libperf-y += expr.o
 libperf-y += branch.o
 libperf-y += mem2node.o
 
