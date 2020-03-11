@@ -3440,6 +3440,7 @@ static void read_iost_itct_cache_v3_hw(struct hisi_hba *hisi_hba,
 {
 	u32 cache_dw_size = HISI_SAS_IOST_ITCT_CACHE_DW_SZ *
 			    HISI_SAS_IOST_ITCT_CACHE_NUM;
+	struct device *dev = hisi_hba->dev;
 	u32 *buf = cache;
 	u32 i, val;
 
@@ -3452,7 +3453,7 @@ static void read_iost_itct_cache_v3_hw(struct hisi_hba *hisi_hba,
 	}
 
 	if (val != 0xffffffff) {
-		pr_err("Issue occur when reading IOST/ITCT cache!\n");
+		dev_err(dev, "Issue occurred in reading IOST/ITCT cache!\n");
 		return;
 	}
 
