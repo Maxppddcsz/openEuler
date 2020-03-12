@@ -176,10 +176,24 @@ struct netlink_callback {
 	void			*data;
 	/* the module that dump function belong to */
 	struct module		*module;
+#ifndef __GENKSYMS__
+	struct netlink_ext_ack  *extack;
+#endif
 	u16			family;
 	u16			min_dump_alloc;
 	unsigned int		prev_seq, seq;
+#ifdef __GENKSYMS__
 	long			args[6];
+#else
+	union {
+		u8              ctx[48];
+
+		/* args is deprecated. Cast a struct over ctx instead
+		 * for proper type safety.
+		 */
+		long            args[6];
+	};
+#endif
 };
 
 struct netlink_notify {

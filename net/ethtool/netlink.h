@@ -212,4 +212,122 @@ struct ethnl_req_info {
 	u32			flags;
 };
 
+/**
+ * struct ethnl_reply_data - base type of reply data for GET requests
+ * @dev:       device for current reply message; in single shot requests it is
+ *             equal to &ethnl_req_info.dev; in dumps it's different for each
+ *             reply message
+ *
+ * This is a common base for request specific structures holding data for
+ * kernel reply message. These always embed struct ethnl_reply_data at zero
+ * offset.
+ */
+struct ethnl_reply_data {
+	struct net_device		*dev;
+};
+
+static inline int ethnl_ops_begin(struct net_device *dev)
+{
+	if (dev && dev->ethtool_ops->begin)
+		return dev->ethtool_ops->begin(dev);
+	else
+		return 0;
+}
+
+static inline void ethnl_ops_complete(struct net_device *dev)
+{
+	if (dev && dev->ethtool_ops->complete)
+		dev->ethtool_ops->complete(dev);
+}
+
+/**
+ * struct ethnl_request_ops - unified handling of GET requests
+ * @request_cmd:      command id for request (GET)
+ * @reply_cmd:        command id for reply (GET_REPLY)
+ * @hdr_attr:         attribute type for request header
+ * @max_attr:         maximum (top level) attribute type
+ * @req_info_size:    size of request info
+ * @reply_data_size:  size of reply data
+ * @request_policy:   netlink policy for message contents
+ * @allow_nodev_do:   allow non-dump request with no device identification
+ * @parse_request:
+ *	Parse request except common header (struct ethnl_req_info). Common
+ *	header is already filled on entry, the rest up to @repdata_offset
+ *	is zero initialized. This callback should only modify type specific
+ *	request info by parsed attributes from request message.
+ * @prepare_data:
+ *	Retrieve and prepare data needed to compose a reply message. Calls to
+ *	ethtool_ops handlers are limited to this callback. Common reply data
+ *	(struct ethnl_reply_data) is filled on entry, type specific part after
+ *	it is zero initialized. This callback should only modify the type
+ *	specific part of reply data. Device identification from struct
+ *	ethnl_reply_data is to be used as for dump requests, it iterates
+ *	through network devices while dev member of struct ethnl_req_info
+ *	points to the device from client request.
+ * @reply_size:
+ *	Estimate reply message size. Returned value must be sufficient for
+ *	message payload without common reply header. The callback may returned
+ *	estimate higher than actual message size if exact calculation would
+ *	not be worth the saved memory space.
+ * @fill_reply:
+ *	Fill reply message payload (except for common header) from reply data.
+ *	The callback must not generate more payload than previously called
+ *	->reply_size() estimated.
+ * @cleanup_data:
+ *	Optional cleanup called when reply data is no longer needed. Can be
+ *	used e.g. to free any additional data structures outside the main
+ *	structure which were allocated by ->prepare_data(). When processing
+ *	dump requests, ->cleanup() is called for each message.
+ *
+ * Description of variable parts of GET request handling when using the
+ * unified infrastructure. When used, a pointer to an instance of this
+ * structure is to be added to &ethnl_default_requests array and generic
+ * handlers ethnl_default_doit(), ethnl_default_dumpit(),
+ * ethnl_default_start() and ethnl_default_done() used in @ethtool_genl_ops;
+ * ethnl_default_notify() can be used in @ethnl_notify_handlers to send
+ * notifications of the corresponding type.
+ */
+struct ethnl_request_ops {
+	u8			request_cmd;
+	u8			reply_cmd;
+	u16			hdr_attr;
+	unsigned int		max_attr;
+	unsigned int		req_info_size;
+	unsigned int		reply_data_size;
+	const struct nla_policy *request_policy;
+	bool			allow_nodev_do;
+
+	int (*parse_request)(struct ethnl_req_info *req_info,
+			     struct nlattr **tb,
+			     struct netlink_ext_ack *extack);
+	int (*prepare_data)(const struct ethnl_req_info *req_info,
+			    struct ethnl_reply_data *reply_data,
+			    struct genl_info *info);
+	int (*reply_size)(const struct ethnl_req_info *req_info,
+			  const struct ethnl_reply_data *reply_data);
+	int (*fill_reply)(struct sk_buff *skb,
+			  const struct ethnl_req_info *req_info,
+			  const struct ethnl_reply_data *reply_data);
+	void (*cleanup_data)(struct ethnl_reply_data *reply_data);
+};
+
+/* request handlers */
+
+extern const struct ethnl_request_ops ethnl_strset_request_ops;
+extern const struct ethnl_request_ops ethnl_linkinfo_request_ops;
+extern const struct ethnl_request_ops ethnl_linkmodes_request_ops;
+extern const struct ethnl_request_ops ethnl_linkstate_request_ops;
+extern const struct ethnl_request_ops ethnl_debug_request_ops;
+extern const struct ethnl_request_ops ethnl_wol_request_ops;
+extern const struct ethnl_request_ops ethnl_features_request_ops;
+extern const struct ethnl_request_ops ethnl_privflags_request_ops;
+extern const struct ethnl_request_ops ethnl_rings_request_ops;
+
+int ethnl_set_linkinfo(struct sk_buff *skb, struct genl_info *info);
+int ethnl_set_linkmodes(struct sk_buff *skb, struct genl_info *info);
+int ethnl_set_debug(struct sk_buff *skb, struct genl_info *info);
+int ethnl_set_wol(struct sk_buff *skb, struct genl_info *info);
+int ethnl_set_features(struct sk_buff *skb, struct genl_info *info);
+int ethnl_set_privflags(struct sk_buff *skb, struct genl_info *info);
+
 #endif /* _NET_ETHTOOL_NETLINK_H */

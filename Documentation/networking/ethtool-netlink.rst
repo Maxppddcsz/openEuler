@@ -175,6 +175,18 @@ according to message purpose:
   ``_NTF``          kernel notification
   ==============    ======================================
 
+Userspace to kernel:
+
+  ===================================== ================================
+  ``ETHTOOL_MSG_RINGS_GET``             get ring sizes
+  ===================================== ================================
+
+Kernel to userspace:
+
+  ===================================== =================================
+  ``ETHTOOL_MSG_RINGS_GET_REPLY``       ring sizes
+  ===================================== =================================
+
 ``GET`` requests are sent by userspace applications to retrieve device
 information. They usually do not contain any message specific attributes.
 Kernel replies with corresponding "GET_REPLY" message. For most types, ``GET``
@@ -205,6 +217,30 @@ an ``ACT_REPLY`` message. Performing an action also triggers a notification
 
 Later sections describe the format and semantics of these messages.
 
+RINGS_GET
+=========
+
+Gets ring sizes like ``ETHTOOL_GRINGPARAM`` ioctl request.
+
+Request contents:
+
+  ====================================  ======  ==========================
+  ``ETHTOOL_A_RINGS_HEADER``            nested  request header
+  ====================================  ======  ==========================
+
+Kernel response contents:
+
+  ====================================  ======  ==========================
+  ``ETHTOOL_A_RINGS_HEADER``            nested  reply header
+  ``ETHTOOL_A_RINGS_RX_MAX``            u32     max size of RX ring
+  ``ETHTOOL_A_RINGS_RX_MINI_MAX``       u32     max size of RX mini ring
+  ``ETHTOOL_A_RINGS_RX_JUMBO_MAX``      u32     max size of RX jumbo ring
+  ``ETHTOOL_A_RINGS_TX_MAX``            u32     max size of TX ring
+  ``ETHTOOL_A_RINGS_RX``                u32     size of RX ring
+  ``ETHTOOL_A_RINGS_RX_MINI``           u32     size of RX mini ring
+  ``ETHTOOL_A_RINGS_RX_JUMBO``          u32     size of RX jumbo ring
+  ``ETHTOOL_A_RINGS_TX``                u32     size of TX ring
+  ====================================  ======  ==========================
 
 Request translation
 ===================
@@ -230,7 +266,7 @@ have their netlink replacement yet.
   ``ETHTOOL_SEEPROM``                 n/a
   ``ETHTOOL_GCOALESCE``               n/a
   ``ETHTOOL_SCOALESCE``               n/a
-  ``ETHTOOL_GRINGPARAM``              n/a
+  ``ETHTOOL_GRINGPARAM``              ``ETHTOOL_MSG_RINGS_GET``
   ``ETHTOOL_SRINGPARAM``              n/a
   ``ETHTOOL_GPAUSEPARAM``             n/a
   ``ETHTOOL_SPAUSEPARAM``             n/a
