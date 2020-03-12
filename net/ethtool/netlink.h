@@ -10,6 +10,10 @@
 
 struct ethnl_req_info;
 
+int ethnl_parse_header_dev_get(struct ethnl_req_info *req_info,
+			       const struct nlattr *nest, struct net *net,
+			       struct netlink_ext_ack *extack,
+			       bool require_dev);
 int ethnl_parse_header(struct ethnl_req_info *req_info,
 		       const struct nlattr *nest, struct net *net,
 		       struct netlink_ext_ack *extack, bool require_dev);
@@ -329,5 +333,6 @@ int ethnl_set_debug(struct sk_buff *skb, struct genl_info *info);
 int ethnl_set_wol(struct sk_buff *skb, struct genl_info *info);
 int ethnl_set_features(struct sk_buff *skb, struct genl_info *info);
 int ethnl_set_privflags(struct sk_buff *skb, struct genl_info *info);
+int ethnl_set_rings(struct sk_buff *skb, struct genl_info *info);
 
 #endif /* _NET_ETHTOOL_NETLINK_H */
