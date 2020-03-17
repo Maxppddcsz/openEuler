@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include "evsel.h"
 #include "parse-events.h"
+#include "pmu-events/pmu-events.h"
 
 enum {
 	PERF_PMU_FORMAT_VALUE_CONFIG,
@@ -93,6 +94,8 @@ int perf_pmu__scan_file(struct perf_pmu *pmu, const char *name, const char *fmt,
 int perf_pmu__test(void);
 
 struct perf_event_attr *perf_pmu__get_default_config(struct perf_pmu *pmu);
+void pmu_add_cpu_aliases_map(struct list_head *head, struct perf_pmu *pmu,
+			     struct pmu_events_map *map);
 
 struct pmu_events_map *perf_pmu__find_map(struct perf_pmu *pmu);
 
