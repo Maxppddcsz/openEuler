@@ -249,8 +249,8 @@ struct flash_info;
  * struct spi_nor - Structure for defining a the SPI NOR layer
  * @mtd:		point to a mtd_info structure
  * @lock:		the lock for the read/write/erase/lock/unlock operations
- * @dev:		point to a spi device, or a spi nor controller device.
- * @spimem:		point to the spi mem device
+ * @dev:		pointer to an SPI device or an SPI NOR controller device
+ * @spimem:		pointer to the SPI memory device
  * @bouncebuf:		bounce buffer used when the buffer passed by the MTD
  *                      layer is not DMA-able
  * @bouncebuf_size:	size of the bounce buffer
