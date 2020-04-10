@@ -565,6 +565,7 @@ struct device {
 #ifdef CONFIG_DMA_OPS_BYPASS
 	bool			dma_ops_bypass : 1;
 #endif
+	bool			keepalive:1;
 	/* Use device_extended after all RESERVE fields used */
 	KABI_RESERVE(1)
 	KABI_RESERVE(2)
@@ -921,6 +922,21 @@ int __must_check devm_device_add_group(struct device *dev,
 				       const struct attribute_group *grp);
 void devm_device_remove_group(struct device *dev,
 			      const struct attribute_group *grp);
+
+static inline bool dev_is_keepalive(struct device *dev)
+{
+	return dev->keepalive;
+}
+
+static inline void dev_set_keepalive(struct device *dev)
+{
+	dev->keepalive = true;
+}
+
+static inline void dev_clear_keepalive(struct device *dev)
+{
+	dev->keepalive = false;
+}
 
 /*
  * Platform "fixup" functions - allow the platform to have their say
