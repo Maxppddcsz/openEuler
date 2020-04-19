@@ -8,10 +8,6 @@
 
 #include "hnae3.h"
 
-#define HNS3_MOD_VERSION "23.7.1"
-
-extern char hns3_driver_version[];
-
 enum hns3_nic_state {
 	HNS3_NIC_STATE_TESTING,
 	HNS3_NIC_STATE_RESETTING,
