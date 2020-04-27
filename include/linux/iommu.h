@@ -88,11 +88,23 @@ struct iommu_domain {
 	struct iommu_domain_geometry geometry;
 	void *iova_cookie;
 	struct mutex switch_log_lock;
+	bool keepalive;
 	KABI_RESERVE(1)
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
 };
+
+static inline void iommu_domain_set_keepalive(struct iommu_domain *domain,
+					      bool keepalive)
+{
+	domain->keepalive = keepalive;
+}
+
+static inline bool iommu_domain_is_keepalive(struct iommu_domain *domain)
+{
+	return domain->keepalive;
+}
 
 enum iommu_cap {
 	IOMMU_CAP_CACHE_COHERENCY,	/* IOMMU can enforce cache coherent DMA
