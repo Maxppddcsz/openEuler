@@ -3067,9 +3067,9 @@ static void arm_smmu_put_resv_regions(struct device *dev,
 		kfree(entry);
 }
 
-#ifdef CONFIG_SMMU_BYPASS_DEV
 static int arm_smmu_device_domain_type(struct device *dev, unsigned int *type)
 {
+#ifdef CONFIG_SMMU_BYPASS_DEV
 	int i;
 	struct pci_dev *pdev;
 
@@ -3086,10 +3086,9 @@ static int arm_smmu_device_domain_type(struct device *dev, unsigned int *type)
 			return 0;
 		}
 	}
-
+#endif
 	return -ERANGE;
 }
-#endif
 
 static struct iommu_ops arm_smmu_ops = {
 	.capable		= arm_smmu_capable,
@@ -3118,9 +3117,7 @@ static struct iommu_ops arm_smmu_ops = {
 	.get_resv_regions	= arm_smmu_get_resv_regions,
 	.put_resv_regions	= arm_smmu_put_resv_regions,
 	.pgsize_bitmap		= -1UL, /* Restricted during device attach */
-#ifdef CONFIG_SMMU_BYPASS_DEV
 	.device_domain_type	= arm_smmu_device_domain_type,
-#endif
 };
 
 /* Probing and initialisation functions */

@@ -1632,8 +1632,6 @@ static void arm_smmu_put_resv_regions(struct device *dev,
 		kfree(entry);
 }
 
-#ifdef CONFIG_SMMU_BYPASS_DEV
-
 #ifdef CONFIG_ARCH_PHYTIUM
 static int phytium_smmu_def_domain_type(struct device *dev, unsigned int *type)
 {
@@ -1649,8 +1647,6 @@ static inline int phytium_smmu_def_domain_type(struct device *dev, unsigned int 
 {
 	return -EINVAL;
 }
-#endif
-
 #endif
 
 static struct iommu_ops arm_smmu_ops = {
@@ -1672,9 +1668,7 @@ static struct iommu_ops arm_smmu_ops = {
 	.get_resv_regions	= arm_smmu_get_resv_regions,
 	.put_resv_regions	= arm_smmu_put_resv_regions,
 	.pgsize_bitmap		= -1UL, /* Restricted during device attach */
-#ifdef CONFIG_SMMU_BYPASS_DEV
-	.device_domain_type = phytium_smmu_def_domain_type,
-#endif
+	.device_domain_type     = phytium_smmu_def_domain_type,
 };
 
 static void arm_smmu_device_reset(struct arm_smmu_device *smmu)
