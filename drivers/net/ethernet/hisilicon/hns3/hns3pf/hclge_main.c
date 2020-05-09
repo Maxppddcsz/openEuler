@@ -3039,13 +3039,11 @@ static int hclge_set_vf_link_state(struct hnae3_handle *handle, int vf,
 
 static u32 hclge_check_event_cause(struct hclge_dev *hdev, u32 *clearval)
 {
-	u32 rst_src_reg, cmdq_src_reg, msix_src_reg;
+	u32 cmdq_src_reg, msix_src_reg;
 
 	/* fetch the events from their corresponding regs */
-	rst_src_reg = hclge_read_dev(&hdev->hw, HCLGE_MISC_VECTOR_INT_STS);
 	cmdq_src_reg = hclge_read_dev(&hdev->hw, HCLGE_VECTOR0_CMDQ_SRC_REG);
-	msix_src_reg = hclge_read_dev(&hdev->hw,
-				      HCLGE_VECTOR0_PF_OTHER_INT_STS_REG);
+	msix_src_reg = hclge_read_dev(&hdev->hw, HCLGE_MISC_VECTOR_INT_STS);
 
 	/* Assumption: If by any chance reset and mailbox events are reported
 	 * together then we will only process reset event in this go and will
@@ -3055,7 +3053,7 @@ static u32 hclge_check_event_cause(struct hclge_dev *hdev, u32 *clearval)
 	 *
 	 * check for vector0 reset event sources
 	 */
-	if (BIT(HCLGE_VECTOR0_IMPRESET_INT_B) & rst_src_reg) {
+	if (BIT(HCLGE_VECTOR0_IMPRESET_INT_B) & msix_src_reg) {
 		dev_info(&hdev->pdev->dev, "IMP reset interrupt\n");
 		set_bit(HNAE3_IMP_RESET, &hdev->reset_pending);
 		set_bit(HCLGE_STATE_CMD_DISABLE, &hdev->state);
@@ -3064,7 +3062,7 @@ static u32 hclge_check_event_cause(struct hclge_dev *hdev, u32 *clearval)
 		return HCLGE_VECTOR0_EVENT_RST;
 	}
 
-	if (BIT(HCLGE_VECTOR0_GLOBALRESET_INT_B) & rst_src_reg) {
+	if (BIT(HCLGE_VECTOR0_GLOBALRESET_INT_B) & msix_src_reg) {
 		dev_info(&hdev->pdev->dev, "global reset interrupt\n");
 		set_bit(HCLGE_STATE_CMD_DISABLE, &hdev->state);
 		set_bit(HNAE3_GLOBAL_RESET, &hdev->reset_pending);
@@ -3998,8 +3996,7 @@ static void hclge_misc_err_recovery(struct hclge_dev *hdev)
 	struct device *dev = &hdev->pdev->dev;
 	u32 msix_sts_reg;
 
-	msix_sts_reg = hclge_read_dev(&hdev->hw,
-				      HCLGE_VECTOR0_PF_OTHER_INT_STS_REG);
+	msix_sts_reg = hclge_read_dev(&hdev->hw, HCLGE_MISC_VECTOR_INT_STS);
 
 	if (msix_sts_reg & HCLGE_VECTOR0_REG_MSIX_MASK) {
 		if (hclge_handle_hw_msix_error(hdev,
