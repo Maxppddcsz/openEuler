@@ -105,4 +105,8 @@ check include/uapi/linux/mman.h       '-I "^#include <\(uapi/\)*asm/mman.h>"'
 # diff non-symmetric files
 check_2 tools/perf/arch/x86/entry/syscalls/syscall_64.tbl arch/x86/entry/syscalls/syscall_64.tbl
 
+# check duplicated library files
+check_2 tools/perf/util/hashmap.h tools/lib/bpf/hashmap.h
+check_2 tools/perf/util/hashmap.c tools/lib/bpf/hashmap.c
+
 cd tools/perf
