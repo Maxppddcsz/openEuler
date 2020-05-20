@@ -85,15 +85,17 @@ struct runtime_stat {
 };
 
 struct perf_stat_config {
-	enum aggr_mode		aggr_mode;
-	bool			scale;
-	FILE			*output;
-	unsigned int		interval;
-	unsigned int		timeout;
-	int			times;
-	struct 			runtime_stat *stats;
-	int			stats_num;
-	struct rblist		metric_events;
+	enum aggr_mode		 aggr_mode;
+	bool			 scale;
+	bool			 metric_no_group;
+	bool			 metric_no_merge;
+	FILE			 *output;
+	unsigned int		 interval;
+	unsigned int		 timeout;
+	int			 times;
+	struct 			 runtime_stat *stats;
+	int			 stats_num;
+	struct rblist		 metric_events;
 };
 
 void update_stats(struct stats *stats, u64 val);
