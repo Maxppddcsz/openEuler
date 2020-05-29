@@ -135,22 +135,21 @@ static const char * const ecrc_policy_str[] = {
  */
 static int enable_ecrc_checking(struct pci_dev *dev)
 {
-	int pos;
+	int aer = dev->aer_cap;
 	u32 reg32;
 
 	if (!pci_is_pcie(dev))
 		return -ENODEV;
 
-	pos = dev->aer_cap;
-	if (!pos)
+	if (!aer)
 		return -ENODEV;
 
-	pci_read_config_dword(dev, pos + PCI_ERR_CAP, &reg32);
+	pci_read_config_dword(dev, aer + PCI_ERR_CAP, &reg32);
 	if (reg32 & PCI_ERR_CAP_ECRC_GENC)
 		reg32 |= PCI_ERR_CAP_ECRC_GENE;
 	if (reg32 & PCI_ERR_CAP_ECRC_CHKC)
 		reg32 |= PCI_ERR_CAP_ECRC_CHKE;
-	pci_write_config_dword(dev, pos + PCI_ERR_CAP, reg32);
+	pci_write_config_dword(dev, aer + PCI_ERR_CAP, reg32);
 
 	return 0;
 }
@@ -163,19 +162,18 @@ static int enable_ecrc_checking(struct pci_dev *dev)
  */
 static int disable_ecrc_checking(struct pci_dev *dev)
 {
-	int pos;
+	int aer = dev->aer_cap;
 	u32 reg32;
 
 	if (!pci_is_pcie(dev))
 		return -ENODEV;
 
-	pos = dev->aer_cap;
-	if (!pos)
+	if (!aer)
 		return -ENODEV;
 
-	pci_read_config_dword(dev, pos + PCI_ERR_CAP, &reg32);
+	pci_read_config_dword(dev, aer + PCI_ERR_CAP, &reg32);
 	reg32 &= ~(PCI_ERR_CAP_ECRC_GENE | PCI_ERR_CAP_ECRC_CHKE);
-	pci_write_config_dword(dev, pos + PCI_ERR_CAP, reg32);
+	pci_write_config_dword(dev, aer + PCI_ERR_CAP, reg32);
 
 	return 0;
 }
@@ -378,22 +376,21 @@ void pci_aer_clear_device_status(struct pci_dev *dev)
 
 int pci_cleanup_aer_uncorrect_error_status(struct pci_dev *dev)
 {
-	int pos;
+	int aer = dev->aer_cap;
 	u32 status, sev;
 
-	pos = dev->aer_cap;
-	if (!pos)
+	if (!aer)
 		return -EIO;
 
 	if (pcie_aer_get_firmware_first(dev))
 		return -EIO;
 
 	/* Clear status bits for ERR_NONFATAL errors only */
-	pci_read_config_dword(dev, pos + PCI_ERR_UNCOR_STATUS, &status);
-	pci_read_config_dword(dev, pos + PCI_ERR_UNCOR_SEVER, &sev);
+	pci_read_config_dword(dev, aer + PCI_ERR_UNCOR_STATUS, &status);
+	pci_read_config_dword(dev, aer + PCI_ERR_UNCOR_SEVER, &sev);
 	status &= ~sev;
 	if (status)
-		pci_write_config_dword(dev, pos + PCI_ERR_UNCOR_STATUS, status);
+		pci_write_config_dword(dev, aer + PCI_ERR_UNCOR_STATUS, status);
 
 	return 0;
 }
@@ -401,35 +398,33 @@ EXPORT_SYMBOL_GPL(pci_cleanup_aer_uncorrect_error_status);
 
 void pci_aer_clear_fatal_status(struct pci_dev *dev)
 {
-	int pos;
+	int aer = dev->aer_cap;
 	u32 status, sev;
 
-	pos = dev->aer_cap;
-	if (!pos)
+	if (!aer)
 		return;
 
 	if (pcie_aer_get_firmware_first(dev))
 		return;
 
 	/* Clear status bits for ERR_FATAL errors only */
-	pci_read_config_dword(dev, pos + PCI_ERR_UNCOR_STATUS, &status);
-	pci_read_config_dword(dev, pos + PCI_ERR_UNCOR_SEVER, &sev);
+	pci_read_config_dword(dev, aer + PCI_ERR_UNCOR_STATUS, &status);
+	pci_read_config_dword(dev, aer + PCI_ERR_UNCOR_SEVER, &sev);
 	status &= sev;
 	if (status)
-		pci_write_config_dword(dev, pos + PCI_ERR_UNCOR_STATUS, status);
+		pci_write_config_dword(dev, aer + PCI_ERR_UNCOR_STATUS, status);
 }
 
 int pci_cleanup_aer_error_status_regs(struct pci_dev *dev)
 {
-	int pos;
+	int aer = dev->aer_cap;
 	u32 status;
 	int port_type;
 
 	if (!pci_is_pcie(dev))
 		return -ENODEV;
 
-	pos = dev->aer_cap;
-	if (!pos)
+	if (!aer)
 		return -EIO;
 
 	if (pcie_aer_get_firmware_first(dev))
@@ -437,27 +432,26 @@ int pci_cleanup_aer_error_status_regs(struct pci_dev *dev)
 
 	port_type = pci_pcie_type(dev);
 	if (port_type == PCI_EXP_TYPE_ROOT_PORT) {
-		pci_read_config_dword(dev, pos + PCI_ERR_ROOT_STATUS, &status);
-		pci_write_config_dword(dev, pos + PCI_ERR_ROOT_STATUS, status);
+		pci_read_config_dword(dev, aer + PCI_ERR_ROOT_STATUS, &status);
+		pci_write_config_dword(dev, aer + PCI_ERR_ROOT_STATUS, status);
 	}
 
-	pci_read_config_dword(dev, pos + PCI_ERR_COR_STATUS, &status);
-	pci_write_config_dword(dev, pos + PCI_ERR_COR_STATUS, status);
+	pci_read_config_dword(dev, aer + PCI_ERR_COR_STATUS, &status);
+	pci_write_config_dword(dev, aer + PCI_ERR_COR_STATUS, status);
 
-	pci_read_config_dword(dev, pos + PCI_ERR_UNCOR_STATUS, &status);
-	pci_write_config_dword(dev, pos + PCI_ERR_UNCOR_STATUS, status);
+	pci_read_config_dword(dev, aer + PCI_ERR_UNCOR_STATUS, &status);
+	pci_write_config_dword(dev, aer + PCI_ERR_UNCOR_STATUS, status);
 
 	return 0;
 }
 
 void pci_save_aer_state(struct pci_dev *dev)
 {
+	int aer = dev->aer_cap;
 	struct pci_cap_saved_state *save_state;
 	u32 *cap;
-	int pos;
 
-	pos = dev->aer_cap;
-	if (!pos)
+	if (!aer)
 		return;
 
 	save_state = pci_find_saved_ext_cap(dev, PCI_EXT_CAP_ID_ERR);
@@ -465,22 +459,21 @@ void pci_save_aer_state(struct pci_dev *dev)
 		return;
 
 	cap = &save_state->cap.data[0];
-	pci_read_config_dword(dev, pos + PCI_ERR_UNCOR_MASK, cap++);
-	pci_read_config_dword(dev, pos + PCI_ERR_UNCOR_SEVER, cap++);
-	pci_read_config_dword(dev, pos + PCI_ERR_COR_MASK, cap++);
-	pci_read_config_dword(dev, pos + PCI_ERR_CAP, cap++);
+	pci_read_config_dword(dev, aer + PCI_ERR_UNCOR_MASK, cap++);
+	pci_read_config_dword(dev, aer + PCI_ERR_UNCOR_SEVER, cap++);
+	pci_read_config_dword(dev, aer + PCI_ERR_COR_MASK, cap++);
+	pci_read_config_dword(dev, aer + PCI_ERR_CAP, cap++);
 	if (pcie_cap_has_rtctl(dev))
-		pci_read_config_dword(dev, pos + PCI_ERR_ROOT_COMMAND, cap++);
+		pci_read_config_dword(dev, aer + PCI_ERR_ROOT_COMMAND, cap++);
 }
 
 void pci_restore_aer_state(struct pci_dev *dev)
 {
+	int aer = dev->aer_cap;
 	struct pci_cap_saved_state *save_state;
 	u32 *cap;
-	int pos;
 
-	pos = dev->aer_cap;
-	if (!pos)
+	if (!aer)
 		return;
 
 	save_state = pci_find_saved_ext_cap(dev, PCI_EXT_CAP_ID_ERR);
@@ -488,12 +481,12 @@ void pci_restore_aer_state(struct pci_dev *dev)
 		return;
 
 	cap = &save_state->cap.data[0];
-	pci_write_config_dword(dev, pos + PCI_ERR_UNCOR_MASK, *cap++);
-	pci_write_config_dword(dev, pos + PCI_ERR_UNCOR_SEVER, *cap++);
-	pci_write_config_dword(dev, pos + PCI_ERR_COR_MASK, *cap++);
-	pci_write_config_dword(dev, pos + PCI_ERR_CAP, *cap++);
+	pci_write_config_dword(dev, aer + PCI_ERR_UNCOR_MASK, *cap++);
+	pci_write_config_dword(dev, aer + PCI_ERR_UNCOR_SEVER, *cap++);
+	pci_write_config_dword(dev, aer + PCI_ERR_COR_MASK, *cap++);
+	pci_write_config_dword(dev, aer + PCI_ERR_CAP, *cap++);
 	if (pcie_cap_has_rtctl(dev))
-		pci_write_config_dword(dev, pos + PCI_ERR_ROOT_COMMAND, *cap++);
+		pci_write_config_dword(dev, aer + PCI_ERR_ROOT_COMMAND, *cap++);
 }
 
 void pci_aer_init(struct pci_dev *dev)
@@ -923,7 +916,7 @@ static int add_error_device(struct aer_err_info *e_info, struct pci_dev *dev)
  */
 static bool is_error_source(struct pci_dev *dev, struct aer_err_info *e_info)
 {
-	int pos;
+	int aer = dev->aer_cap;
 	u32 status, mask;
 	u16 reg16;
 
@@ -958,17 +951,16 @@ static bool is_error_source(struct pci_dev *dev, struct aer_err_info *e_info)
 	if (!(reg16 & PCI_EXP_AER_FLAGS))
 		return false;
 
-	pos = dev->aer_cap;
-	if (!pos)
+	if (!aer)
 		return false;
 
 	/* Check if error is recorded */
 	if (e_info->severity == AER_CORRECTABLE) {
-		pci_read_config_dword(dev, pos + PCI_ERR_COR_STATUS, &status);
-		pci_read_config_dword(dev, pos + PCI_ERR_COR_MASK, &mask);
+		pci_read_config_dword(dev, aer + PCI_ERR_COR_STATUS, &status);
+		pci_read_config_dword(dev, aer + PCI_ERR_COR_MASK, &mask);
 	} else {
-		pci_read_config_dword(dev, pos + PCI_ERR_UNCOR_STATUS, &status);
-		pci_read_config_dword(dev, pos + PCI_ERR_UNCOR_MASK, &mask);
+		pci_read_config_dword(dev, aer + PCI_ERR_UNCOR_STATUS, &status);
+		pci_read_config_dword(dev, aer + PCI_ERR_UNCOR_MASK, &mask);
 	}
 	if (status & ~mask)
 		return true;
@@ -1040,16 +1032,15 @@ static bool find_source_device(struct pci_dev *parent,
  */
 static void handle_error_source(struct pci_dev *dev, struct aer_err_info *info)
 {
-	int pos;
+	int aer = dev->aer_cap;
 
 	if (info->severity == AER_CORRECTABLE) {
 		/*
 		 * Correctable error does not need software intervention.
 		 * No need to go through error recovery process.
 		 */
-		pos = dev->aer_cap;
-		if (pos)
-			pci_write_config_dword(dev, pos + PCI_ERR_COR_STATUS,
+		if (aer)
+			pci_write_config_dword(dev, aer + PCI_ERR_COR_STATUS,
 					info->status);
 		pci_aer_clear_device_status(dev);
 	} else if (info->severity == AER_NONFATAL)
@@ -1142,22 +1133,21 @@ EXPORT_SYMBOL_GPL(aer_recover_queue);
  */
 int aer_get_device_error_info(struct pci_dev *dev, struct aer_err_info *info)
 {
-	int pos, temp;
+	int aer = dev->aer_cap;
+	int temp;
 
 	/* Must reset in this function */
 	info->status = 0;
 	info->tlp_header_valid = 0;
 
-	pos = dev->aer_cap;
-
 	/* The device might not support AER */
-	if (!pos)
+	if (!aer)
 		return 0;
 
 	if (info->severity == AER_CORRECTABLE) {
-		pci_read_config_dword(dev, pos + PCI_ERR_COR_STATUS,
+		pci_read_config_dword(dev, aer + PCI_ERR_COR_STATUS,
 			&info->status);
-		pci_read_config_dword(dev, pos + PCI_ERR_COR_MASK,
+		pci_read_config_dword(dev, aer + PCI_ERR_COR_MASK,
 			&info->mask);
 		if (!(info->status & ~info->mask))
 			return 0;
@@ -1166,27 +1156,27 @@ int aer_get_device_error_info(struct pci_dev *dev, struct aer_err_info *info)
 		   info->severity == AER_NONFATAL) {
 
 		/* Link is still healthy for IO reads */
-		pci_read_config_dword(dev, pos + PCI_ERR_UNCOR_STATUS,
+		pci_read_config_dword(dev, aer + PCI_ERR_UNCOR_STATUS,
 			&info->status);
-		pci_read_config_dword(dev, pos + PCI_ERR_UNCOR_MASK,
+		pci_read_config_dword(dev, aer + PCI_ERR_UNCOR_MASK,
 			&info->mask);
 		if (!(info->status & ~info->mask))
 			return 0;
 
 		/* Get First Error Pointer */
-		pci_read_config_dword(dev, pos + PCI_ERR_CAP, &temp);
+		pci_read_config_dword(dev, aer + PCI_ERR_CAP, &temp);
 		info->first_error = PCI_ERR_CAP_FEP(temp);
 
 		if (info->status & AER_LOG_TLP_MASKS) {
 			info->tlp_header_valid = 1;
 			pci_read_config_dword(dev,
-				pos + PCI_ERR_HEADER_LOG, &info->tlp.dw0);
+				aer + PCI_ERR_HEADER_LOG, &info->tlp.dw0);
 			pci_read_config_dword(dev,
-				pos + PCI_ERR_HEADER_LOG + 4, &info->tlp.dw1);
+				aer + PCI_ERR_HEADER_LOG + 4, &info->tlp.dw1);
 			pci_read_config_dword(dev,
-				pos + PCI_ERR_HEADER_LOG + 8, &info->tlp.dw2);
+				aer + PCI_ERR_HEADER_LOG + 8, &info->tlp.dw2);
 			pci_read_config_dword(dev,
-				pos + PCI_ERR_HEADER_LOG + 12, &info->tlp.dw3);
+				aer + PCI_ERR_HEADER_LOG + 12, &info->tlp.dw3);
 		}
 	}
 
@@ -1292,15 +1282,15 @@ static irqreturn_t aer_irq(int irq, void *context)
 	struct pcie_device *pdev = (struct pcie_device *)context;
 	struct aer_rpc *rpc = get_service_data(pdev);
 	struct pci_dev *rp = rpc->rpd;
+	int aer = rp->aer_cap;
 	struct aer_err_source e_src = {};
-	int pos = rp->aer_cap;
 
-	pci_read_config_dword(rp, pos + PCI_ERR_ROOT_STATUS, &e_src.status);
+	pci_read_config_dword(rp, aer + PCI_ERR_ROOT_STATUS, &e_src.status);
 	if (!(e_src.status & (PCI_ERR_ROOT_UNCOR_RCV|PCI_ERR_ROOT_COR_RCV)))
 		return IRQ_NONE;
 
-	pci_read_config_dword(rp, pos + PCI_ERR_ROOT_ERR_SRC, &e_src.id);
-	pci_write_config_dword(rp, pos + PCI_ERR_ROOT_STATUS, e_src.status);
+	pci_read_config_dword(rp, aer + PCI_ERR_ROOT_ERR_SRC, &e_src.id);
+	pci_write_config_dword(rp, aer + PCI_ERR_ROOT_STATUS, e_src.status);
 
 	if (!kfifo_put(&rpc->aer_fifo, e_src))
 		return IRQ_HANDLED;
@@ -1352,7 +1342,7 @@ static void set_downstream_devices_error_reporting(struct pci_dev *dev,
 static void aer_enable_rootport(struct aer_rpc *rpc)
 {
 	struct pci_dev *pdev = rpc->rpd;
-	int aer_pos;
+	int aer = pdev->aer_cap;
 	u16 reg16;
 	u32 reg32;
 
@@ -1364,14 +1354,13 @@ static void aer_enable_rootport(struct aer_rpc *rpc)
 	pcie_capability_clear_word(pdev, PCI_EXP_RTCTL,
 				   SYSTEM_ERROR_INTR_ON_MESG_MASK);
 
-	aer_pos = pdev->aer_cap;
 	/* Clear error status */
-	pci_read_config_dword(pdev, aer_pos + PCI_ERR_ROOT_STATUS, &reg32);
-	pci_write_config_dword(pdev, aer_pos + PCI_ERR_ROOT_STATUS, reg32);
-	pci_read_config_dword(pdev, aer_pos + PCI_ERR_COR_STATUS, &reg32);
-	pci_write_config_dword(pdev, aer_pos + PCI_ERR_COR_STATUS, reg32);
-	pci_read_config_dword(pdev, aer_pos + PCI_ERR_UNCOR_STATUS, &reg32);
-	pci_write_config_dword(pdev, aer_pos + PCI_ERR_UNCOR_STATUS, reg32);
+	pci_read_config_dword(pdev, aer + PCI_ERR_ROOT_STATUS, &reg32);
+	pci_write_config_dword(pdev, aer + PCI_ERR_ROOT_STATUS, reg32);
+	pci_read_config_dword(pdev, aer + PCI_ERR_COR_STATUS, &reg32);
+	pci_write_config_dword(pdev, aer + PCI_ERR_COR_STATUS, reg32);
+	pci_read_config_dword(pdev, aer + PCI_ERR_UNCOR_STATUS, &reg32);
+	pci_write_config_dword(pdev, aer + PCI_ERR_UNCOR_STATUS, reg32);
 
 	/*
 	 * Enable error reporting for the root port device and downstream port
@@ -1380,9 +1369,9 @@ static void aer_enable_rootport(struct aer_rpc *rpc)
 	set_downstream_devices_error_reporting(pdev, true);
 
 	/* Enable Root Port's interrupt in response to error messages */
-	pci_read_config_dword(pdev, aer_pos + PCI_ERR_ROOT_COMMAND, &reg32);
+	pci_read_config_dword(pdev, aer + PCI_ERR_ROOT_COMMAND, &reg32);
 	reg32 |= ROOT_PORT_INTR_ON_MESG_MASK;
-	pci_write_config_dword(pdev, aer_pos + PCI_ERR_ROOT_COMMAND, reg32);
+	pci_write_config_dword(pdev, aer + PCI_ERR_ROOT_COMMAND, reg32);
 }
 
 /**
@@ -1394,8 +1383,8 @@ static void aer_enable_rootport(struct aer_rpc *rpc)
 static void aer_disable_rootport(struct aer_rpc *rpc)
 {
 	struct pci_dev *pdev = rpc->rpd;
+	int aer = pdev->aer_cap;
 	u32 reg32;
-	int pos;
 
 	/*
 	 * Disable error reporting for the root port device and downstream port
@@ -1403,15 +1392,14 @@ static void aer_disable_rootport(struct aer_rpc *rpc)
 	 */
 	set_downstream_devices_error_reporting(pdev, false);
 
-	pos = pdev->aer_cap;
 	/* Disable Root's interrupt in response to error messages */
-	pci_read_config_dword(pdev, pos + PCI_ERR_ROOT_COMMAND, &reg32);
+	pci_read_config_dword(pdev, aer + PCI_ERR_ROOT_COMMAND, &reg32);
 	reg32 &= ~ROOT_PORT_INTR_ON_MESG_MASK;
-	pci_write_config_dword(pdev, pos + PCI_ERR_ROOT_COMMAND, reg32);
+	pci_write_config_dword(pdev, aer + PCI_ERR_ROOT_COMMAND, reg32);
 
 	/* Clear Root's error status reg */
-	pci_read_config_dword(pdev, pos + PCI_ERR_ROOT_STATUS, &reg32);
-	pci_write_config_dword(pdev, pos + PCI_ERR_ROOT_STATUS, reg32);
+	pci_read_config_dword(pdev, aer + PCI_ERR_ROOT_STATUS, &reg32);
+	pci_write_config_dword(pdev, aer + PCI_ERR_ROOT_STATUS, reg32);
 }
 
 /**
@@ -1470,28 +1458,27 @@ static int aer_probe(struct pcie_device *dev)
  */
 static pci_ers_result_t aer_root_reset(struct pci_dev *dev)
 {
+	int aer = dev->aer_cap;
 	u32 reg32;
-	int pos;
 	int rc;
 
-	pos = dev->aer_cap;
 
 	/* Disable Root's interrupt in response to error messages */
-	pci_read_config_dword(dev, pos + PCI_ERR_ROOT_COMMAND, &reg32);
+	pci_read_config_dword(dev, aer + PCI_ERR_ROOT_COMMAND, &reg32);
 	reg32 &= ~ROOT_PORT_INTR_ON_MESG_MASK;
-	pci_write_config_dword(dev, pos + PCI_ERR_ROOT_COMMAND, reg32);
+	pci_write_config_dword(dev, aer + PCI_ERR_ROOT_COMMAND, reg32);
 
 	rc = pci_bus_error_reset(dev);
 	pci_printk(KERN_DEBUG, dev, "Root Port link has been reset\n");
 
 	/* Clear Root Error Status */
-	pci_read_config_dword(dev, pos + PCI_ERR_ROOT_STATUS, &reg32);
-	pci_write_config_dword(dev, pos + PCI_ERR_ROOT_STATUS, reg32);
+	pci_read_config_dword(dev, aer + PCI_ERR_ROOT_STATUS, &reg32);
+	pci_write_config_dword(dev, aer + PCI_ERR_ROOT_STATUS, reg32);
 
 	/* Enable Root Port's interrupt in response to error messages */
-	pci_read_config_dword(dev, pos + PCI_ERR_ROOT_COMMAND, &reg32);
+	pci_read_config_dword(dev, aer + PCI_ERR_ROOT_COMMAND, &reg32);
 	reg32 |= ROOT_PORT_INTR_ON_MESG_MASK;
-	pci_write_config_dword(dev, pos + PCI_ERR_ROOT_COMMAND, reg32);
+	pci_write_config_dword(dev, aer + PCI_ERR_ROOT_COMMAND, reg32);
 
 	return rc ? PCI_ERS_RESULT_DISCONNECT : PCI_ERS_RESULT_RECOVERED;
 }
