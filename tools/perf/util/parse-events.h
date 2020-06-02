@@ -120,6 +120,7 @@ struct parse_events_state {
 	struct perf_evlist	  *evlist;
 	struct list_head	  *terms;
 	int			   stoken;
+	struct perf_pmu		  *fake_pmu;
 };
 
 void parse_events__shrink_config_terms(void);
