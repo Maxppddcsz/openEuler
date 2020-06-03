@@ -17,6 +17,7 @@ struct perf_evlist;
 struct parse_events_error;
 
 struct option;
+struct perf_pmu;
 
 struct tracepoint_path {
 	char *system;
@@ -31,8 +32,15 @@ bool have_tracepoints(struct list_head *evlist);
 const char *event_type(int type);
 
 int parse_events_option(const struct option *opt, const char *str, int unset);
-int parse_events(struct perf_evlist *evlist, const char *str,
-		 struct parse_events_error *error);
+int __parse_events(struct perf_evlist *evlist, const char *str, struct parse_events_error *error,
+		   struct perf_pmu *fake_pmu);
+
+static inline int parse_events(struct perf_evlist *evlist, const char *str,
+			       struct parse_events_error *err)
+{
+	return __parse_events(evlist, str, err, NULL);
+}
+
 int parse_events_terms(struct list_head *terms, const char *str);
 int parse_filter(const struct option *opt, const char *str, int unset);
 int exclude_perf(const struct option *opt, const char *arg, int unset);
