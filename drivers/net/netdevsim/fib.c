@@ -241,8 +241,8 @@ static struct pernet_operations nsim_fib_net_ops = {
 
 void nsim_fib_exit(void)
 {
-	unregister_pernet_subsys(&nsim_fib_net_ops);
 	unregister_fib_notifier(&nsim_fib_nb);
+	unregister_pernet_subsys(&nsim_fib_net_ops);
 }
 
 int nsim_fib_init(void)
@@ -257,6 +257,7 @@ int nsim_fib_init(void)
 
 	err = register_fib_notifier(&nsim_fib_nb, nsim_fib_dump_inconsistent);
 	if (err < 0) {
+        unregister_pernet_subsys(&nsim_fib_net_ops);
 		pr_err("Failed to register fib notifier\n");
 		goto err_out;
 	}
