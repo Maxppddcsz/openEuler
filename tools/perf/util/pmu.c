@@ -21,6 +21,8 @@
 #include "cache.h"
 #include "string2.h"
 
+struct perf_pmu perf_pmu__fake;
+
 struct perf_pmu_format {
 	char *name;
 	int value;

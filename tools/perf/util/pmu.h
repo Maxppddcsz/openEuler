@@ -33,6 +33,8 @@ struct perf_pmu {
 	int (*set_drv_config)	(struct perf_evsel_config_term *term);
 };
 
+extern struct perf_pmu perf_pmu__fake;
+
 struct perf_pmu_info {
 	const char *unit;
 	const char *metric_expr;
