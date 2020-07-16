@@ -233,7 +233,7 @@ pci_ers_result_t pcie_do_recovery(struct pci_dev *dev, enum pci_channel_state st
 	pci_dbg(dev, "broadcast resume message\n");
 	pci_walk_bus(bus, report_resume, &status);
 
-	pci_aer_clear_device_status(dev);
+	pcie_clear_device_status(dev);
 	pci_cleanup_aer_uncorrect_error_status(dev);
 	pci_info(dev, "AER: Device recovery successful\n");
 	return status;
