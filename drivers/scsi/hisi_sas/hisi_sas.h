@@ -13,6 +13,8 @@
 #define _HISI_SAS_H_
 
 #include <linux/acpi.h>
+#include <linux/blk-mq.h>
+#include <linux/blk-mq-pci.h>
 #include <linux/clk.h>
 #include <linux/debugfs.h>
 #include <linux/dmapool.h>
@@ -481,7 +483,6 @@ struct hisi_hba {
 	int bist_loopback_enable;
 
 	int enable_dix_dif;
-	unsigned int *reply_map;
 
 	/* debugfs memories */
 	/* Put Global AXI and RAS Register into register array */
