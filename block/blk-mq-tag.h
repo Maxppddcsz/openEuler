@@ -2,8 +2,6 @@
 #ifndef INT_BLK_MQ_TAG_H
 #define INT_BLK_MQ_TAG_H
 
-#include "blk-mq.h"
-
 /*
  * Tag address space map.
  */
