@@ -127,6 +127,7 @@ struct blk_mq_tag_set {
 	unsigned int		timeout;
 	unsigned int		flags;		/* BLK_MQ_F_* */
 	void			*driver_data;
+	atomic_t		active_queues_shared_sbitmap;
 
 	struct blk_mq_tags	**tags;
 

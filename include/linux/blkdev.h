@@ -749,6 +749,7 @@ struct request_queue {
 #define QUEUE_FLAG_QUIESCED_INTERNAL 30
 /* bio will be dispatched asynchronous */
 #define QUEUE_FLAG_DISPATCH_ASYNC 31
+#define QUEUE_FLAG_HCTX_ACTIVE 32       /* at least one blk-mq hctx is active */
 
 #define QUEUE_FLAG_DEFAULT	((1 << QUEUE_FLAG_IO_STAT) |		\
 				 (1 << QUEUE_FLAG_SAME_COMP)	|	\
