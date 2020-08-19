@@ -1322,6 +1322,8 @@ struct request_queue *blk_alloc_queue_node(gfp_t gfp_mask, int node_id,
 	q->backing_dev_info->name = "block";
 	q->node = node_id;
 
+	atomic_set(&q->nr_active_requests_shared_sbitmap, 0);
+
 	timer_setup(&q->backing_dev_info->laptop_mode_wb_timer,
 		    laptop_mode_timer_fn, 0);
 	timer_setup(&q->timeout, blk_rq_timed_out_timer, 0);
