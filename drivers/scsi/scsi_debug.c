@@ -3788,19 +3788,14 @@ static int resp_xdwriteread_10(struct scsi_cmnd *scp,
 static struct sdebug_queue *get_queue(struct scsi_cmnd *cmnd)
 {
 	u16 hwq;
+	u32 tag = blk_mq_unique_tag(cmnd->request);
 
-	if (sdebug_host_max_queue) {
-		/* Provide a simple method to choose the hwq */
-		hwq = smp_processor_id() % submit_queues;
-	} else {
-		u32 tag = blk_mq_unique_tag(cmnd->request);
+	hwq = blk_mq_unique_tag_to_hwq(tag);
 
-		hwq = blk_mq_unique_tag_to_hwq(tag);
+	pr_debug("tag=%#x, hwq=%d\n", tag, hwq);
+	if (WARN_ON_ONCE(hwq >= submit_queues))
+		hwq = 0;
 
-		pr_debug("tag=%#x, hwq=%d\n", tag, hwq);
-		if (WARN_ON_ONCE(hwq >= submit_queues))
-			hwq = 0;
-	}
 	return sdebug_q_arr + hwq;
 }
 
@@ -5923,10 +5918,7 @@ static int sdebug_driver_probe(struct device *dev)
 
 	sdbg_host = to_sdebug_host(dev);
 
-	if (sdebug_host_max_queue)
-		sdebug_driver_template.can_queue = sdebug_host_max_queue;
-	else
-		sdebug_driver_template.can_queue = sdebug_max_queue;
+	sdebug_driver_template.can_queue = sdebug_max_queue;
 	if (sdebug_clustering)
 		sdebug_driver_template.use_clustering = ENABLE_CLUSTERING;
 	hpnt = scsi_host_alloc(&sdebug_driver_template, sizeof(sdbg_host));
@@ -5942,11 +5934,11 @@ static int sdebug_driver_probe(struct device *dev)
 	}
 	/*
 	 * Decide whether to tell scsi subsystem that we want mq. The
-	 * following should give the same answer for each host. If the host
-	 * has a limit of hostwide max commands, then do not set.
+	 * following should give the same answer for each host.
 	 */
-	if (!sdebug_host_max_queue)
-		hpnt->nr_hw_queues = submit_queues;
+	hpnt->nr_hw_queues = submit_queues;
+	if (sdebug_host_max_queue)
+		hpnt->host_tagset = 1;
 
 	sdbg_host->shost = hpnt;
 	*((struct sdebug_host_info **)hpnt->hostdata) = sdbg_host;
