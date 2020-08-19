@@ -50,6 +50,7 @@
 #include <linux/mutex.h>
 #include <linux/poll.h>
 #include <linux/vmalloc.h>
+#include <linux/blk-mq-pci.h>
 
 #include <scsi/scsi.h>
 #include <scsi/scsi_cmnd.h>
@@ -117,6 +118,10 @@ MODULE_PARM_DESC(perf_mode, "Performance mode (only for Aero adapters), options:
 		"interrupt coalescing is disabled on all queues\n\t\t"
 		"default mode is 'balanced'"
 		);
+
+int host_tagset_enable = 1;
+module_param(host_tagset_enable, int, 0444);
+MODULE_PARM_DESC(host_tagset_enable, "Shared host tagset enable/disable Default: enable(1)");
 
 MODULE_LICENSE("GPL");
 MODULE_VERSION(MEGASAS_VERSION);
@@ -2959,6 +2964,19 @@ megasas_bios_param(struct scsi_device *sdev, struct block_device *bdev,
 	return 0;
 }
 
+static int megasas_map_queues(struct Scsi_Host *shost)
+{
+	struct megasas_instance *instance;
+
+	instance = (struct megasas_instance *)shost->hostdata;
+
+	if (shost->nr_hw_queues == 1)
+		return 0;
+
+	return blk_mq_pci_map_queues_by_qmap(&shost->tag_set.map[HCTX_TYPE_DEFAULT],
+			instance->pdev, instance->low_latency_index_start);
+}
+
 static void megasas_aen_polling(struct work_struct *work);
 
 /**
@@ -3206,6 +3224,7 @@ static struct scsi_host_template megasas_template = {
 	.shost_attrs = megaraid_host_attrs,
 	.bios_param = megasas_bios_param,
 	.use_clustering = ENABLE_CLUSTERING,
+	.map_queues = megasas_map_queues,
 	.change_queue_depth = scsi_change_queue_depth,
 	.no_write_same = 1,
 };
@@ -6211,6 +6230,26 @@ static int megasas_io_attach(struct megasas_instance *instance)
 	host->max_lun = MEGASAS_MAX_LUN;
 	host->max_cmd_len = 16;
 
+	/* Use shared host tagset only for fusion adaptors
+	 * if there are managed interrupts (smp affinity enabled case).
+	 * Single msix_vectors in kdump, so shared host tag is also disabled.
+	 */
+
+	host->host_tagset = 0;
+	host->nr_hw_queues = 1;
+
+	if ((instance->adapter_type != MFI_SERIES) &&
+		(instance->msix_vectors > instance->low_latency_index_start) &&
+		host_tagset_enable &&
+		instance->smp_affinity_enable) {
+		host->host_tagset = 1;
+		host->nr_hw_queues = instance->msix_vectors -
+			instance->low_latency_index_start;
+	}
+
+	dev_info(&instance->pdev->dev,
+		"Max firmware commands: %d shared with nr_hw_queues = %d\n",
+		instance->max_fw_cmds, host->nr_hw_queues);
 	/*
 	 * Notify the mid-layer about the new controller
 	 */
