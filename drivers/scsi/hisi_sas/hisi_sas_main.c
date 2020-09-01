@@ -3799,6 +3799,58 @@ static const struct file_operations hisi_sas_debugfs_trigger_dump_fops = {
 	.owner = THIS_MODULE,
 };
 
+static const struct {
+	char *name;
+} hisi_sas_debugfs_ffe_name[FFE_CFG_MAX] = {
+	{ "SAS_1_5_GBPS" },
+	{ "SAS_3_0_GBPS" },
+	{ "SAS_6_0_GBPS" },
+	{ "SAS_12_0_GBPS" },
+	{ "FFE_RESV" },
+	{ "SATA_1_5_GBPS" },
+	{ "SATA_3_0_GBPS" },
+	{ "SATA_6_0_GBPS" },
+};
+
+static ssize_t hisi_sas_debugfs_write(struct file *filp,
+				      const char __user *buf,
+				      size_t count, loff_t *ppos)
+{
+	struct seq_file *m = filp->private_data;
+	u32 *val = m->private;
+	int res;
+
+	res = kstrtouint_from_user(buf, count, 0, val);
+	if (res)
+		return res;
+
+	return count;
+}
+
+static int hisi_sas_debugfs_show(struct seq_file *s, void *p)
+{
+	u32 *val = s->private;
+
+	seq_printf(s, "0x%x\n", *val);
+
+	return 0;
+}
+
+static int hisi_sas_debugfs_open(struct inode *inode, struct file *filp)
+{
+	return single_open(filp, hisi_sas_debugfs_show,
+			   inode->i_private);
+}
+
+static const struct file_operations hisi_sas_debugfs_ops = {
+	.open = hisi_sas_debugfs_open,
+	.read = seq_read,
+	.write = hisi_sas_debugfs_write,
+	.llseek = seq_lseek,
+	.release = single_release,
+	.owner = THIS_MODULE,
+};
+
 static ssize_t hisi_sas_debugfs_phy_down_cnt_write(struct file *filp,
 						    const char __user *buf,
 						    size_t count, loff_t *ppos)
@@ -3896,6 +3948,8 @@ static int hisi_sas_debugfs_alloc(struct hisi_hba *hisi_hba, int dump_index)
 	struct device *dev = hisi_hba->dev;
 	int p, c, d, r, i;
 	size_t sz;
+	struct dentry *ports_dentry;
+	int phy_no;
 
 	/* create bist structures */
 	hisi_hba->debugfs_bist_dentry = debugfs_create_dir("bist",
@@ -3929,6 +3983,27 @@ static int hisi_sas_debugfs_alloc(struct hisi_hba *hisi_hba, int dump_index)
 	if (!debugfs_create_file("enable", 0644, hisi_hba->debugfs_bist_dentry,
 				 hisi_hba, &hisi_sas_debugfs_bist_enable_ops))
 		goto fail;
+
+	ports_dentry = debugfs_create_dir("port",
+					  hisi_hba->debugfs_bist_dentry);
+
+	for (phy_no = 0; phy_no < hisi_hba->n_phy; phy_no++) {
+		struct dentry *port_dentry;
+		struct dentry *ffe_dentry;
+		char name[256];
+
+		snprintf(name, 256, "%d", phy_no);
+		port_dentry = debugfs_create_dir(name, ports_dentry);
+		ffe_dentry = debugfs_create_dir("ffe", port_dentry);
+		for (i = 0; i < FFE_CFG_MAX; i++) {
+			if (i == FFE_RESV)
+				continue;
+			debugfs_create_file(hisi_sas_debugfs_ffe_name[i].name,
+					    0600, ffe_dentry,
+					    &hisi_hba->debugfs_bist_ffe[phy_no][i],
+					    &hisi_sas_debugfs_ops);
+		}
+	}
 
 	for (r = 0; r < DEBUGFS_REGS_NUM; r++) {
 		struct hisi_sas_debugfs_regs *regs =
