@@ -353,7 +353,7 @@ static int hisi_sas_dma_map(struct hisi_hba *hisi_hba,
 		*n_elem = task->num_scatter;
 
 	if (*n_elem > HISI_SAS_SGE_PAGE_CNT) {
-		dev_err(dev, "task prep: n_elem(%d) > HISI_SAS_SGE_PAGE_CNT",
+		dev_err(dev, "task prep: n_elem(%d) > HISI_SAS_SGE_PAGE_CNT\n",
 			*n_elem);
 		rc = -EINVAL;
 		goto err_out_dma_unmap;
