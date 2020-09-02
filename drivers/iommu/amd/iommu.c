@@ -2655,6 +2655,8 @@ static bool amd_iommu_capable(enum iommu_cap cap)
 		return (irq_remapping_enabled == 1);
 	case IOMMU_CAP_NOEXEC:
 		return false;
+	case IOMMU_CAP_FGSP:
+		return true;
 	default:
 		break;
 	}
