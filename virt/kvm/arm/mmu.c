@@ -1734,14 +1734,25 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	else
 		vma_shift = PAGE_SHIFT;
 
-	vma_pagesize = 1ULL << vma_shift;
 	if (logging_active ||
-	    (vma->vm_flags & VM_PFNMAP) ||
-	    !fault_supports_stage2_huge_mapping(memslot, hva, vma_pagesize)) {
+	    (vma->vm_flags & VM_PFNMAP)) {
 		force_pte = true;
-		vma_pagesize = PAGE_SIZE;
+		vma_shift = PAGE_SHIFT;
 	}
 
+	/* Only enable PUD_SIZE huge mapping on 1620 serial boards */
+	if (vma_shift == PUD_SHIFT &&
+	    (!fault_supports_stage2_huge_mapping(memslot, hva, PUD_SIZE) ||
+	    !kvm_ncsnp_support))
+	       vma_shift = PMD_SHIFT;
+
+	if (vma_shift == PMD_SHIFT &&
+	    !fault_supports_stage2_huge_mapping(memslot, hva, PMD_SIZE)) {
+		force_pte = true;
+		vma_shift = PAGE_SHIFT;
+	}
+
+	vma_pagesize = 1UL << vma_shift;
 	/*
 	 * The stage2 has a minimum of 2 level table (For arm64 see
 	 * kvm_arm_setup_stage2()). Hence, we are guaranteed that we can
@@ -1751,14 +1762,9 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	 */
 	if (vma_pagesize == PMD_SIZE ||
 	    (vma_pagesize == PUD_SIZE && kvm_stage2_has_pmd(kvm)))
-		gfn = (fault_ipa & huge_page_mask(hstate_vma(vma))) >> PAGE_SHIFT;
+		fault_ipa &= ~(vma_pagesize - 1);
 
-	/* Only enable PUD_SIZE huge mapping on 1620 serial boards */
-	if (vma_pagesize == PUD_SIZE && !kvm_ncsnp_support) {
-		vma_pagesize = PMD_SIZE;
-		gfn = (fault_ipa & PMD_MASK) >> PAGE_SHIFT;
-	}
-
+	gfn = fault_ipa >> PAGE_SHIFT;
 	up_read(&current->mm->mmap_sem);
 
 	/* We need minimum second+third level pages */
