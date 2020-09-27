@@ -1755,6 +1755,9 @@ long vfio_pci_ioctl(void *device_data,
 		if (!vdev->reset_works)
 			return -EINVAL;
 
+		if (dev_is_keepalive(&vdev->pdev->dev))
+			return 0;
+
 		vfio_pci_zap_and_down_write_memory_lock(vdev);
 		ret = pci_try_reset_function(vdev->pdev);
 		up_write(&vdev->memory_lock);
@@ -2767,7 +2770,7 @@ static int vfio_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	vfio_pci_probe_power_state(vdev);
 
-	if (!disable_idle_d3) {
+	if (!disable_idle_d3 && !dev_is_keepalive(&pdev->dev)) {
 		/*
 		 * pci-core sets the device power state to an unknown value at
 		 * bootup and after being removed from a driver.  The only
@@ -2822,7 +2825,7 @@ static void vfio_pci_remove(struct pci_dev *pdev)
 
 	vfio_iommu_group_put(pdev->dev.iommu_group, &pdev->dev);
 
-	if (!disable_idle_d3)
+	if (!disable_idle_d3 && !dev_is_keepalive(&pdev->dev))
 		vfio_pci_set_power_state(vdev, PCI_D0);
 
 	mutex_destroy(&vdev->ioeventfds_lock);
