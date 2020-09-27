@@ -172,6 +172,7 @@ struct vfio_pci_device {
 	struct rw_semaphore	memory_lock;
 	void			*vendor_data;
 	struct vfio_pci_vendor_driver	*vendor_driver;
+	uuid_t			*keepalive_token;
 };
 
 #define is_intx(vdev) (vdev->irq_type == VFIO_PCI_INTX_IRQ_INDEX)
