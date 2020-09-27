@@ -1385,7 +1385,7 @@ static int hns3_get_fecparam(struct net_device *netdev,
 	u8 fec_ability;
 	u8 fec_mode;
 
-	if (ae_dev->dev_version < HNAE3_DEVICE_VERSION_V2)
+	if (!test_bit(HNAE3_DEV_SUPPORT_FEC_B, ae_dev->caps))
 		return -EOPNOTSUPP;
 
 	if (!ops->get_fec)
@@ -1407,7 +1407,7 @@ static int hns3_set_fecparam(struct net_device *netdev,
 	const struct hnae3_ae_ops *ops = handle->ae_algo->ops;
 	u32 fec_mode;
 
-	if (ae_dev->dev_version < HNAE3_DEVICE_VERSION_V2)
+	if (!test_bit(HNAE3_DEV_SUPPORT_FEC_B, ae_dev->caps))
 		return -EOPNOTSUPP;
 
 	if (!ops->set_fec)
