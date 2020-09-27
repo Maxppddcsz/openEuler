@@ -116,7 +116,8 @@ enum hclge_opcode_type {
 	HCLGE_OPC_DFX_RCB_REG		= 0x004D,
 	HCLGE_OPC_DFX_TQP_REG		= 0x004E,
 	HCLGE_OPC_DFX_SSU_REG_2		= 0x004F,
-	HCLGE_OPC_DFX_QUERY_CHIP_CAP	= 0x0050,
+
+	HCLGE_OPC_QUERY_DEV_SPECS	= 0x0050,
 
 	/* MAC command */
 	HCLGE_OPC_CONFIG_MAC_MODE	= 0x0301,
@@ -1141,8 +1142,7 @@ struct hclge_dev_specs_0_cmd {
 	__le16 rss_key_size;
 	__le16 int_ql_max;
 	u8 max_non_tso_bd_num;
-	u8 rsv1;
-	__le32 max_tm_rate;
+	u8 rsv1[5];
 };
 
 #define HCLGE_DEF_MAX_INT_GL		0x1FE0U
