@@ -172,6 +172,7 @@ struct vfio_pci_device {
 	struct rw_semaphore	memory_lock;
 	void			*vendor_data;
 	struct vfio_pci_vendor_driver	*vendor_driver;
+	int			keepalive_err_cnt;
 	uuid_t			*keepalive_token;
 };
 
