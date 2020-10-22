@@ -15,8 +15,10 @@
 #include "metricgroup.h"
 
 struct perf_pmu_test_event {
+	/* used for matching against events from generated pmu-events.c */
 	struct pmu_event event;
 
+	/* used for matching against event aliases */
 	/* extra events for aliases */
 	const char *alias_str;
 
@@ -78,6 +80,17 @@ static struct perf_pmu_test_event test_cpu_events[] = {
 		},
 		.alias_str = "umask=0,(null)=0x30d40,event=0x3a",
 		.alias_long_desc = "Number of Enhanced Intel SpeedStep(R) Technology (EIST) transitions",
+	},
+	{
+		.event = {
+			.name = "l3_cache_rd",
+			.event = "event=0x40",
+			.desc = "L3 cache access, read",
+			.long_desc = "Attributable Level 3 cache access, read",
+			.topic = "cache",
+		},
+		.alias_str = "event=0x40",
+		.alias_long_desc = "Attributable Level 3 cache access, read",
 	},
 	{ /* sentinel */
 		.event = {
@@ -358,6 +371,7 @@ static int __test__pmu_event_aliases(char *pmu_name, int *count)
 }
 
 
+/* Test that aliases generated are as expected */
 static int test_aliases(void)
 {
 	struct perf_pmu *pmu = NULL;
