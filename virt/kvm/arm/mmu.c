@@ -1692,6 +1692,12 @@ static bool fault_supports_stage2_huge_mapping(struct kvm_memory_slot *memslot,
 	       (hva & ~(map_size - 1)) + map_size <= uaddr_end;
 }
 
+/**
+ * Backport for getting rid of a1634a542f74 ("arm64/mm: Redefine CONT_{PTE, PMD}_SHIFT")
+ */
+#define UMA_CONT_PMD_SHIFT ilog2(CONT_PMD_SIZE)
+#define UMA_CONT_PTE_SHIFT ilog2(CONT_PTE_SIZE)
+
 static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 			  struct kvm_memory_slot *memslot, unsigned long hva,
 			  unsigned long fault_status)
@@ -1700,7 +1706,7 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	bool write_fault, writable, force_pte = false;
 	bool exec_fault, needs_exec;
 	unsigned long mmu_seq;
-	gfn_t gfn = fault_ipa >> PAGE_SHIFT;
+	gfn_t gfn;
 	struct kvm *kvm = vcpu->kvm;
 	struct kvm_mmu_memory_cache *memcache = &vcpu->arch.mmu_page_cache;
 	struct vm_area_struct *vma;
@@ -1740,16 +1746,27 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 		vma_shift = PAGE_SHIFT;
 	}
 
-	/* Only enable PUD_SIZE huge mapping on 1620 serial boards */
-	if (vma_shift == PUD_SHIFT &&
-	    (!fault_supports_stage2_huge_mapping(memslot, hva, PUD_SIZE) ||
-	    !kvm_ncsnp_support))
-	       vma_shift = PMD_SHIFT;
-
-	if (vma_shift == PMD_SHIFT &&
-	    !fault_supports_stage2_huge_mapping(memslot, hva, PMD_SIZE)) {
-		force_pte = true;
+	switch (vma_shift) {
+	case PUD_SHIFT:
+		/* Only enable PUD_SIZE huge mapping on 1620 serial boards */
+		if (fault_supports_stage2_huge_mapping(memslot, hva, PUD_SIZE) && kvm_ncsnp_support)
+			break;
+		/* fallthrough */
+	case UMA_CONT_PMD_SHIFT:
+		vma_shift = PMD_SHIFT;
+		/* fallthrough */
+	case PMD_SHIFT:
+		if (fault_supports_stage2_huge_mapping(memslot, hva, PMD_SIZE))
+			break;
+		/* fallthrough */
+	case UMA_CONT_PTE_SHIFT:
 		vma_shift = PAGE_SHIFT;
+		force_pte = true;
+		/* fallthrough */
+	case PAGE_SHIFT:
+		break;
+	default:
+		WARN_ONCE(1, "Unknown vma_shift %d", vma_shift);
 	}
 
 	vma_pagesize = 1UL << vma_shift;
