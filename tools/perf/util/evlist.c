@@ -200,11 +200,22 @@ void perf_evlist__remove(struct perf_evlist *evlist, struct perf_evsel *evsel)
 void perf_evlist__splice_list_tail(struct perf_evlist *evlist,
 				   struct list_head *list)
 {
-	struct perf_evsel *evsel, *temp;
+	while (!list_empty(list)) {
+		struct perf_evsel *evsel, *temp, *leader = NULL;
 
-	__evlist__for_each_entry_safe(list, temp, evsel) {
-		list_del_init(&evsel->node);
-		perf_evlist__add(evlist, evsel);
+		__evlist__for_each_entry_safe(list, temp, evsel) {
+			list_del_init(&evsel->node);
+			perf_evlist__add(evlist, evsel);
+			leader = evsel;
+			break;
+		}
+
+		__evlist__for_each_entry_safe(list, temp, evsel) {
+			if (evsel->leader == leader) {
+				list_del_init(&evsel->node);
+				perf_evlist__add(evlist, evsel);
+			}
+		}
 	}
 }
 
