@@ -5109,20 +5109,20 @@ static int hclge_cmd_set_promisc_mode(struct hclge_dev *hdev,
 	 * send command to fireware in revision(0x20).
 	 */
 	req->flag = (param->enable << HCLGE_PROMISC_EN_B) |
-		HCLGE_PROMISC_TX_EN_B | HCLGE_PROMISC_RX_EN_B;
+		    HCLGE_PROMISC_TX_EN_B | HCLGE_PROMISC_RX_EN_B;
 
 	ret = hclge_cmd_send(&hdev->hw, &desc, 1);
 	if (ret)
 		dev_err(&hdev->pdev->dev,
-			"Set vport %d promisc mode fail, ret = %d.\n",
-			param->vf_id, ret);
+		       "failed to set vport %d promisc mode, ret = %d.\n",
+		       param->vf_id, ret);
 
 	return ret;
 }
 
 static void hclge_promisc_param_init(struct hclge_promisc_param *param,
-				     bool en_uc, bool en_mc, bool en_bc,
-				     int vport_id)
+				    bool en_uc, bool en_mc, bool en_bc,
+				    int vport_id)
 {
 	if (!param)
 		return;

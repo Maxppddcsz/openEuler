@@ -853,6 +853,11 @@ struct hnae3_unic_private_info {
 #define HNAE3_MPE		(HNAE3_USER_MPE | HNAE3_OVERFLOW_MPE)
 #define HNAE3_OVERFLOW_UMPE	(HNAE3_OVERFLOW_UPE | HNAE3_OVERFLOW_MPE)
 
+enum hnae3_pflag {
+	HNAE3_PFLAG_LIMIT_PROMISC,
+	HNAE3_PFLAG_MAX
+};
+
 struct hnae3_handle {
 	struct hnae3_client *client;
 	struct pci_dev *pdev;
@@ -884,6 +889,11 @@ struct hnae3_handle {
 #ifdef CONFIG_HNS3_TEST
 	/* for sysfs */
 	struct kobject *kobj;
+#endif
+
+#ifndef __GENKSYMS__
+	unsigned long supported_pflags;
+	unsigned long priv_flags;
 #endif
 };
 

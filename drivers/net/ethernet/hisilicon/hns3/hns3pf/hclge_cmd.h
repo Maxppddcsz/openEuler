@@ -599,23 +599,24 @@ struct hclge_link_status_cmd {
 	u8 rsv[23];
 };
 
+#define HCLGE_PROMISC_TX_EN_B	BIT(4)
+#define HCLGE_PROMISC_RX_EN_B	BIT(5)
+#define HCLGE_PROMISC_EN_B	1
+#define HCLGE_PROMISC_EN_ALL   0x7
+#define HCLGE_PROMISC_EN_UC    0x1
+#define HCLGE_PROMISC_EN_MC    0x2
+#define HCLGE_PROMISC_EN_BC    0x4
+
 struct hclge_promisc_param {
 	u8 vf_id;
 	u8 enable;
 };
 
-#define HCLGE_PROMISC_TX_EN_B	BIT(4)
-#define HCLGE_PROMISC_RX_EN_B	BIT(5)
-#define HCLGE_PROMISC_EN_B	1
-#define HCLGE_PROMISC_EN_ALL	0x7
-#define HCLGE_PROMISC_EN_UC	0x1
-#define HCLGE_PROMISC_EN_MC	0x2
-#define HCLGE_PROMISC_EN_BC	0x4
 struct hclge_promisc_cfg_cmd {
 	u8 flag;
 	u8 vf_id;
 	__le16 rsv0;
-	u8 rsv1[20];
+	u8 rsv1[21];
 };
 
 enum hclge_promisc_type {
