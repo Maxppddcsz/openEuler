@@ -327,10 +327,16 @@ static void hclge_set_vf_promisc_mode(struct hclge_vport *vport,
 				      struct hclge_mbx_vf_to_pf_cmd *req)
 {
 	struct hclge_dev *hdev = vport->back;
+	struct hnae3_handle *handle = &vport->nic;
 
 	vport->vf_info.request_uc_en = req->msg.en_uc;
 	vport->vf_info.request_mc_en = req->msg.en_mc;
 	vport->vf_info.request_bc_en = req->msg.en_bc;
+
+	if (req->msg.en_limit_promisc)
+		set_bit(HNAE3_PFLAG_LIMIT_PROMISC, &handle->priv_flags);
+	else
+		clear_bit(HNAE3_PFLAG_LIMIT_PROMISC, &handle->priv_flags);
 
 	set_bit(HCLGE_VPORT_STATE_PROMISC_CHANGE, &vport->state);
 	hclge_task_schedule(hdev, 0);
