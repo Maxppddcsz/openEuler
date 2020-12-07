@@ -2964,6 +2964,11 @@ static int vfio_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 				vdev->vendor_driver->ops->device_ops, vdev);
 	if (ret)
 		goto out_power;
+
+	/* keepalive flag means an extra refcnt */
+	if (dev_is_keepalive(&pdev->dev))
+		vfio_device_get_from_dev(&pdev->dev);
+
 	return 0;
 
 out_power:
