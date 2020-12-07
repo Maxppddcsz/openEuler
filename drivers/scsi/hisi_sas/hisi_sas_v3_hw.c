@@ -2787,6 +2787,13 @@ static int interrupt_init_v3_hw(struct hisi_hba *hisi_hba)
 		}
 
 		tasklet_init(t, cq_tasklet_v3_hw, (uintptr_t)cq);
+
+		cq->irq_mask = pci_irq_get_affinity(pdev,
+						    i + HISI_SAS_CQ_INT_BASE_VECTORS_V3_HW);
+		if (!cq->irq_mask) {
+			dev_err(dev, "could not get cq%d irq affinity!\n", i);
+			return -ENOENT;
+		}
 	}
 
 	return 0;
