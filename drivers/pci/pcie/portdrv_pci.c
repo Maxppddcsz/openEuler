@@ -149,6 +149,9 @@ static void pcie_portdrv_remove(struct pci_dev *dev)
 
 	pcie_port_device_remove(dev);
 
+	if (dev_is_keepalive(&dev->dev))
+		return;
+
 	pci_disable_device(dev);
 }
 
@@ -163,6 +166,9 @@ static void pcie_portdrv_shutdown(struct pci_dev *dev)
 	}
 
 	pcie_port_device_remove(dev);
+
+	if (dev_is_keepalive(&dev->dev))
+		return;
 
 	if (!bridge->no_dis_bmaster)
 		pci_disable_device(dev);
