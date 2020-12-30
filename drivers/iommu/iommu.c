@@ -260,6 +260,15 @@ err_free:
 	return ret;
 }
 
+static bool iommu_is_attach_deferred(struct iommu_domain *domain,
+				     struct device *dev)
+{
+	if (domain->ops->is_attach_deferred)
+		return domain->ops->is_attach_deferred(domain, dev);
+
+	return false;
+}
+
 int iommu_probe_device(struct device *dev)
 {
 	const struct iommu_ops *ops = dev->bus->iommu_ops;
@@ -282,7 +291,8 @@ int iommu_probe_device(struct device *dev)
 	 */
 	iommu_alloc_default_domain(group, dev);
 
-	if (group->default_domain) {
+	if (group->default_domain &&
+	    !iommu_is_attach_deferred(group->default_domain, dev)) {
 		ret = __iommu_attach_device(group->default_domain, dev);
 		if (ret) {
 			iommu_group_put(group);
@@ -808,15 +818,6 @@ out:
 	iommu_put_resv_regions(dev, &mappings);
 
 	return ret;
-}
-
-static bool iommu_is_attach_deferred(struct iommu_domain *domain,
-				     struct device *dev)
-{
-	if (domain->ops->is_attach_deferred)
-		return domain->ops->is_attach_deferred(domain, dev);
-
-	return false;
 }
 
 void  __acpi_device_create_direct_mappings(struct iommu_group *group, struct device *acpi_device)
