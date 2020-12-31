@@ -97,6 +97,7 @@ struct loongson_system_configuration {
 	int cores_per_node;
 	int cores_per_package;
 	char *cpuname;
+	u64 suspend_addr;
 	u64 vgabios_addr;
 };
 
