@@ -19,6 +19,7 @@ extern void detect_memory_region(phys_addr_t start, phys_addr_t sz_min,  phys_ad
 
 extern void early_init(void);
 extern void platform_init(void);
+extern void plat_swiotlb_setup(void);
 
 /*
  * Initial kernel command line, usually setup by fw_init_cmdline()
