@@ -67,6 +67,43 @@ static int copy_fp_to_sigcontext(struct sigcontext __user *sc)
 	return err;
 }
 
+static int copy_lsx_upper_to_sigcontext(struct sigcontext __user *sc)
+{
+	int i;
+	int err = 0;
+	int inc = 1;
+	uint32_t __user *vcsr = &sc->sc_vcsr;
+	uint64_t __user *fpregs = (uint64_t *)&sc->sc_fpregs;
+
+	for (i = 0; i < NUM_FPU_REGS; i += inc) {
+		err |=
+		    __put_user(get_fpr64(&current->thread.fpu.fpr[i], 1),
+			       &fpregs[4*i+1]);
+	}
+	err |= __put_user(current->thread.fpu.vcsr, vcsr);
+
+	return err;
+}
+
+static int copy_lasx_upper_to_sigcontext(struct sigcontext __user *sc)
+{
+	int i;
+	int err = 0;
+	int inc = 1;
+	uint64_t __user *fpregs = (uint64_t *)&sc->sc_fpregs;
+
+	for (i = 0; i < NUM_FPU_REGS; i += inc) {
+		err |=
+		    __put_user(get_fpr64(&current->thread.fpu.fpr[i], 2),
+			       &fpregs[4*i+2]);
+		err |=
+		    __put_user(get_fpr64(&current->thread.fpu.fpr[i], 3),
+			       &fpregs[4*i+3]);
+	}
+
+	return err;
+}
+
 static int copy_fp_from_sigcontext(struct sigcontext __user *sc)
 {
 	int i;
@@ -83,6 +120,42 @@ static int copy_fp_from_sigcontext(struct sigcontext __user *sc)
 	}
 	err |= __get_user(current->thread.fpu.fcsr, csr);
 	err |= __get_user(current->thread.fpu.fcc, fcc);
+
+	return err;
+}
+
+static int copy_lsx_upper_from_sigcontext(struct sigcontext __user *sc)
+{
+	int i;
+	int err = 0;
+	int inc = 1;
+	u64 fpr_val;
+	uint32_t __user *vcsr = &sc->sc_vcsr;
+	uint64_t __user *fpregs = (uint64_t *)&sc->sc_fpregs;
+
+	for (i = 0; i < NUM_FPU_REGS; i += inc) {
+		err |= __get_user(fpr_val, &fpregs[4*i+1]);
+		set_fpr64(&current->thread.fpu.fpr[i], 1, fpr_val);
+	}
+	err |= __get_user(current->thread.fpu.vcsr, vcsr);
+
+	return err;
+}
+
+static int copy_lasx_upper_from_sigcontext(struct sigcontext __user *sc)
+{
+	int i;
+	int err = 0;
+	int inc = 1;
+	u64 fpr_val;
+	uint64_t __user *fpregs = (uint64_t *)&sc->sc_fpregs;
+
+	for (i = 0; i < NUM_FPU_REGS; i += inc) {
+		err |= __get_user(fpr_val, &fpregs[4*i+2]);
+		set_fpr64(&current->thread.fpu.fpr[i], 2, fpr_val);
+		err |= __get_user(fpr_val, &fpregs[4*i+3]);
+		set_fpr64(&current->thread.fpu.fpr[i], 3, fpr_val);
+	}
 
 	return err;
 }
@@ -108,6 +181,45 @@ static int restore_hw_fp_context(struct sigcontext __user *sc)
 	return _restore_fp_context(fpregs, fcc, csr);
 }
 
+static int save_lsx_context(struct sigcontext __user *sc)
+{
+	uint64_t __user *fcc = &sc->sc_fcc;
+	uint32_t __user *fcsr = &sc->sc_fcsr;
+	uint32_t __user *vcsr = &sc->sc_vcsr;
+	uint64_t __user *fpregs = (uint64_t *)&sc->sc_fpregs;
+
+	return _save_lsx_context(fpregs, fcc, fcsr, vcsr);
+}
+
+static int restore_lsx_context(struct sigcontext __user *sc)
+{
+	uint64_t __user *fcc = &sc->sc_fcc;
+	uint32_t __user *fcsr = &sc->sc_fcsr;
+	uint32_t __user *vcsr = &sc->sc_vcsr;
+	uint64_t __user *fpregs = (uint64_t *)&sc->sc_fpregs;
+
+	return _restore_lsx_context(fpregs, fcc, fcsr, vcsr);
+}
+
+static int save_lasx_context(struct sigcontext __user *sc)
+{
+	uint64_t __user *fcc = &sc->sc_fcc;
+	uint32_t __user *fcsr = &sc->sc_fcsr;
+	uint32_t __user *vcsr = &sc->sc_vcsr;
+	uint64_t __user *fpregs = (uint64_t *)&sc->sc_fpregs;
+
+	return _save_lasx_context(fpregs, fcc, fcsr, vcsr);
+}
+
+static int restore_lasx_context(struct sigcontext __user *sc)
+{
+	uint64_t __user *fcc = &sc->sc_fcc;
+	uint32_t __user *fcsr = &sc->sc_fcsr;
+	uint32_t __user *vcsr = &sc->sc_vcsr;
+	uint64_t __user *fpregs = (uint64_t *)&sc->sc_fpregs;
+
+	return _restore_lasx_context(fpregs, fcc, fcsr, vcsr);
+}
 
 /*
  * Helper routines
@@ -128,6 +240,24 @@ static int protected_save_fp_context(struct sigcontext __user *sc)
 
 	while (1) {
 		lock_fpu_owner();
+		if (thread_lasx_context_live()) {
+			if (is_lasx_enabled()) {
+				err = save_lasx_context(sc);
+				goto finish;
+			} else {
+				err |= copy_lasx_upper_to_sigcontext(sc);
+				/* LASX contains LSX */
+				BUG_ON(!thread_lsx_context_live());
+			}
+		}
+		if (thread_lsx_context_live()) {
+			if (is_lsx_enabled()) {
+				err = save_lsx_context(sc);
+				goto finish;
+			} else {
+				err |= copy_lsx_upper_to_sigcontext(sc);
+			}
+		}
 		if (is_fpu_owner())
 			err = save_fp_context(sc);
 		else
@@ -184,6 +314,26 @@ static int protected_restore_fp_context(struct sigcontext __user *sc)
 
 	while (1) {
 		lock_fpu_owner();
+		if (thread_lasx_context_live()) {
+			if (is_lasx_enabled()) {
+				err = restore_lasx_context(sc);
+				goto finish;
+			} else {
+				err |= copy_lasx_upper_from_sigcontext(sc);
+				/* LASX contains LSX */
+				BUG_ON(!thread_lsx_context_live());
+			}
+		}
+		if (thread_lsx_context_live()) {
+			if (is_lsx_enabled()) {
+				err = restore_lsx_context(sc);
+				goto finish;
+			} else {
+				err |= copy_lsx_upper_from_sigcontext(sc);
+				/* LSX contains FP */
+				BUG_ON(!used_math());
+			}
+		}
 		if (is_fpu_owner())
 			err = restore_fp_context(sc);
 		else
