@@ -100,6 +100,7 @@ register unsigned long current_stack_pointer __asm__("$r3");
 #define TIF_LOAD_WATCH		18	/* If set, load watch registers */
 #define TIF_LSX_CTX_LIVE	19	/* LSX context must be preserved */
 #define TIF_LASX_CTX_LIVE	20	/* LASX context must be preserved */
+#define TIF_PATCH_PENDING	21	/* pending live patching update */
 
 #define _TIF_SIGPENDING		(1<<TIF_SIGPENDING)
 #define _TIF_NEED_RESCHED	(1<<TIF_NEED_RESCHED)
