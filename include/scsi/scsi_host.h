@@ -487,8 +487,17 @@ struct scsi_host_template {
 
 	/* Delay for runtime autosuspend */
 	int rpm_autosuspend_delay;
-
+	
+#ifndef __GENKSYMS__
+	/*
+	 * Optional routine that allows the transport to decide if a cmd
+	 * is retryable. Return true if the transport is in a state the
+	 * cmd should be retried on.
+	 */
+	bool (*eh_should_retry_cmd)(struct scsi_cmnd *scmd);
+#else
 	KABI_RESERVE(1)
+#endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
