@@ -2743,8 +2743,7 @@ static int interrupt_init_v3_hw(struct hisi_hba *hisi_hba)
 			      DRV_NAME " phy", hisi_hba);
 	if (rc) {
 		dev_err(dev, "could not request phy interrupt, rc=%d\n", rc);
-		rc = -ENOENT;
-		goto free_irq_vectors;
+		return -ENOENT;
 	}
 
 	rc = devm_request_irq(dev, pci_irq_vector(pdev, PCI_IRQ_CHANNEL),
@@ -2752,8 +2751,7 @@ static int interrupt_init_v3_hw(struct hisi_hba *hisi_hba)
 			      DRV_NAME " channel", hisi_hba);
 	if (rc) {
 		dev_err(dev, "could not request chnl interrupt, rc=%d\n", rc);
-		rc = -ENOENT;
-		goto free_irq_vectors;
+		return -ENOENT;
 	}
 
 	rc = devm_request_irq(dev, pci_irq_vector(pdev, PCI_IRQ_AXI_FATAL),
@@ -2761,8 +2759,7 @@ static int interrupt_init_v3_hw(struct hisi_hba *hisi_hba)
 			      DRV_NAME " fatal", hisi_hba);
 	if (rc) {
 		dev_err(dev, "could not request fatal interrupt, rc=%d\n", rc);
-		rc = -ENOENT;
-		goto free_irq_vectors;
+		return -ENOENT;
 	}
 
 	if (hisi_sas_intr_conv)
@@ -2782,8 +2779,7 @@ static int interrupt_init_v3_hw(struct hisi_hba *hisi_hba)
 		if (rc) {
 			dev_err(dev, "could not request cq%d interrupt, rc=%d\n",
 				i, rc);
-			rc = -ENOENT;
-			goto free_irq_vectors;
+			return -ENOENT;
 		}
 
 		tasklet_init(t, cq_tasklet_v3_hw, (uintptr_t)cq);
@@ -2797,10 +2793,6 @@ static int interrupt_init_v3_hw(struct hisi_hba *hisi_hba)
 	}
 
 	return 0;
-
-free_irq_vectors:
-	pci_free_irq_vectors(pdev);
-	return rc;
 }
 
 static int hisi_sas_v3_init(struct hisi_hba *hisi_hba)
@@ -3717,11 +3709,11 @@ hisi_sas_v3_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	rc = interrupt_preinit_v3_hw(hisi_hba);
 	if (rc)
-		goto err_out_ha;
+		goto err_out_debugfs;
 	dev_err(dev, "%d hw queues\n", shost->nr_hw_queues);
 	rc = scsi_add_host(shost, dev);
 	if (rc)
-		goto err_out_ha;
+		goto err_out_free_irq_vectors;
 
 	rc = sas_register_ha(sha);
 	if (rc)
@@ -3748,8 +3740,12 @@ hisi_sas_v3_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 err_out_register_ha:
 	scsi_remove_host(shost);
-err_out_ha:
+err_out_free_irq_vectors:
+	pci_free_irq_vectors(pdev);
+err_out_debugfs:
 	hisi_sas_debugfs_exit(hisi_hba);
+err_out_ha:
+	hisi_sas_free(hisi_hba);
 	scsi_host_put(shost);
 err_out_regions:
 	pci_release_regions(pdev);
