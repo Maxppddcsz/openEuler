@@ -167,6 +167,14 @@ static bool contains_event(struct perf_evsel **metric_events, int num_events,
 	return false;
 }
 
+static bool evsel_same_pmu(struct perf_evsel *ev1, struct perf_evsel *ev2)
+{
+	if (!ev1->pmu_name || !ev2->pmu_name)
+		return false;
+
+	return !strcmp(ev1->pmu_name, ev2->pmu_name);
+}
+
 /**
  * Find a group of events in perf_evlist that correspond to those from a parsed
  * metric expression. Note, as find_evsel_group is called in the same order as
@@ -285,8 +293,7 @@ static struct perf_evsel *find_evsel_group(struct perf_evlist *perf_evlist,
 			 */
 			if (!has_constraint &&
 			    ev->leader != metric_events[i]->leader &&
-			    !strcmp(ev->leader->pmu_name,
-				    metric_events[i]->leader->pmu_name))
+			    evsel_same_pmu(ev->leader, metric_events[i]->leader))
 				break;
 			if (!strcmp(metric_events[i]->name, ev->name)) {
 				set_bit(ev->idx, evlist_used);
