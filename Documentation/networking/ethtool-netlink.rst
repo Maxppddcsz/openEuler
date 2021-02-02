@@ -218,6 +218,32 @@ an ``ACT_REPLY`` message. Performing an action also triggers a notification
 
 Later sections describe the format and semantics of these messages.
 
+LINKMODES_SET
+=============
+
+Request contents:
+
+  ==========================================  ======  ==========================
+  ``ETHTOOL_A_LINKMODES_HEADER``              nested  request header
+  ``ETHTOOL_A_LINKMODES_AUTONEG``             u8      autonegotiation status
+  ``ETHTOOL_A_LINKMODES_OURS``                bitset  advertised link modes
+  ``ETHTOOL_A_LINKMODES_PEER``                bitset  partner link modes
+  ``ETHTOOL_A_LINKMODES_SPEED``               u32     link speed (Mb/s)
+  ``ETHTOOL_A_LINKMODES_DUPLEX``              u8      duplex mode
+  ``ETHTOOL_A_LINKMODES_MASTER_SLAVE_CFG``    u8      Master/slave port mode
+  ``ETHTOOL_A_LINKMODES_LANES``               u32     lanes
+  ==========================================  ======  ==========================
+
+``ETHTOOL_A_LINKMODES_OURS`` bit set allows setting advertised link modes. If
+autonegotiation is on (either set now or kept from before), advertised modes
+are not changed (no ``ETHTOOL_A_LINKMODES_OURS`` attribute) and at least one
+of speed, duplex and lanes is specified, kernel adjusts advertised modes to all
+supported modes matching speed, duplex, lanes or all (whatever is specified).
+This autoselection is done on ethtool side with ioctl interface, netlink
+interface is supposed to allow requesting changes without knowing what exactly
+kernel supports.
+
+
 RINGS_GET
 =========
 
