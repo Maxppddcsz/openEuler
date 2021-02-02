@@ -1629,9 +1629,12 @@ enum ethtool_link_mode_bit_indices {
 	 * macro for bits > 31. The only way to use indices > 31 is to
 	 * use the new ETHTOOL_GLINKSETTINGS/ETHTOOL_SLINKSETTINGS API.
 	 */
+#ifndef __GENKSYMS__
 	__ETHTOOL_LINK_MODE_MASK_NBITS,
+#else
 	__ETHTOOL_LINK_MODE_LAST
 	  = ETHTOOL_LINK_MODE_FEC_BASER_BIT,
+#endif
 };
 
 #define __ETHTOOL_LINK_MODE_LEGACY_MASK(base_name)	\
@@ -1739,6 +1742,8 @@ enum ethtool_link_mode_bit_indices {
 #define SPEED_50000		50000
 #define SPEED_56000		56000
 #define SPEED_100000		100000
+#define SPEED_200000		200000
+#define SPEED_400000		400000
 
 #define SPEED_UNKNOWN		-1
 
@@ -1763,6 +1768,18 @@ static inline int ethtool_validate_duplex(__u8 duplex)
 
 	return 0;
 }
+
+#define MASTER_SLAVE_CFG_UNSUPPORTED			0
+#define MASTER_SLAVE_CFG_UNKNOWN 				1
+#define MASTER_SLAVE_CFG_MASTER_PREFERRED		2
+#define MASTER_SLAVE_CFG_SLAVE_PREFERRED		3
+#define MASTER_SLAVE_CFG_MASTER_FORCE			4
+#define MASTER_SLAVE_CFG_SLAVE_FORCE			5
+#define MASTER_SLAVE_STATE_UNSUPPORTED			0
+#define MASTER_SLAVE_STATE_UNKNOWN				1
+#define MASTER_SLAVE_STATE_MASTER				2
+#define MASTER_SLAVE_STATE_SLAVE				3
+#define MASTER_SLAVE_STATE_ERR					4
 
 /* Which connector port. */
 #define PORT_TP			0x00
