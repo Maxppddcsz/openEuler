@@ -182,12 +182,16 @@ Userspace to kernel:
   ===================================== ================================
   ``ETHTOOL_MSG_RINGS_GET``             get ring sizes
   ``ETHTOOL_MSG_RINGS_SET``             set ring sizes
+  ``ETHTOOL_MSG_FEC_GET``               get FEC settings
+  ``ETHTOOL_MSG_FEC_SET``               set FEC settings
   ===================================== ================================
 
 Kernel to userspace:
 
   ===================================== =================================
   ``ETHTOOL_MSG_RINGS_GET_REPLY``       ring sizes
+  ``ETHTOOL_MSG_FEC_GET_REPLY``         FEC settings
+  ``ETHTOOL_MSG_FEC_NTF``               FEC settings
   ===================================== =================================
 
 ``GET`` requests are sent by userspace applications to retrieve device
@@ -293,6 +297,59 @@ Kernel checks that requested ring sizes do not exceed limits reported by
 driver. Driver may impose additional constraints and may not suspport all
 attributes.
 
+FEC_GET
+=======
+
+Gets FEC configuration and state like ``ETHTOOL_GFECPARAM`` ioctl request.
+
+Request contents:
+
+  =====================================  ======  ==========================
+  ``ETHTOOL_A_FEC_HEADER``               nested  request header
+  =====================================  ======  ==========================
+
+Kernel response contents:
+
+  =====================================  ======  ==========================
+  ``ETHTOOL_A_FEC_HEADER``               nested  request header
+  ``ETHTOOL_A_FEC_MODES``                bitset  configured modes
+  ``ETHTOOL_A_FEC_AUTO``                 bool    FEC mode auto selection
+  ``ETHTOOL_A_FEC_ACTIVE``               u32     index of active FEC mode
+  =====================================  ======  ==========================
+
+``ETHTOOL_A_FEC_ACTIVE`` is the bit index of the FEC link mode currently
+active on the interface. This attribute may not be present if device does
+not support FEC.
+
+``ETHTOOL_A_FEC_MODES`` and ``ETHTOOL_A_FEC_AUTO`` are only meaningful when
+autonegotiation is disabled. If ``ETHTOOL_A_FEC_AUTO`` is non-zero driver will
+select the FEC mode automatically based on the parameters of the SFP module.
+This is equivalent to the ``ETHTOOL_FEC_AUTO`` bit of the ioctl interface.
+``ETHTOOL_A_FEC_MODES`` carry the current FEC configuration using link mode
+bits (rather than old ``ETHTOOL_FEC_*`` bits).
+
+FEC_SET
+=======
+
+Sets FEC parameters like ``ETHTOOL_SFECPARAM`` ioctl request.
+
+Request contents:
+
+  =====================================  ======  ==========================
+  ``ETHTOOL_A_FEC_HEADER``               nested  request header
+  ``ETHTOOL_A_FEC_MODES``                bitset  configured modes
+  ``ETHTOOL_A_FEC_AUTO``                 bool    FEC mode auto selection
+  =====================================  ======  ==========================
+
+``FEC_SET`` is only meaningful when autonegotiation is disabled. Otherwise
+FEC mode is selected as part of autonegotiation.
+
+``ETHTOOL_A_FEC_MODES`` selects which FEC mode should be used. It's recommended
+to set only one bit, if multiple bits are set driver may choose between them
+in an implementation specific way.
+
+``ETHTOOL_A_FEC_AUTO`` requests the driver to choose FEC mode based on SFP
+module parameters. This does not mean autonegotiation.
 
 Request translation
 ===================
@@ -382,6 +439,6 @@ have their netlink replacement yet.
   ``ETHTOOL_SLINKSETTINGS``           n/a
   ``ETHTOOL_PHY_GTUNABLE``            n/a
   ``ETHTOOL_PHY_STUNABLE``            n/a
-  ``ETHTOOL_GFECPARAM``               n/a
-  ``ETHTOOL_SFECPARAM``               n/a
+  ``ETHTOOL_GFECPARAM``               ``ETHTOOL_MSG_FEC_GET``
+  ``ETHTOOL_SFECPARAM``               ``ETHTOOL_MSG_FEC_SET``
   =================================== =====================================

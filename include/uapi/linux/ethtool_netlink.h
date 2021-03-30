@@ -30,6 +30,8 @@ enum {
 	ETHTOOL_MSG_PRIVFLAGS_SET,
 	ETHTOOL_MSG_RINGS_GET,
 	ETHTOOL_MSG_RINGS_SET,
+	ETHTOOL_MSG_FEC_GET,
+	ETHTOOL_MSG_FEC_SET,
 
 	/* add new constants above here */
 	__ETHTOOL_MSG_USER_CNT,
@@ -56,6 +58,9 @@ enum {
 	ETHTOOL_MSG_PRIVFLAGS_NTF,
 	ETHTOOL_MSG_RINGS_GET_REPLY,
 	ETHTOOL_MSG_RINGS_NTF,
+	ETHTOOL_MSG_FEC_GET_REPLY,
+	ETHTOOL_MSG_FEC_NTF,
+
 	/* add new constants above here */
 	__ETHTOOL_MSG_KERNEL_CNT,
 	ETHTOOL_MSG_KERNEL_MAX = __ETHTOOL_MSG_KERNEL_CNT - 1
@@ -288,6 +293,19 @@ enum {
 	/* add new constants above here */
 	__ETHTOOL_A_RINGS_CNT,
 	ETHTOOL_A_RINGS_MAX = (__ETHTOOL_A_RINGS_CNT - 1)
+};
+
+/* FEC */
+
+enum {
+	ETHTOOL_A_FEC_UNSPEC,
+	ETHTOOL_A_FEC_HEADER,				/* nest - _A_HEADER_* */
+	ETHTOOL_A_FEC_MODES,				/* bitset */
+	ETHTOOL_A_FEC_AUTO,				/* u8 */
+	ETHTOOL_A_FEC_ACTIVE,				/* u32 */
+
+	__ETHTOOL_A_FEC_CNT,
+	ETHTOOL_A_FEC_MAX = (__ETHTOOL_A_FEC_CNT - 1)
 };
 
 /* generic netlink info */

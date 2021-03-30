@@ -288,6 +288,7 @@ struct ethnl_dump_ctx {
 static const struct ethnl_request_ops *
 ethnl_default_requests[__ETHTOOL_MSG_USER_CNT] = {
 	[ETHTOOL_MSG_RINGS_GET]		= &ethnl_rings_request_ops,
+	[ETHTOOL_MSG_FEC_GET]		= &ethnl_fec_request_ops,
 };
 
 static struct ethnl_dump_ctx *ethnl_dump_context(struct netlink_callback *cb)
@@ -599,6 +600,7 @@ static int ethnl_default_done(struct netlink_callback *cb)
 static const struct ethnl_request_ops *
 ethnl_default_notify_ops[ETHTOOL_MSG_KERNEL_MAX + 1] = {
 	[ETHTOOL_MSG_RINGS_NTF]		= &ethnl_rings_request_ops,
+	[ETHTOOL_MSG_FEC_NTF]		= &ethnl_fec_request_ops,
 };
 
 /* default notification handler */
@@ -685,6 +687,7 @@ static const ethnl_notify_handler_t ethnl_notify_handlers[] = {
 	[ETHTOOL_MSG_WOL_NTF]		= ethnl_default_notify,
 	[ETHTOOL_MSG_FEATURES_NTF]	= ethnl_default_notify,
 	[ETHTOOL_MSG_PRIVFLAGS_NTF]	= ethnl_default_notify,
+	[ETHTOOL_MSG_FEC_NTF]		= ethnl_default_notify,
 };
 
 void ethtool_notify(struct net_device *dev, unsigned int cmd, const void *data)
@@ -773,6 +776,22 @@ static const struct genl_ops ethtool_genl_ops[] = {
 		.cmd	= ETHTOOL_MSG_RINGS_SET,
 		.flags	= GENL_UNS_ADMIN_PERM,
 		.doit	= ethnl_set_rings,
+	},
+	{
+		.cmd	= ETHTOOL_MSG_FEC_GET,
+		.doit	= ethnl_default_doit,
+		.start	= ethnl_default_start,
+		.dumpit	= ethnl_default_dumpit,
+		.done	= ethnl_default_done,
+		.policy = ethnl_fec_get_policy,
+		.maxattr = ARRAY_SIZE(ethnl_fec_get_policy) - 1,
+	},
+	{
+		.cmd	= ETHTOOL_MSG_FEC_SET,
+		.flags	= GENL_UNS_ADMIN_PERM,
+		.doit	= ethnl_set_fec,
+		.policy = ethnl_fec_set_policy,
+		.maxattr = ARRAY_SIZE(ethnl_fec_set_policy) - 1,
 	},
 };
 
