@@ -259,6 +259,11 @@ struct nla_policy {
 #endif
 };
 
+#define _NLA_POLICY_NESTED(maxattr, policy) \
+	{ .type = NLA_NESTED, .nested_policy = policy, .len = maxattr }
+#define NLA_POLICY_NESTED(policy) \
+	_NLA_POLICY_NESTED(ARRAY_SIZE(policy) - 1, policy)
+
 #define __NLA_IS_UINT_TYPE(tp)						\
 	(tp == NLA_U8 || tp == NLA_U16 || tp == NLA_U32 || tp == NLA_U64)
 #define __NLA_IS_SINT_TYPE(tp)						\
@@ -283,6 +288,12 @@ struct nla_policy {
 	.type = NLA_ENSURE_INT_OR_BINARY_TYPE(tp),	\
 	.validation_type = NLA_VALIDATE_MIN,		\
 	.min = _min,					\
+}
+
+#define NLA_POLICY_MAX(tp, _max) {			\
+	.type = NLA_ENSURE_INT_OR_BINARY_TYPE(tp),	\
+	.validation_type = NLA_VALIDATE_MAX,		\
+	.max = _max,					\
 }
 
 /**
