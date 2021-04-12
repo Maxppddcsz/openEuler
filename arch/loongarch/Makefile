@@ -8,6 +8,7 @@ archscripts: scripts_basic
 	$(Q)$(MAKE) $(build)=arch/loongarch/boot/tools relocs
 
 KBUILD_DEFCONFIG := loongson3_defconfig
+KBUILD_DTBS      := dtbs
 
 #
 # Select the object file format to substitute into the linker script.
@@ -133,7 +134,7 @@ boot-y			:= vmlinux.bin
 bootz-y			:= vmlinuz
 bootz-y			+= vmlinuz.bin
 
-all:	$(all-y)
+all:	$(all-y) $(KBUILD_DTBS)
 
 # boot
 $(boot-y): vmlinux FORCE
@@ -152,6 +153,9 @@ vmlinuz: FORCE
 endif
 
 CLEAN_FILES += vmlinux
+
+# device-trees
+core-y += arch/loongarch/boot/dts/
 
 install:
 	$(Q)install -D -m 755 vmlinux $(INSTALL_PATH)/vmlinux-$(KERNELRELEASE)
@@ -172,5 +176,7 @@ define archhelp
 	echo '  vmlinux.bin          - Raw binary boot image'
 	echo '  vmlinuz              - Compressed boot(zboot) image'
 	echo '  vmlinuz.bin          - Raw binary zboot image'
+	echo '  dtbs                 - Device-tree blobs for enabled boards'
+	echo '  dtbs_install         - Install dtbs to $(INSTALL_DTBS_PATH)'
 	echo
 endef
