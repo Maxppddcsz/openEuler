@@ -270,7 +270,8 @@ struct nla_policy {
 	(tp == NLA_S8 || tp == NLA_S16 || tp == NLA_S32 || tp == NLA_S64)
 
 #define __NLA_ENSURE(condition) BUILD_BUG_ON_ZERO(!(condition))
-
+#define NLA_ENSURE_UINT_TYPE(tp)			\
+	(__NLA_ENSURE(__NLA_IS_UINT_TYPE(tp)) + tp)
 #define NLA_ENSURE_INT_OR_BINARY_TYPE(tp)		\
 	(__NLA_ENSURE(__NLA_IS_UINT_TYPE(tp) ||		\
 		      __NLA_IS_SINT_TYPE(tp) ||		\
@@ -294,6 +295,12 @@ struct nla_policy {
 	.type = NLA_ENSURE_INT_OR_BINARY_TYPE(tp),	\
 	.validation_type = NLA_VALIDATE_MAX,		\
 	.max = _max,					\
+}
+
+#define NLA_POLICY_MASK(tp, _mask) {			\
+	.type = NLA_ENSURE_UINT_TYPE(tp),		\
+	.validation_type = NLA_VALIDATE_MASK,		\
+	.mask = _mask,					\
 }
 
 /**
