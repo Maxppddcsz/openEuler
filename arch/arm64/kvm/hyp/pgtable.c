@@ -465,6 +465,38 @@ static int stage2_map_set_prot_attr(enum kvm_pgtable_prot prot,
 	return 0;
 }
 
+static bool stage2_pte_cacheable(kvm_pte_t pte)
+{
+	u64 memattr = pte & KVM_PTE_LEAF_ATTR_LO_S2_MEMATTR;
+	return memattr == PAGE_S2_MEMATTR(NORMAL);
+}
+
+static void stage2_flush_dcache(void *addr, u64 size)
+{
+	if (kvm_ncsnp_support || cpus_have_const_cap(ARM64_HAS_STAGE2_FWB))
+		return;
+
+	__flush_dcache_area(addr, size);
+}
+
+static bool stage2_pte_executable(kvm_pte_t pte)
+{
+	return !(pte & KVM_PTE_LEAF_ATTR_HI_S2_XN);
+}
+
+static void stage2_invalidate_icache(kvm_pfn_t pfn, unsigned long size)
+{
+	if (icache_is_aliasing()) {
+		/* any kind of VIPT cache */
+		__flush_icache_all();
+	} else if (is_kernel_in_hyp_mode() || !icache_is_vpipt()) {
+		/* PIPT or VPIPT at EL2 (see comment in __kvm_tlb_flush_vmid_ipa) */
+		void *va = page_address(pfn_to_page(pfn));
+
+		invalidate_icache_range((unsigned long)va, (unsigned long)va + size);
+	}
+}
+
 static int stage2_map_walker_try_leaf(u64 addr, u64 end, u32 level,
 				      kvm_pte_t *ptep,
 				      struct stage2_map_data *data)
@@ -495,6 +527,13 @@ static int stage2_map_walker_try_leaf(u64 addr, u64 end, u32 level,
 		kvm_call_hyp(__kvm_tlb_flush_vmid_ipa, data->mmu, addr, level);
 		put_page(page);
 	}
+
+	/* Flush data cache before installation of the new PTE */
+	if (stage2_pte_cacheable(new))
+		stage2_flush_dcache(kvm_pte_follow(new), kvm_granule_size(level));
+
+	if (stage2_pte_executable(new))
+		stage2_invalidate_icache(__phys_to_pfn(phys), kvm_granule_size(level));
 
 	smp_store_release(ptep, new);
 	get_page(page);
@@ -650,20 +689,6 @@ int kvm_pgtable_stage2_map(struct kvm_pgtable *pgt, u64 addr, u64 size,
 	ret = kvm_pgtable_walk(pgt, addr, size, &walker);
 	dsb(ishst);
 	return ret;
-}
-
-static void stage2_flush_dcache(void *addr, u64 size)
-{
-	if (kvm_ncsnp_support || cpus_have_const_cap(ARM64_HAS_STAGE2_FWB))
-		return;
-
-	__flush_dcache_area(addr, size);
-}
-
-static bool stage2_pte_cacheable(kvm_pte_t pte)
-{
-	u64 memattr = pte & KVM_PTE_LEAF_ATTR_LO_S2_MEMATTR;
-	return memattr == PAGE_S2_MEMATTR(NORMAL);
 }
 
 static int stage2_unmap_walker(u64 addr, u64 end, u32 level, kvm_pte_t *ptep,
