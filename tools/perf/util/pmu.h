@@ -111,4 +111,6 @@ typedef int (*pmu_sys_event_iter_fn)(struct pmu_event *pe, void *data);
 void pmu_for_each_sys_event(pmu_sys_event_iter_fn fn, void *data);
 int perf_pmu__convert_scale(const char *scale, char **end, double *sval);
 
+int perf_pmu__match(char *pattern, char *name, char *tok);
+
 #endif /* __PMU_H */
