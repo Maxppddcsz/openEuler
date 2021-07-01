@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 #include <linux/list.h>
 #include <linux/compiler.h>
+#include <ctype.h>
 #include <sys/types.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -14,6 +15,7 @@
 #include <locale.h>
 #include <regex.h>
 #include "util.h"
+#include <fnmatch.h>
 #include "pmu.h"
 #include "parse-events.h"
 #include "cpumap.h"
@@ -768,6 +770,27 @@ struct pmu_events_map *__weak pmu_events_map__find(void)
 	return perf_pmu__find_map(NULL);
 }
 
+static bool perf_pmu__valid_suffix(char *pmu_name, char *tok)
+{
+	char *p;
+
+	if (strncmp(pmu_name, tok, strlen(tok)))
+		return false;
+
+	p = pmu_name + strlen(tok);
+	if (*p == 0)
+		return true;
+
+	if (*p != '_')
+		return false;
+
+	++p;
+	if (*p == 0 || !isdigit(*p))
+		return false;
+
+	return true;
+}
+
 bool pmu_uncore_alias_match(const char *pmu_name, const char *name)
 {
 	char *tmp = NULL, *tok, *str;
@@ -796,7 +819,7 @@ bool pmu_uncore_alias_match(const char *pmu_name, const char *name)
 	 */
 	for (; tok; name += strlen(tok), tok = strtok_r(NULL, ",", &tmp)) {
 		name = strstr(name, tok);
-		if (!name) {
+		if (!name || !perf_pmu__valid_suffix((char *)name, tok)) {
 			res = false;
 			goto out;
 		}
@@ -1715,4 +1738,15 @@ int perf_pmu__scan_file(struct perf_pmu *pmu, const char *name, const char *fmt,
 	}
 	va_end(args);
 	return ret;
+}
+
+int perf_pmu__match(char *pattern, char *name, char *tok)
+{
+	if (fnmatch(pattern, name, 0))
+		return -1;
+
+	if (tok && !perf_pmu__valid_suffix(name, tok))
+		return -1;
+
+	return 0;
 }
