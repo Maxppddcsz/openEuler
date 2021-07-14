@@ -30,9 +30,11 @@
 	(HCLGE_PF_CFG_BLOCK_SIZE / HCLGE_CFG_RD_LEN_BYTES)
 
 #define HCLGE_VECTOR_REG_BASE		0x20000
+#define HCLGE_VECTOR_EXT_REG_BASE	0x30000
 #define HCLGE_MISC_VECTOR_REG_BASE	0x20400
 
 #define HCLGE_VECTOR_REG_OFFSET		0x4
+#define HCLGE_VECTOR_REG_OFFSET_H	0x1000
 #define HCLGE_VECTOR_VF_OFFSET		0x100000
 
 #define HCLGE_NIC_CSQ_BASEADDR_L_REG	0x27000
@@ -295,6 +297,7 @@ struct hclge_mac {
 
 struct hclge_hw {
 	void __iomem *io_base;
+	void __iomem *mem_base;
 	struct hclge_mac mac;
 	int num_vec;
 	struct hclge_cmq cmq;
@@ -850,7 +853,6 @@ struct hclge_dev {
 	u16 num_msi;
 	u16 num_msi_left;
 	u16 num_msi_used;
-	u16 roce_base_msix_offset;
 	u32 base_msi_vector;
 	u16 *vector_status;
 	int *vector_irq;

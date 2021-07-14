@@ -311,7 +311,7 @@ static int hclge_get_vf_ring_vector_map(struct hclge_vport *vport,
 	resp->data[HCLGE_RING_TYPE_OFFSET] = req->msg.param[0].ring_type;
 	resp->data[HCLGE_TQP_INDEX_OFFSET] = req->msg.param[0].tqp_index;
 	resp->data[HCLGE_INT_GL_INDEX_OFFSET] = int_gl_index;
-	resp->data[HCLGE_VECTOR_ID_OFFSET] = data->int_vector_id;
+	resp->data[HCLGE_VECTOR_ID_OFFSET] = data->int_vector_id_l;
 	resp->len = HCLGE_RING_VECTOR_MAP_INFO_LEN;
 
 	hclge_free_vector_ring_chain(&ring_chain);
