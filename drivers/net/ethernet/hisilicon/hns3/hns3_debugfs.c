@@ -684,7 +684,7 @@ static void hns3_dump_tx_bd_info(struct hns3_nic_priv *priv,
 		le32_to_cpu(desc->tx.ol_type_vlan_len_msec));
 	sprintf(result[j++], "%#x", le32_to_cpu(desc->tx.paylen));
 	sprintf(result[j++], "%#x", le16_to_cpu(desc->tx.bdtp_fe_sc_vld_ra_ri));
-	sprintf(result[j++], "%5u", le16_to_cpu(desc->tx.mss));
+	sprintf(result[j++], "%5u", le16_to_cpu(desc->tx.mss_hw_csum));
 }
 
 static int hns3_dbg_tx_bd_info(struct hns3_dbg_data *d, char *buf, int len)
