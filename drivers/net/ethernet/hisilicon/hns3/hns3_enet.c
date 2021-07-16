@@ -997,6 +997,22 @@ static int hns3_handle_vtags(struct hns3_enet_ring *tx_ring,
 	return 0;
 }
 
+/* check if the hardware is capable of checksum offloading */
+static bool hns3_check_hw_tx_csum(struct sk_buff *skb)
+{
+	struct hns3_nic_priv *priv = netdev_priv(skb->dev);
+
+	/* Kindly note, due to backward compatibility of the TX descriptor,
+	 * HW checksum of the non-IP packets and GSO packets is handled at
+	 * different place in the following code
+	 */
+	if (skb->csum_not_inet || skb_is_gso(skb) ||
+	    !test_bit(HNS3_NIC_STATE_HW_TX_CSUM_ENABLE, &priv->state))
+		return false;
+
+	return true;
+}
+
 static int hns3_fill_skb_desc(struct hns3_enet_ring *ring,
 			      struct sk_buff *skb, struct hns3_desc *desc,
 			      struct hns3_desc_cb *desc_cb)
@@ -1004,9 +1020,9 @@ static int hns3_fill_skb_desc(struct hns3_enet_ring *ring,
 	u32 ol_type_vlan_len_msec = 0;
 	u32 type_cs_vlan_tso = 0;
 	u32 paylen = skb->len;
+	u16 mss_hw_csum = 0;
 	u16 inner_vtag = 0;
 	u16 out_vtag = 0;
-	u16 mss = 0;
 	int ret;
 
 	ret = hns3_handle_vtags(ring, skb);
@@ -1033,6 +1049,17 @@ static int hns3_fill_skb_desc(struct hns3_enet_ring *ring,
 	if (skb->ip_summed == CHECKSUM_PARTIAL) {
 		u8 ol4_proto, il4_proto;
 
+		if (hns3_check_hw_tx_csum(skb)) {
+			/* set checksum start and offset, defined in 2 Bytes */
+			hns3_set_field(type_cs_vlan_tso, HNS3_TXD_CSUM_START_S,
+				       skb_checksum_start_offset(skb) >> 1);
+			hns3_set_field(ol_type_vlan_len_msec,
+				       HNS3_TXD_CSUM_OFFSET_S,
+				       skb->csum_offset >> 1);
+			mss_hw_csum |= BIT(HNS3_TXD_HW_CS_B);
+			goto out_hw_tx_csum;
+		}
+
 		skb_reset_mac_len(skb);
 
 		ret = hns3_get_l4_protocol(skb, &ol4_proto, &il4_proto);
@@ -1053,7 +1080,7 @@ static int hns3_fill_skb_desc(struct hns3_enet_ring *ring,
 			return ret;
 		}
 
-		ret = hns3_set_tso(skb, &paylen, &mss,
+		ret = hns3_set_tso(skb, &paylen, &mss_hw_csum,
 				   &type_cs_vlan_tso, &desc_cb->send_bytes);
 		if (unlikely(ret < 0)) {
 			u64_stats_update_begin(&ring->syncp);
@@ -1063,12 +1090,13 @@ static int hns3_fill_skb_desc(struct hns3_enet_ring *ring,
 		}
 	}
 
+out_hw_tx_csum:
 	/* Set txbd */
 	desc->tx.ol_type_vlan_len_msec =
 		cpu_to_le32(ol_type_vlan_len_msec);
 	desc->tx.type_cs_vlan_tso_len = cpu_to_le32(type_cs_vlan_tso);
 	desc->tx.paylen = cpu_to_le32(paylen);
-	desc->tx.mss = cpu_to_le16(mss);
+	desc->tx.mss_hw_csum = cpu_to_le16(mss_hw_csum);
 	desc->tx.vlan_tag = cpu_to_le16(inner_vtag);
 	desc->tx.outer_vlan_tag = cpu_to_le16(out_vtag);
 
@@ -2383,8 +2411,7 @@ static void hns3_set_default_feature(struct net_device *netdev)
 
 	netdev->priv_flags |= IFF_UNICAST_FLT;
 
-	netdev->hw_enc_features |= NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM |
-		NETIF_F_RXCSUM | NETIF_F_SG | NETIF_F_GSO |
+	netdev->hw_enc_features |= NETIF_F_RXCSUM | NETIF_F_SG | NETIF_F_GSO |
 		NETIF_F_GRO | NETIF_F_TSO | NETIF_F_TSO6 | NETIF_F_GSO_GRE |
 		NETIF_F_GSO_GRE_CSUM | NETIF_F_GSO_UDP_TUNNEL |
 		NETIF_F_GSO_UDP_TUNNEL_CSUM | NETIF_F_SCTP_CRC |
@@ -2396,8 +2423,7 @@ static void hns3_set_default_feature(struct net_device *netdev)
 	netdev->gso_partial_features |= NETIF_F_GSO_GRE_CSUM;
 #endif
 
-	netdev->features |= NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM |
-		NETIF_F_HW_VLAN_CTAG_FILTER |
+	netdev->features |= NETIF_F_HW_VLAN_CTAG_FILTER |
 		NETIF_F_HW_VLAN_CTAG_TX | NETIF_F_HW_VLAN_CTAG_RX |
 		NETIF_F_RXCSUM | NETIF_F_SG | NETIF_F_GSO |
 		NETIF_F_GRO | NETIF_F_TSO | NETIF_F_TSO6 | NETIF_F_GSO_GRE |
@@ -2405,16 +2431,15 @@ static void hns3_set_default_feature(struct net_device *netdev)
 		NETIF_F_GSO_UDP_TUNNEL_CSUM | NETIF_F_SCTP_CRC |
 		NETIF_F_FRAGLIST;
 
-	netdev->vlan_features |=
-		NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM | NETIF_F_RXCSUM |
+	netdev->vlan_features |= NETIF_F_RXCSUM |
 		NETIF_F_SG | NETIF_F_GSO | NETIF_F_GRO |
 		NETIF_F_TSO | NETIF_F_TSO6 | NETIF_F_GSO_GRE |
 		NETIF_F_GSO_GRE_CSUM | NETIF_F_GSO_UDP_TUNNEL |
 		NETIF_F_GSO_UDP_TUNNEL_CSUM | NETIF_F_SCTP_CRC |
 		NETIF_F_FRAGLIST;
 
-	netdev->hw_features |= NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM |
-		NETIF_F_HW_VLAN_CTAG_TX | NETIF_F_HW_VLAN_CTAG_RX |
+	netdev->hw_features |= NETIF_F_HW_VLAN_CTAG_TX |
+		NETIF_F_HW_VLAN_CTAG_RX |
 		NETIF_F_RXCSUM | NETIF_F_SG | NETIF_F_GSO |
 		NETIF_F_GRO | NETIF_F_TSO | NETIF_F_TSO6 | NETIF_F_GSO_GRE |
 		NETIF_F_GSO_GRE_CSUM | NETIF_F_GSO_UDP_TUNNEL |
@@ -2437,6 +2462,18 @@ static void hns3_set_default_feature(struct net_device *netdev)
 		netdev->features |= NETIF_F_GSO_UDP_L4;
 		netdev->vlan_features |= NETIF_F_GSO_UDP_L4;
 		netdev->hw_enc_features |= NETIF_F_GSO_UDP_L4;
+	}
+
+	if (test_bit(HNAE3_DEV_SUPPORT_HW_TX_CSUM_B, ae_dev->caps)) {
+		netdev->hw_features |= NETIF_F_HW_CSUM;
+		netdev->features |= NETIF_F_HW_CSUM;
+		netdev->vlan_features |= NETIF_F_HW_CSUM;
+		netdev->hw_enc_features |= NETIF_F_HW_CSUM;
+	} else {
+		netdev->hw_features |= NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM;
+		netdev->features |= NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM;
+		netdev->vlan_features |= NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM;
+		netdev->hw_enc_features |= NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM;
 	}
 }
 
@@ -4147,6 +4184,7 @@ static void hns3_state_uninit(struct hnae3_handle *handle)
 static int hns3_client_init(struct hnae3_handle *handle)
 {
 	struct pci_dev *pdev = handle->pdev;
+	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(pdev);
 	u16 alloc_tqps, max_rss_size;
 	struct hns3_nic_priv *priv;
 	struct net_device *netdev;
@@ -4242,6 +4280,9 @@ static int hns3_client_init(struct hnae3_handle *handle)
 	/* MTU range: (ETH_MIN_MTU(kernel default) - 9702) */
 	netdev->max_mtu = HNS3_MAX_MTU;
 #endif
+
+	if (test_bit(HNAE3_DEV_SUPPORT_HW_TX_CSUM_B, ae_dev->caps))
+		set_bit(HNS3_NIC_STATE_HW_TX_CSUM_ENABLE, &priv->state);
 
 	set_bit(HNS3_NIC_STATE_INITED, &priv->state);
 
