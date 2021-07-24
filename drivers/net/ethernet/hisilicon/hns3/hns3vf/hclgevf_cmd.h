@@ -269,7 +269,6 @@ struct hclgevf_cfg_tx_queue_pointer_cmd {
 
 #define HCLGEVF_NIC_CMQ_DESC_NUM	1024
 #define HCLGEVF_NIC_CMQ_DESC_NUM_S	3
-#define HCLGEVF_NIC_CMDQ_INT_SRC_REG	0x27100
 
 #define HCLGEVF_RING_BASEADDR_SHIFT   32
 
