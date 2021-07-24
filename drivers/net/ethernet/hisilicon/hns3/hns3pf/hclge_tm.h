@@ -17,7 +17,7 @@
 
 /* SP or DWRR */
 #define HCLGE_TM_TX_SCHD_DWRR_MSK	BIT(0)
-#define HCLGE_TM_TX_SCHD_SP_MSK		(0xFE)
+#define HCLGE_TM_TX_SCHD_SP_MSK		0xFE
 
 #define HCLGE_TM_PF_MAX_PRI_NUM		8
 #define HCLGE_TM_PF_MAX_QSET_NUM	8
@@ -177,8 +177,8 @@ struct hclge_shaper_ir_para {
 			   (HCLGE_TM_SHAP_##string##_MSK), \
 			   (HCLGE_TM_SHAP_##string##_LSH), val)
 #define hclge_tm_get_field(src, string) \
-			hnae3_get_field((src), (HCLGE_TM_SHAP_##string##_MSK), \
-				       (HCLGE_TM_SHAP_##string##_LSH))
+			hnae3_get_field((src), HCLGE_TM_SHAP_##string##_MSK, \
+					HCLGE_TM_SHAP_##string##_LSH)
 
 int hclge_tm_schd_init(struct hclge_dev *hdev);
 int hclge_tm_vport_map_update(struct hclge_dev *hdev);
