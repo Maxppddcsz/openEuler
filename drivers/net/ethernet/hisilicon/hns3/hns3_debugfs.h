@@ -58,4 +58,9 @@ struct hns3_dbg_func {
 	int (*dbg_dump_bd)(struct hns3_dbg_data *data, char *buf, int len);
 };
 
+struct hns3_dbg_cap_info {
+	const char *name;
+	enum HNAE3_DEV_CAP_BITS cap_bit;
+};
+
 #endif
