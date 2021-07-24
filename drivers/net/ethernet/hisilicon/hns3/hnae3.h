@@ -317,7 +317,7 @@ struct hnae3_ring_chain_node {
 };
 
 #define HNAE3_IS_TX_RING(node) \
-	(((node)->flag & (1 << HNAE3_RING_TYPE_B)) == HNAE3_RING_TYPE_TX)
+	(((node)->flag & 1 << HNAE3_RING_TYPE_B) == HNAE3_RING_TYPE_TX)
 
 struct hnae3_client_ops {
 	int (*init_instance)(struct hnae3_handle *handle);
@@ -832,9 +832,9 @@ struct hnae3_handle {
 #define hnae3_get_field(origin, mask, shift) (((origin) & (mask)) >> (shift))
 
 #define hnae3_set_bit(origin, shift, val) \
-	hnae3_set_field((origin), (0x1 << (shift)), (shift), (val))
+	hnae3_set_field(origin, 0x1 << (shift), shift, val)
 #define hnae3_get_bit(origin, shift) \
-	hnae3_get_field((origin), (0x1 << (shift)), (shift))
+	hnae3_get_field(origin, 0x1 << (shift), shift)
 
 int hnae3_register_ae_dev(struct hnae3_ae_dev *ae_dev);
 void hnae3_unregister_ae_dev(struct hnae3_ae_dev *ae_dev);
