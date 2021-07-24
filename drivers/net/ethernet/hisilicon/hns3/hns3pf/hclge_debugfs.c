@@ -1845,14 +1845,14 @@ static int hclge_dbg_dump_loopback(struct hclge_dev *hdev, char *buf, int len)
 {
 	struct phy_device *phydev = hdev->hw.mac.phydev;
 	struct hclge_config_mac_mode_cmd *req_app;
-	struct hclge_serdes_lb_cmd *req_serdes;
+	struct hclge_common_lb_cmd *req_common;
 	struct hclge_desc desc;
 	u8 loopback_en;
 	int pos = 0;
 	int ret;
 
 	req_app = (struct hclge_config_mac_mode_cmd *)desc.data;
-	req_serdes = (struct hclge_serdes_lb_cmd *)desc.data;
+	req_common = (struct hclge_common_lb_cmd *)desc.data;
 
 	pos += scnprintf(buf + pos, len - pos, "mac id: %u\n",
 			 hdev->hw.mac.mac_id);
@@ -1870,28 +1870,32 @@ static int hclge_dbg_dump_loopback(struct hclge_dev *hdev, char *buf, int len)
 	pos += scnprintf(buf + pos, len - pos, "app loopback: %s\n",
 			 state_str[loopback_en]);
 
-	hclge_cmd_setup_basic_desc(&desc, HCLGE_OPC_SERDES_LOOPBACK, true);
+	hclge_cmd_setup_basic_desc(&desc, HCLGE_OPC_COMMON_LOOPBACK, true);
 	ret = hclge_cmd_send(&hdev->hw, &desc, 1);
 	if (ret) {
 		dev_err(&hdev->pdev->dev,
-			"failed to dump serdes loopback status, ret = %d\n",
+			"failed to dump common loopback status, ret = %d\n",
 			ret);
 		return ret;
 	}
 
-	loopback_en = req_serdes->enable & HCLGE_CMD_SERDES_SERIAL_INNER_LOOP_B;
-	pos += scnprintf(buf + pos, len - pos, "serdes serial loopback: %s\n",
-			 state_str[loopback_en]);
+	loopback_en = req_common->enable & HCLGE_CMD_SERDES_SERIAL_INNER_LOOP_B;
+	dev_info(&hdev->pdev->dev, "serdes serial loopback: %s\n",
+		 loopback_en ? "on" : "off");
 
-	loopback_en = req_serdes->enable &
-			HCLGE_CMD_SERDES_PARALLEL_INNER_LOOP_B ? 1 : 0;
-	pos += scnprintf(buf + pos, len - pos, "serdes parallel loopback: %s\n",
-			 state_str[loopback_en]);
+	loopback_en = req_common->enable &
+			HCLGE_CMD_SERDES_PARALLEL_INNER_LOOP_B;
+	dev_info(&hdev->pdev->dev, "serdes parallel loopback: %s\n",
+		 loopback_en ? "on" : "off");
 
 	if (phydev) {
-		loopback_en = phydev->loopback_enabled;
-		pos += scnprintf(buf + pos, len - pos, "phy loopback: %s\n",
-				 state_str[loopback_en]);
+		dev_info(&hdev->pdev->dev, "phy loopback: %s\n",
+			 phydev->loopback_enabled ? "on" : "off");
+	} else if (hnae3_dev_phy_imp_supported(hdev)) {
+		loopback_en = req_common->enable &
+			      HCLGE_CMD_GE_PHY_INNER_LOOP_B;
+		dev_info(&hdev->pdev->dev, "phy loopback: %s\n",
+			 loopback_en ? "on" : "off");
 	}
 
 	return 0;

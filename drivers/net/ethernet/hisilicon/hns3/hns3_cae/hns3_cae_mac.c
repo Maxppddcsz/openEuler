@@ -61,7 +61,7 @@ int hns3_cae_mac_loop_cfg(const struct hns3_nic_priv *net_priv,
 		out_info->rx2tx_loop_en =
 		    hnae3_get_bit(req2->txrx_pad_fcs_loop_en,
 				  HCLGE_MAC_LINE_LP_B);
-		hns3_cae_cmd_setup_basic_desc(&desc, HCLGE_OPC_SERDES_LOOPBACK,
+		hns3_cae_cmd_setup_basic_desc(&desc, HCLGE_OPC_COMMON_LOOPBACK,
 					      true);
 		ret = hns3_cae_cmd_send(hdev, &desc, 1);
 		if (ret) {
@@ -111,7 +111,7 @@ int hns3_cae_mac_loop_cfg(const struct hns3_nic_priv *net_priv,
 			}
 		} else {
 			hns3_cae_cmd_setup_basic_desc(&desc,
-						      HCLGE_OPC_SERDES_LOOPBACK,
+						      HCLGE_OPC_COMMON_LOOPBACK,
 						      true);
 			ret = hns3_cae_cmd_send(hdev, &desc, 1);
 			if (ret) {
