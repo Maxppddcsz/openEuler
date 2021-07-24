@@ -2752,6 +2752,14 @@ static void hclge_reset_task_schedule(struct hclge_dev *hdev)
 		mod_delayed_work(hclge_wq, &hdev->service_task, 0);
 }
 
+static void hclge_errhand_task_schedule(struct hclge_dev *hdev)
+{
+	if (!test_bit(HCLGE_STATE_REMOVING, &hdev->state) &&
+	    !test_and_set_bit(HCLGE_STATE_ERR_SERVICE_SCHED, &hdev->state))
+		mod_delayed_work_on(cpumask_first(&hdev->affinity_mask),
+				    hclge_wq, &hdev->service_task, 0);
+}
+
 void hclge_task_schedule(struct hclge_dev *hdev, unsigned long delay_time)
 {
 	if (!test_bit(HCLGE_STATE_REMOVING, &hdev->state) &&
@@ -4172,6 +4180,14 @@ static void hclge_misc_err_recovery(struct hclge_dev *hdev)
 	}
 
 	hclge_enable_vector(&hdev->misc_vector, true);
+}
+
+static void hclge_errhand_service_task(struct hclge_dev *hdev)
+{
+	if (!test_and_clear_bit(HCLGE_STATE_ERR_SERVICE_SCHED, &hdev->state))
+		return;
+
+	hclge_misc_err_recovery(hdev);
 }
 
 static void hclge_reset_service_task(struct hclge_dev *hdev)
