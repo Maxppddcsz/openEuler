@@ -3226,39 +3226,76 @@ static void hns3_nic_reuse_page(struct sk_buff *skb, int i,
 				struct hns3_desc_cb *desc_cb)
 {
 	struct hns3_desc *desc = &ring->desc[ring->next_to_clean];
+	u32 frag_offset = desc_cb->page_offset + pull_len;
 	int size = le16_to_cpu(desc->rx.size);
 	u32 truesize = hns3_buf_size(ring);
+	u32 frag_size = size - pull_len;
+	bool reused;
 
-	desc_cb->pagecnt_bias--;
-	skb_add_rx_frag(skb, i, desc_cb->priv, desc_cb->page_offset + pull_len,
-			size - pull_len, truesize);
-
-	/* Avoid re-using remote pages, or the stack is still using the page
-	 * when page_offset rollback to zero, flag default unreuse
-	 */
 	if (unlikely(!hns3_page_is_reusable(desc_cb->priv)) ||
 	    (!desc_cb->page_offset && !hns3_can_reuse_page(desc_cb))) {
 		__page_frag_cache_drain(desc_cb->priv, desc_cb->pagecnt_bias);
 		return;
 	}
 
-	/* Move offset up to the next cache line */
-	desc_cb->page_offset += truesize;
+	reused = hns3_can_reuse_page(desc_cb);
 
-	if (desc_cb->page_offset + truesize <= hns3_page_size(ring)) {
+	/* Rx page can be reused when:
+	 * 1. Rx page is only owned by the driver when page_offset
+	 *    is zero, which means 0 @ truesize will be used by
+	 *    stack after skb_add_rx_frag() is called, and the rest
+	 *    of rx page can be reused by driver.
+	 * Or
+	 * 2. Rx page is only owned by the driver when page_offset
+	 *    is non-zero, which means page_offset @ truesize will
+	 *    be used by stack after skb_add_rx_frag() is called,
+	 *    and 0 @ truesize can be reused by driver.
+	 */
+	if ((!desc_cb->page_offset && reused) ||
+	    ((desc_cb->page_offset + truesize + truesize) <=
+	     hns3_page_size(ring) && desc_cb->page_offset)) {
+		desc_cb->page_offset += truesize;
 		desc_cb->reuse_flag = 1;
-	} else if (hns3_can_reuse_page(desc_cb)) {
-		desc_cb->reuse_flag = 1;
+	} else if (desc_cb->page_offset && reused) {
 		desc_cb->page_offset = 0;
-	} else if (desc_cb->pagecnt_bias) {
-		__page_frag_cache_drain(desc_cb->priv, desc_cb->pagecnt_bias);
+		desc_cb->reuse_flag = 1;
+	} else if (frag_size <= ring->rx_copybreak) {
+		void *frag = napi_alloc_frag(frag_size);
+
+		if (unlikely(!frag)) {
+			u64_stats_update_begin(&ring->syncp);
+			ring->stats.frag_alloc_err++;
+			u64_stats_update_end(&ring->syncp);
+
+			hns3_rl_err(ring_to_netdev(ring),
+				    "failed to allocate rx frag\n");
+			goto out;
+		}
+
+		desc_cb->reuse_flag = 1;
+		memcpy(frag, desc_cb->buf + frag_offset, frag_size);
+		skb_add_rx_frag(skb, i, virt_to_page(frag),
+				offset_in_page(frag), frag_size, frag_size);
+
+		u64_stats_update_begin(&ring->syncp);
+		ring->stats.frag_alloc++;
+		u64_stats_update_end(&ring->syncp);
 		return;
 	}
+
+out:
+	desc_cb->pagecnt_bias--;
 
 	if (unlikely(!desc_cb->pagecnt_bias)) {
 		page_ref_add(desc_cb->priv, USHRT_MAX);
 		desc_cb->pagecnt_bias = USHRT_MAX;
 	}
+
+	skb_add_rx_frag(skb, i, desc_cb->priv, frag_offset,
+			frag_size, truesize);
+
+	if (unlikely(!desc_cb->reuse_flag))
+		__page_frag_cache_drain(desc_cb->priv, desc_cb->pagecnt_bias);
 }
 
 static int hns3_gro_complete(struct sk_buff *skb, u32 l234info)
@@ -4335,7 +4372,7 @@ static void hns3_ring_get_cfg(struct hnae3_queue *q, struct hns3_nic_priv *priv,
 		ring = &priv->ring[q->tqp_index + queue_num];
 		desc_num = priv->ae_handle->kinfo.num_rx_desc;
 		ring->queue_index = q->tqp_index;
-		ring->io_base = q->io_base;
+		ring->rx_copybreak = priv->rx_copybreak;
 	}
 
 	hnae3_set_bit(ring->flag, HNAE3_RING_TYPE_B, ring_type);
