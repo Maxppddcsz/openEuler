@@ -1256,6 +1256,8 @@ static u32 hclge_get_max_speed(u8 speed_ability)
 
 static void hclge_parse_cfg(struct hclge_cfg *cfg, struct hclge_desc *desc)
 {
+#define HCLGE_TX_SPARE_SIZE_UNIT		4096
+
 	struct hclge_cfg_param_cmd *req;
 	u64 mac_addr_tmp_high;
 	u64 mac_addr_tmp;
@@ -1313,6 +1315,15 @@ static void hclge_parse_cfg(struct hclge_cfg *cfg, struct hclge_desc *desc)
 					 HCLGE_CFG_UMV_TBL_SPACE_S);
 	if (!cfg->umv_space)
 		cfg->umv_space = HCLGE_DEFAULT_UMV_SPACE_PER_PF;
+
+	/* The unit of the tx spare buffer size queried from configuration
+	 * file is HCLGE_TX_SPARE_SIZE_UNIT(4096) bytes, so a conversion is
+	 * needed here.
+	 */
+	cfg->tx_spare_buf_size = hnae3_get_field(__le32_to_cpu(req->param[2]),
+						 HCLGE_CFG_TX_SPARE_BUF_SIZE_M,
+						 HCLGE_CFG_TX_SPARE_BUF_SIZE_S);
+	cfg->tx_spare_buf_size *= HCLGE_TX_SPARE_SIZE_UNIT;
 }
 
 /* hclge_get_cfg: query the static parameter from flash
@@ -1471,6 +1482,7 @@ static int hclge_configure(struct hclge_dev *hdev)
 	hdev->tc_max = cfg.tc_num;
 	hdev->tm_info.hw_pfc_map = 0;
 	hdev->wanted_umv_size = cfg.umv_space;
+	hdev->tx_spare_buf_size = cfg.tx_spare_buf_size;
 	if (cfg.vlan_fliter_cap == HCLGE_VLAN_FLTR_CAN_MDF)
 		hnae3_set_bit(ae_dev->flag,
 			      HNAE3_DEV_SUPPORT_VLAN_FLTR_MDF_B, 1);
@@ -1658,6 +1670,7 @@ static int hclge_knic_setup(struct hclge_vport *vport, u16 num_tqps,
 	kinfo->num_rx_desc = num_rx_desc;
 
 	kinfo->rx_buf_len = hdev->rx_buf_len;
+	kinfo->tx_spare_buf_size = hdev->tx_spare_buf_size;
 
 	kinfo->tqp = devm_kcalloc(&hdev->pdev->dev, num_tqps,
 				  sizeof(struct hnae3_queue *), GFP_KERNEL);
@@ -10274,6 +10287,8 @@ static void hclge_info_show(struct hclge_dev *hdev)
 		 hdev->flag & HCLGE_FLAG_DCB_ENABLE ? "enable" : "disable");
 	dev_info(dev, "MQPRIO %s\n",
 		 hdev->flag & HCLGE_FLAG_MQPRIO_ENABLE ? "enable" : "disable");
+	dev_info(dev, "Default tx spare buffer size: %u\n",
+		 hdev->tx_spare_buf_size);
 
 	dev_info(dev, "PF info end.\n");
 }

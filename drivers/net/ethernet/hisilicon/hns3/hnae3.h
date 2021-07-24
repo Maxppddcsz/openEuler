@@ -801,6 +801,9 @@ struct hnae3_knic_private_info {
 	u16 rx_buf_len;
 	u16 num_tx_desc;
 	u16 num_rx_desc;
+#ifndef __GENKSYMS__
+	u32 tx_spare_buf_size;
+#endif
 
 	struct hnae3_tc_info tc_info;
 
