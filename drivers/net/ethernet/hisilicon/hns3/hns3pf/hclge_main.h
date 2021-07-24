@@ -946,7 +946,7 @@ struct hclge_vport {
 
 	u8  rss_hash_key[HCLGE_RSS_KEY_SIZE]; /* User configured hash keys */
 	/* User configured lookup table entries */
-	u8  rss_indirection_tbl[HCLGE_RSS_IND_TBL_SIZE];
+	u16 *rss_indirection_tbl;
 	int rss_algo;		/* User configured hash algorithm */
 	/* User configured rss tuple sets */
 	struct hclge_rss_tuple_cfg rss_tuple_sets;
