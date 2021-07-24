@@ -255,6 +255,7 @@ enum hnae3_port_base_vlan_state {
 };
 
 enum hnae3_dbg_cmd {
+	HNAE3_DBG_CMD_TM_NODES,
 	HNAE3_DBG_CMD_TM_PRI,
 	HNAE3_DBG_CMD_TM_QSET,
 	HNAE3_DBG_CMD_TM_MAP,
@@ -263,7 +264,9 @@ enum hnae3_dbg_cmd {
 	HNAE3_DBG_CMD_TC_SCH_INFO,
 	HNAE3_DBG_CMD_QOS_PAUSE_CFG,
 	HNAE3_DBG_CMD_QOS_PRI_MAP,
+	HNAE3_DBG_CMD_QOS_DSCP_MAP,
 	HNAE3_DBG_CMD_QOS_BUF_CFG,
+	HNAE3_DBG_CMD_DEV_INFO,
 	HNAE3_DBG_CMD_TX_BD,
 	HNAE3_DBG_CMD_RX_BD,
 	HNAE3_DBG_CMD_MAC_UC,
@@ -271,6 +274,7 @@ enum hnae3_dbg_cmd {
 	HNAE3_DBG_CMD_MAC_TBL,
 	HNAE3_DBG_CMD_MNG_TBL,
 	HNAE3_DBG_CMD_LOOPBACK,
+	HNAE3_DBG_CMD_PTP_INFO,
 	HNAE3_DBG_CMD_INTERRUPT_INFO,
 	HNAE3_DBG_CMD_RESET_INFO,
 	HNAE3_DBG_CMD_IMP_INFO,
@@ -291,9 +295,13 @@ enum hnae3_dbg_cmd {
 	HNAE3_DBG_CMD_RX_QUEUE_INFO,
 	HNAE3_DBG_CMD_TX_QUEUE_INFO,
 	HNAE3_DBG_CMD_FD_TCAM,
+	HNAE3_DBG_CMD_FD_COUNTER,
 	HNAE3_DBG_CMD_MAC_TNL_STATUS,
 	HNAE3_DBG_CMD_SERV_INFO,
 	HNAE3_DBG_CMD_UMV_INFO,
+	HNAE3_DBG_CMD_PAGE_POOL_INFO,
+	HNAE3_DBG_CMD_COAL_INFO,
+	HNAE3_DBG_CMD_WOL_INFO,
 	HNAE3_DBG_CMD_UNKNOWN,
 };
 
@@ -333,10 +341,13 @@ struct hnae3_ring_chain_node {
 struct hnae3_dev_specs {
 	u32 mac_entry_num; /* number of mac-vlan table entry */
 	u32 mng_entry_num; /* number of manager table entry */
+	u32 max_tm_rate;
 	u16 rss_ind_tbl_size;
 	u16 rss_key_size;
 	u16 int_ql_max; /* max value of interrupt coalesce based on INT_QL */
+	u16 max_int_gl; /* max value of interrupt coalesce based on INT_GL */
 	u8 max_non_tso_bd_num; /* max BD number of one non-TSO packet */
+	u16 max_qset_num;
 };
 
 struct hnae3_client_ops {

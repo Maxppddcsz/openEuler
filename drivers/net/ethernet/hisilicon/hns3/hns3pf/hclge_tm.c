@@ -23,8 +23,6 @@ enum hclge_shaper_level {
 #define HCLGE_SHAPER_BS_U_DEF	5
 #define HCLGE_SHAPER_BS_S_DEF	20
 
-#define HCLGE_ETHER_MAX_RATE	100000
-
 /* hclge_shaper_para_calc: calculate ir parameter for the shaper
  * @ir: Rate to be config, its unit is Mbps
  * @shaper_level: the shaper level. eg: port, pg, priority, queueset
@@ -40,7 +38,8 @@ enum hclge_shaper_level {
  * @return: 0: calculate sucessful, negative: fail
  */
 static int hclge_shaper_para_calc(u32 ir, u8 shaper_level,
-				  struct hclge_shaper_ir_para *ir_para)
+				  struct hclge_shaper_ir_para *ir_para,
+				  u32 max_tm_rate)
 {
 #define DEFAULT_SHAPER_IR_B	126
 #define DIVISOR_CLK		(1000 * 8)
@@ -59,7 +58,7 @@ static int hclge_shaper_para_calc(u32 ir, u8 shaper_level,
 
 	/* Calc tick */
 	if (shaper_level >= HCLGE_SHAPER_LVL_CNT ||
-	    ir > HCLGE_ETHER_MAX_RATE)
+	    ir > max_tm_rate)
 		return -EINVAL;
 
 	tick = tick_array[shaper_level];
@@ -408,7 +407,7 @@ static int hclge_tm_port_shaper_cfg(struct hclge_dev *hdev)
 	int ret;
 
 	ret = hclge_shaper_para_calc(hdev->hw.mac.speed, HCLGE_SHAPER_LVL_PORT,
-					&ir_para);
+					&ir_para, hdev->ae_dev->dev_specs.max_tm_rate);
 	if (ret)
 		return ret;
 
@@ -524,10 +523,10 @@ int hclge_tm_qs_shaper_cfg(struct hclge_vport *vport, int max_tx_rate)
 	int ret, i;
 
 	if (!max_tx_rate)
-		max_tx_rate = HCLGE_ETHER_MAX_RATE;
+		max_tx_rate = hdev->ae_dev->dev_specs.max_tm_rate;
 
 	ret = hclge_shaper_para_calc(max_tx_rate, HCLGE_SHAPER_LVL_QSET,
-				     &ir_para);
+				     &ir_para, hdev->ae_dev->dev_specs.max_tm_rate);
 	if (ret)
 		return ret;
 
@@ -701,7 +700,8 @@ static void hclge_tm_pg_info_init(struct hclge_dev *hdev)
 		hdev->tm_info.pg_info[i].pg_id = i;
 		hdev->tm_info.pg_info[i].pg_sch_mode = HCLGE_SCH_MODE_DWRR;
 
-		hdev->tm_info.pg_info[i].bw_limit = HCLGE_ETHER_MAX_RATE;
+		hdev->tm_info.pg_info[i].bw_limit =
+					 hdev->ae_dev->dev_specs.max_tm_rate;
 
 		if (i != 0)
 			continue;
@@ -764,6 +764,7 @@ static int hclge_tm_pg_to_pri_map(struct hclge_dev *hdev)
 
 static int hclge_tm_pg_shaper_cfg(struct hclge_dev *hdev)
 {
+	u32 max_tm_rate = hdev->ae_dev->dev_specs.max_tm_rate;
 	struct hclge_shaper_ir_para ir_para;
 	u32 shaper_para;
 	int ret;
@@ -779,7 +780,7 @@ static int hclge_tm_pg_shaper_cfg(struct hclge_dev *hdev)
 		ret = hclge_shaper_para_calc(
 					hdev->tm_info.pg_info[i].bw_limit,
 					HCLGE_SHAPER_LVL_PG,
-					&ir_para);
+					&ir_para, max_tm_rate);
 		if (ret)
 			return ret;
 
@@ -897,6 +898,7 @@ static int hclge_tm_pri_q_qs_cfg(struct hclge_dev *hdev)
 
 static int hclge_tm_pri_tc_base_shaper_cfg(struct hclge_dev *hdev)
 {
+	u32 max_tm_rate = hdev->ae_dev->dev_specs.max_tm_rate;
 	struct hclge_shaper_ir_para ir_para;
 	u32 shaper_para;
 	int ret;
@@ -906,7 +908,7 @@ static int hclge_tm_pri_tc_base_shaper_cfg(struct hclge_dev *hdev)
 		ret = hclge_shaper_para_calc(
 					hdev->tm_info.tc_info[i].bw_limit,
 					HCLGE_SHAPER_LVL_PRI,
-					&ir_para);
+					&ir_para, max_tm_rate);
 		if (ret)
 			return ret;
 
@@ -940,7 +942,7 @@ static int hclge_tm_pri_vnet_base_shaper_pri_cfg(struct hclge_vport *vport)
 	int ret;
 
 	ret = hclge_shaper_para_calc(vport->bw_limit, HCLGE_SHAPER_LVL_VF,
-				     &ir_para);
+				     &ir_para, hdev->ae_dev->dev_specs.max_tm_rate);
 	if (ret)
 		return ret;
 
@@ -969,6 +971,7 @@ static int hclge_tm_pri_vnet_base_shaper_qs_cfg(struct hclge_vport *vport)
 	struct hnae3_knic_private_info *kinfo = &vport->nic.kinfo;
 	struct hclge_dev *hdev = vport->back;
 	struct hclge_shaper_ir_para ir_para;
+	u32 max_tm_rate = hdev->ae_dev->dev_specs.max_tm_rate;
 	u32 i;
 	int ret;
 
@@ -976,7 +979,7 @@ static int hclge_tm_pri_vnet_base_shaper_qs_cfg(struct hclge_vport *vport)
 		ret = hclge_shaper_para_calc(
 					hdev->tm_info.tc_info[i].bw_limit,
 					HCLGE_SHAPER_LVL_QSET,
-					&ir_para);
+					&ir_para, max_tm_rate);
 		if (ret)
 			return ret;
 	}
