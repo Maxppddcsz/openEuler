@@ -1266,9 +1266,6 @@ static void hclge_parse_cfg(struct hclge_cfg *cfg, struct hclge_desc *desc)
 	req = (struct hclge_cfg_param_cmd *)desc[0].data;
 
 	/* get the configuration */
-	cfg->vmdq_vport_num = hnae3_get_field(__le32_to_cpu(req->param[0]),
-					      HCLGE_CFG_VMDQ_M,
-					      HCLGE_CFG_VMDQ_S);
 	cfg->tc_num = hnae3_get_field(__le32_to_cpu(req->param[0]),
 				      HCLGE_CFG_TC_NUM_M, HCLGE_CFG_TC_NUM_S);
 	cfg->tqp_desc_num = hnae3_get_field(__le32_to_cpu(req->param[0]),
@@ -1438,7 +1435,7 @@ static void hclge_init_kdump_kernel_config(struct hclge_dev *hdev)
 		 "Running kdump kernel. Using minimal resources\n");
 
 	/* minimal queue pairs equals to the number of vports */
-	hdev->num_tqps = hdev->num_vmdq_vport + hdev->num_req_vfs + 1;
+	hdev->num_tqps = hdev->num_req_vfs + 1;
 	hdev->num_tx_desc = HCLGE_MIN_TX_DESC;
 	hdev->num_rx_desc = HCLGE_MIN_RX_DESC;
 }
@@ -1455,7 +1452,6 @@ static int hclge_configure(struct hclge_dev *hdev)
 	if (ret)
 		return ret;
 
-	hdev->num_vmdq_vport = cfg.vmdq_vport_num;
 	hdev->base_tqp_pid = 0;
 	hdev->rss_size_max = cfg.rss_size_max;
 	hdev->rx_buf_len = cfg.rx_buf_len;
@@ -1697,8 +1693,8 @@ static int hclge_map_tqp(struct hclge_dev *hdev)
 	struct hclge_vport *vport = hdev->vport;
 	u16 i, num_vport;
 
-	num_vport = hdev->num_vmdq_vport + hdev->num_req_vfs + 1;
-	for (i = 0; i < num_vport; i++) {
+	num_vport = hdev->num_req_vfs + 1;
+	for (i = 0; i < num_vport; i++)	{
 		int ret;
 
 		ret = hclge_map_tqp_to_vport(hdev, vport);
@@ -1739,7 +1735,7 @@ static int hclge_alloc_vport(struct hclge_dev *hdev)
 	int ret;
 
 	/* We need to alloc a vport for main NIC of PF */
-	num_vport = hdev->num_vmdq_vport + hdev->num_req_vfs + 1;
+	num_vport = hdev->num_req_vfs + 1;
 
 	if (hdev->num_tqps < num_vport) {
 		dev_err(&hdev->pdev->dev, "tqps(%u) is less than vports(%d)",
@@ -2825,13 +2821,12 @@ static void hclge_push_link_status(struct hclge_dev *hdev)
 
 static void hclge_update_link_status(struct hclge_dev *hdev)
 {
+	struct hnae3_handle *rhandle = &hdev->vport[0].roce;
+	struct hnae3_handle *handle = &hdev->vport[0].nic;
 	struct hnae3_client *rclient = hdev->roce_client;
 	struct hnae3_client *client = hdev->nic_client;
-	struct hnae3_handle *rhandle;
-	struct hnae3_handle *handle;
 	int state;
 	int ret;
-	int i;
 
 	if (!client)
 		return;
@@ -2847,15 +2842,10 @@ static void hclge_update_link_status(struct hclge_dev *hdev)
 
 	if (state != hdev->hw.mac.link) {
 		hdev->hw.mac.link = state;
-		for (i = 0; i < hdev->num_vmdq_vport + 1; i++) {
-			handle = &hdev->vport[i].nic;
-			client->ops->link_status_change(handle, state);
-			hclge_config_mac_tnl_int(hdev, state);
-			rhandle = &hdev->vport[i].roce;
-			if (rclient && rclient->ops->link_status_change)
-				rclient->ops->link_status_change(rhandle,
-								 state);
-		}
+		client->ops->link_status_change(handle, state);
+		hclge_config_mac_tnl_int(hdev, state);
+		if (rclient && rclient->ops->link_status_change)
+			rclient->ops->link_status_change(rhandle, state);
 
 		hclge_push_link_status(hdev);
 	}
@@ -3429,8 +3419,9 @@ static void hclge_misc_irq_uninit(struct hclge_dev *hdev)
 int hclge_notify_client(struct hclge_dev *hdev,
 			enum hnae3_reset_notify_type type)
 {
+	struct hnae3_handle *handle = &hdev->vport[0].nic;
 	struct hnae3_client *client = hdev->nic_client;
-	u16 i;
+	int ret;
 
 	if (!test_bit(HCLGE_STATE_NIC_REGISTERED, &hdev->state) || !client)
 		return 0;
@@ -3438,27 +3429,20 @@ int hclge_notify_client(struct hclge_dev *hdev,
 	if (!client->ops->reset_notify)
 		return -EOPNOTSUPP;
 
-	for (i = 0; i < hdev->num_vmdq_vport + 1; i++) {
-		struct hnae3_handle *handle = &hdev->vport[i].nic;
-		int ret;
+	ret = client->ops->reset_notify(handle, type);
+	if (ret)
+		dev_err(&hdev->pdev->dev, "notify nic client failed %d(%d)\n",
+			type, ret);
 
-		ret = client->ops->reset_notify(handle, type);
-		if (ret) {
-			dev_err(&hdev->pdev->dev,
-				"notify nic client failed %d(%d)\n", type, ret);
-			return ret;
-		}
-	}
-
-	return 0;
+	return ret;
 }
 
 static int hclge_notify_roce_client(struct hclge_dev *hdev,
 				    enum hnae3_reset_notify_type type)
 {
+	struct hnae3_handle *handle = &hdev->vport[0].roce;
 	struct hnae3_client *client = hdev->roce_client;
-	int ret = 0;
-	u16 i;
+	int ret;
 
 	if (!test_bit(HCLGE_STATE_ROCE_REGISTERED, &hdev->state) || !client)
 		return 0;
@@ -3466,17 +3450,10 @@ static int hclge_notify_roce_client(struct hclge_dev *hdev,
 	if (!client->ops->reset_notify)
 		return -EOPNOTSUPP;
 
-	for (i = 0; i < hdev->num_vmdq_vport + 1; i++) {
-		struct hnae3_handle *handle = &hdev->vport[i].roce;
-
-		ret = client->ops->reset_notify(handle, type);
-		if (ret) {
-			dev_err(&hdev->pdev->dev,
-				"notify roce client failed %d(%d)",
-				type, ret);
-			return ret;
-		}
-	}
+	ret = client->ops->reset_notify(handle, type);
+	if (ret)
+		dev_err(&hdev->pdev->dev, "notify roce client failed %d(%d)",
+			type, ret);
 
 	return ret;
 }
@@ -3544,7 +3521,7 @@ static int hclge_set_all_vf_rst(struct hclge_dev *hdev, bool reset)
 {
 	int i;
 
-	for (i = hdev->num_vmdq_vport + 1; i < hdev->num_alloc_vport; i++) {
+	for (i = HCLGE_VF_VPORT_START_NUM; i < hdev->num_alloc_vport; i++) {
 		struct hclge_vport *vport = &hdev->vport[i];
 		int ret;
 
@@ -3627,14 +3604,12 @@ void hclge_report_hw_error(struct hclge_dev *hdev,
 			   enum hnae3_hw_error_type type)
 {
 	struct hnae3_client *client = hdev->nic_client;
-	u16 i;
 
 	if (!client || !client->ops->process_hw_error ||
 	    !test_bit(HCLGE_STATE_NIC_REGISTERED, &hdev->state))
 		return;
 
-	for (i = 0; i < hdev->num_vmdq_vport + 1; i++)
-		client->ops->process_hw_error(&hdev->vport[i].nic, type);
+	client->ops->process_hw_error(&hdev->vport[0].nic, type);
 }
 
 static void hclge_handle_imp_error(struct hclge_dev *hdev)
@@ -4424,7 +4399,7 @@ static int hclge_set_rss_algo_key(struct hclge_dev *hdev,
 	return 0;
 }
 
-static int hclge_set_rss_indir_table(struct hclge_dev *hdev, const u8 *indir)
+static int hclge_set_rss_indir_table(struct hclge_dev *hdev, const u16 *indir)
 {
 	struct hclge_rss_indirection_table_cmd *req;
 	struct hclge_desc desc;
@@ -4843,7 +4818,7 @@ static int hclge_init_rss_tc_mode(struct hclge_dev *hdev)
 int hclge_rss_init_hw(struct hclge_dev *hdev)
 {
 	struct hclge_vport *vport = hdev->vport;
-	u8 *rss_indir = vport[0].rss_indirection_tbl;
+	u16 *rss_indir = vport[0].rss_indirection_tbl;
 	u8 *key = vport[0].rss_hash_key;
 	u8 hfunc = vport[0].rss_algo;
 	int ret;
@@ -4865,49 +4840,48 @@ int hclge_rss_init_hw(struct hclge_dev *hdev)
 
 void hclge_rss_indir_init_cfg(struct hclge_dev *hdev)
 {
-	struct hclge_vport *vport = hdev->vport;
-	int i, j;
+	struct hclge_vport *vport = &hdev->vport[0];
+	int i;
 
-	for (j = 0; j < hdev->num_vmdq_vport + 1; j++) {
-		for (i = 0; i < HCLGE_RSS_IND_TBL_SIZE; i++)
-			vport[j].rss_indirection_tbl[i] =
-				i % vport[j].alloc_rss_size;
-	}
+	for (i = 0; i < hdev->ae_dev->dev_specs.rss_ind_tbl_size; i++)
+		vport->rss_indirection_tbl[i] = i % vport->alloc_rss_size;
 }
 
-static void hclge_rss_init_cfg(struct hclge_dev *hdev)
+static int hclge_rss_init_cfg(struct hclge_dev *hdev)
 {
-	int i, rss_algo = HCLGE_RSS_HASH_ALGO_TOEPLITZ;
-	struct hclge_vport *vport = hdev->vport;
+	u16 rss_ind_tbl_size = hdev->ae_dev->dev_specs.rss_ind_tbl_size;
+	int rss_algo = HCLGE_RSS_HASH_ALGO_TOEPLITZ;
+	struct hclge_vport *vport = &hdev->vport[0];
+	u16 *rss_ind_tbl;
 
 	if (hdev->ae_dev->dev_version >= HNAE3_DEVICE_VERSION_V2)
 		rss_algo = HCLGE_RSS_HASH_ALGO_SIMPLE;
 
-	for (i = 0; i < hdev->num_vmdq_vport + 1; i++) {
-		vport[i].rss_tuple_sets.ipv4_tcp_en =
-			HCLGE_RSS_INPUT_TUPLE_OTHER;
-		vport[i].rss_tuple_sets.ipv4_udp_en =
-			HCLGE_RSS_INPUT_TUPLE_OTHER;
-		vport[i].rss_tuple_sets.ipv4_sctp_en =
-			HCLGE_RSS_INPUT_TUPLE_SCTP4;
-		vport[i].rss_tuple_sets.ipv4_fragment_en =
-			HCLGE_RSS_INPUT_TUPLE_OTHER;
-		vport[i].rss_tuple_sets.ipv6_tcp_en =
-			HCLGE_RSS_INPUT_TUPLE_OTHER;
-		vport[i].rss_tuple_sets.ipv6_udp_en =
-			HCLGE_RSS_INPUT_TUPLE_OTHER;
-		vport[i].rss_tuple_sets.ipv6_sctp_en =
-			HCLGE_RSS_INPUT_TUPLE_SCTP6;
-		vport[i].rss_tuple_sets.ipv6_fragment_en =
-			HCLGE_RSS_INPUT_TUPLE_OTHER;
+	vport->rss_tuple_sets.ipv4_tcp_en = HCLGE_RSS_INPUT_TUPLE_OTHER;
+	vport->rss_tuple_sets.ipv4_udp_en = HCLGE_RSS_INPUT_TUPLE_OTHER;
+	vport->rss_tuple_sets.ipv4_sctp_en = HCLGE_RSS_INPUT_TUPLE_SCTP4;
+	vport->rss_tuple_sets.ipv4_fragment_en = HCLGE_RSS_INPUT_TUPLE_OTHER;
+	vport->rss_tuple_sets.ipv6_tcp_en = HCLGE_RSS_INPUT_TUPLE_OTHER;
+	vport->rss_tuple_sets.ipv6_udp_en = HCLGE_RSS_INPUT_TUPLE_OTHER;
+	vport->rss_tuple_sets.ipv6_sctp_en =
+		hdev->ae_dev->dev_version <= HNAE3_DEVICE_VERSION_V2 ?
+		HCLGE_RSS_INPUT_TUPLE_SCTP6 :
+		HCLGE_RSS_INPUT_TUPLE_SCTP4;
+	vport->rss_tuple_sets.ipv6_fragment_en = HCLGE_RSS_INPUT_TUPLE_OTHER;
 
-		vport[i].rss_algo = rss_algo;
+	vport->rss_algo = rss_algo;
 
-		memcpy(vport[i].rss_hash_key, hclge_hash_key,
-		       HCLGE_RSS_KEY_SIZE);
-	}
+	rss_ind_tbl = devm_kcalloc(&hdev->pdev->dev, rss_ind_tbl_size,
+				   sizeof(*rss_ind_tbl), GFP_KERNEL);
+	if (!rss_ind_tbl)
+		return -ENOMEM;
+
+	vport->rss_indirection_tbl = rss_ind_tbl;
+	memcpy(vport->rss_hash_key, hclge_hash_key, HCLGE_RSS_KEY_SIZE);
 
 	hclge_rss_indir_init_cfg(hdev);
+
+	return 0;
 }
 
 int hclge_bind_ring_with_vector(struct hclge_vport *vport,
@@ -10186,7 +10160,6 @@ static void hclge_info_show(struct hclge_dev *hdev)
 	dev_info(dev, "Desc num per TX queue: %u\n", hdev->num_tx_desc);
 	dev_info(dev, "Desc num per RX queue: %u\n", hdev->num_rx_desc);
 	dev_info(dev, "Numbers of vports: %u\n", hdev->num_alloc_vport);
-	dev_info(dev, "Numbers of vmdp vports: %u\n", hdev->num_vmdq_vport);
 	dev_info(dev, "Numbers of VF for this PF: %u\n", hdev->num_req_vfs);
 	dev_info(dev, "HW tc map: %u\n", hdev->hw_tc_map);
 	dev_info(dev, "Total buffer size for TX/RX: %u\n", hdev->pkt_buf_size);
@@ -10306,39 +10279,35 @@ static int hclge_init_client_instance(struct hnae3_client *client,
 				      struct hnae3_ae_dev *ae_dev)
 {
 	struct hclge_dev *hdev = ae_dev->priv;
-	struct hclge_vport *vport;
-	int i, ret;
+	struct hclge_vport *vport = &hdev->vport[0];
+	int ret;
 
-	for (i = 0; i <  hdev->num_vmdq_vport + 1; i++) {
-		vport = &hdev->vport[i];
+	switch (client->type) {
+	case HNAE3_CLIENT_KNIC:
+		hdev->nic_client = client;
+		vport->nic.client = client;
+		ret = hclge_init_nic_client_instance(ae_dev, vport);
+		if (ret)
+			goto clear_nic;
 
-		switch (client->type) {
-		case HNAE3_CLIENT_KNIC:
-			hdev->nic_client = client;
-			vport->nic.client = client;
-			ret = hclge_init_nic_client_instance(ae_dev, vport);
-			if (ret)
-				goto clear_nic;
+		ret = hclge_init_roce_client_instance(ae_dev, vport);
+		if (ret)
+			goto clear_roce;
 
-			ret = hclge_init_roce_client_instance(ae_dev, vport);
-			if (ret)
-				goto clear_roce;
-
-			break;
-		case HNAE3_CLIENT_ROCE:
-			if (hnae3_dev_roce_supported(hdev)) {
-				hdev->roce_client = client;
-				vport->roce.client = client;
-			}
-
-			ret = hclge_init_roce_client_instance(ae_dev, vport);
-			if (ret)
-				goto clear_roce;
-
-			break;
-		default:
-			return -EINVAL;
+		break;
+	case HNAE3_CLIENT_ROCE:
+		if (hnae3_dev_roce_supported(hdev)) {
+			hdev->roce_client = client;
+			vport->roce.client = client;
 		}
+
+		ret = hclge_init_roce_client_instance(ae_dev, vport);
+		if (ret)
+			goto clear_roce;
+
+		break;
+	default:
+		return -EINVAL;
 	}
 
 	return 0;
@@ -10357,39 +10326,27 @@ static void hclge_uninit_client_instance(struct hnae3_client *client,
 					 struct hnae3_ae_dev *ae_dev)
 {
 	struct hclge_dev *hdev = ae_dev->priv;
-	struct hclge_vport *vport;
-	int i;
+	struct hclge_vport *vport = &hdev->vport[0];
 
-#ifdef CONFIG_HNS3_TEST
-	if (ae_dev->ops->ext_uninit) {
-		vport = &hdev->vport[0];
-		ae_dev->ops->ext_uninit(&vport->nic);
+	if (hdev->roce_client) {
+		clear_bit(HCLGE_STATE_ROCE_REGISTERED, &hdev->state);
+		while (test_bit(HCLGE_STATE_RST_HANDLING, &hdev->state))
+			msleep(HCLGE_WAIT_RESET_DONE);
+
+		hdev->roce_client->ops->uninit_instance(&vport->roce, 0);
+		hdev->roce_client = NULL;
+		vport->roce.client = NULL;
 	}
-#endif
+	if (client->type == HNAE3_CLIENT_ROCE)
+		return;
+	if (hdev->nic_client && client->ops->uninit_instance) {
+		clear_bit(HCLGE_STATE_NIC_REGISTERED, &hdev->state);
+		while (test_bit(HCLGE_STATE_RST_HANDLING, &hdev->state))
+			msleep(HCLGE_WAIT_RESET_DONE);
 
-	for (i = 0; i < hdev->num_vmdq_vport + 1; i++) {
-		vport = &hdev->vport[i];
-		if (hdev->roce_client) {
-			clear_bit(HCLGE_STATE_ROCE_REGISTERED, &hdev->state);
-			while (test_bit(HCLGE_STATE_RST_HANDLING, &hdev->state))
-				msleep(HCLGE_WAIT_RESET_DONE);
-
-			hdev->roce_client->ops->uninit_instance(&vport->roce,
-								0);
-			hdev->roce_client = NULL;
-			vport->roce.client = NULL;
-		}
-		if (client->type == HNAE3_CLIENT_ROCE)
-			return;
-		if (hdev->nic_client && client->ops->uninit_instance) {
-			clear_bit(HCLGE_STATE_NIC_REGISTERED, &hdev->state);
-			while (test_bit(HCLGE_STATE_RST_HANDLING, &hdev->state))
-				msleep(HCLGE_WAIT_RESET_DONE);
-
-			client->ops->uninit_instance(&vport->nic, 0);
-			hdev->nic_client = NULL;
-			vport->nic.client = NULL;
-		}
+		client->ops->uninit_instance(&vport->nic, 0);
+		hdev->nic_client = NULL;
+		vport->nic.client = NULL;
 	}
 }
 
