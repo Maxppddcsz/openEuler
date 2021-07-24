@@ -18,6 +18,8 @@
 	BIT(HCLGE_VECTOR0_IMP_CMDQ_ERR_B)
 #define HCLGE_RAS_REG_NFE_MASK   0xFF00
 #define HCLGE_RAS_REG_ROCEE_ERR_MASK   0x3000000
+#define HCLGE_RAS_REG_ERR_MASK \
+	(HCLGE_RAS_REG_NFE_MASK | HCLGE_RAS_REG_ROCEE_ERR_MASK)
 
 #define HCLGE_VECTOR0_REG_MSIX_MASK   0x1FF00
 
@@ -137,6 +139,18 @@ enum hclge_mod_name_list {
 	MODULE_RCB_TX		= 12,
 	MODULE_TXDMA		= 13,
 	MODULE_MASTER		= 14,
+	/* add new MODULE NAME for NIC here in order */
+	MODULE_ROCEE_TOP	= 40,
+	MODULE_ROCEE_TIMER	= 41,
+	MODULE_ROCEE_MDB	= 42,
+	MODULE_ROCEE_TSP	= 43,
+	MODULE_ROCEE_TRP	= 44,
+	MODULE_ROCEE_SCC	= 45,
+	MODULE_ROCEE_CAEP	= 46,
+	MODULE_ROCEE_GEN_AC	= 47,
+	MODULE_ROCEE_QMM	= 48,
+	MODULE_ROCEE_LSAN	= 49,
+	/* add new MODULE NAME for RoCEE here in order */
 };
 
 enum hclge_err_type_list {
@@ -153,6 +167,10 @@ enum hclge_err_type_list {
 	ETS_ERROR		= 10,
 	NCSI_ERROR		= 11,
 	GLB_ERROR		= 12,
+	/* add new ERROR TYPE for NIC here in order */
+	ROCEE_NORMAL_ERR	= 40,
+	ROCEE_OVF_ERR		= 41,
+	/* add new ERROR TYPE for ROCEE here in order */
 };
 
 struct hclge_hw_blk {
