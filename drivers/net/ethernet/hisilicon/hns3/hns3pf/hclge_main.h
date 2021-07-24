@@ -361,7 +361,6 @@ struct hclge_tc_info {
 };
 
 struct hclge_cfg {
-	u8 vmdq_vport_num;
 	u8 tc_num;
 	u8 vlan_fliter_cap;
 	u16 tqp_desc_num;
@@ -772,7 +771,6 @@ struct hclge_dev {
 	struct semaphore reset_sem;	/* protect reset process */
 	u32 reset_fail_cnt;
 	u32 fw_version;
-	u16 num_vmdq_vport;		/* Num vmdq vport this PF has set up */
 	u16 num_tqps;			/* Num task queue pairs of this PF */
 	u16 num_req_vfs;		/* Num VFs requested for this PF */
 
