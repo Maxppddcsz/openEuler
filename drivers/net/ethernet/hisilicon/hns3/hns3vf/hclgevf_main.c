@@ -487,7 +487,6 @@ void hclgevf_update_link_status(struct hclgevf_dev *hdev, int link_state)
 
 	link_state =
 		test_bit(HCLGEVF_STATE_DOWN, &hdev->state) ? 0 : link_state;
-
 	if (link_state != hdev->hw.mac.link) {
 		hdev->hw.mac.link = link_state;
 		client->ops->link_status_change(handle, !!link_state);
@@ -2352,7 +2351,6 @@ static enum hclgevf_evt_cause hclgevf_check_evt_cause(struct hclgevf_dev *hdev,
 	/* fetch the events from their corresponding regs */
 	cmdq_stat_reg = hclgevf_read_dev(&hdev->hw,
 					 HCLGEVF_VECTOR0_CMDQ_STATE_REG);
-
 	if (BIT(HCLGEVF_VECTOR0_RST_INT_B) & cmdq_stat_reg) {
 		rst_ing_reg = hclgevf_read_dev(&hdev->hw, HCLGEVF_RST_ING);
 		dev_info(&hdev->pdev->dev,
