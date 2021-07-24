@@ -520,7 +520,6 @@ int hclge_tm_qs_shaper_cfg(struct hclge_vport *vport, int max_tx_rate)
 	struct hclge_shaper_ir_para ir_para;
 	struct hclge_dev *hdev = vport->back;
 	struct hclge_desc desc;
-	u8 ir_b, ir_u, ir_s;
 	u32 shaper_para;
 	int ret, i;
 
