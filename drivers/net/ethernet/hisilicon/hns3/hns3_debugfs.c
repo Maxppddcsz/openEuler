@@ -135,13 +135,6 @@ static struct hns3_dbg_cmd_info hns3_dbg_cmd[] = {
 		.init = hns3_dbg_common_file_init,
 	},
 	{
-		.name = "mac_tbl",
-		.cmd = HNAE3_DBG_CMD_MAC_TBL,
-		.dentry = HNS3_DBG_DENTRY_COMMON,
-		.buf_len = HNS3_DBG_READ_LEN_1MB,
-		.init = hns3_dbg_common_file_init,
-	},
-	{
 		.name = "mng_tbl",
 		.cmd = HNAE3_DBG_CMD_MNG_TBL,
 		.dentry = HNS3_DBG_DENTRY_COMMON,
@@ -312,6 +305,13 @@ static struct hns3_dbg_cmd_info hns3_dbg_cmd[] = {
 	{
 		.name = "vlan_config",
 		.cmd = HNAE3_DBG_CMD_VLAN_CONFIG,
+		.dentry = HNS3_DBG_DENTRY_COMMON,
+		.buf_len = HNS3_DBG_READ_LEN,
+		.init = hns3_dbg_common_file_init,
+	},
+	{
+		.name = "dev_info",
+		.cmd = HNAE3_DBG_CMD_DEV_INFO,
 		.dentry = HNS3_DBG_DENTRY_COMMON,
 		.buf_len = HNS3_DBG_READ_LEN,
 		.init = hns3_dbg_common_file_init,
@@ -659,6 +659,80 @@ static void hns3_dump_rx_bd_info(struct hns3_nic_priv *priv,
 	sprintf(result[j++], "NA");
 }
 
+static void
+hns3_dbg_dev_caps(struct hnae3_handle *h, char *buf, int len, int *pos)
+{
+	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(h->pdev);
+	static const char * const str[] = {"no", "yes"};
+	unsigned long *caps = ae_dev->caps;
+	u32 i, state;
+
+	*pos += scnprintf(buf + *pos, len - *pos, "dev capability:\n");
+
+	for (i = 0; i < ARRAY_SIZE(hns3_dbg_cap); i++) {
+		state = test_bit(hns3_dbg_cap[i].cap_bit, caps);
+		*pos += scnprintf(buf + *pos, len - *pos, "%s: %s\n",
+				  hns3_dbg_cap[i].name, str[state]);
+	}
+
+	*pos += scnprintf(buf + *pos, len - *pos, "\n");
+}
+
+static void
+hns3_dbg_dev_specs(struct hnae3_handle *h, char *buf, int len, int *pos)
+{
+	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(h->pdev);
+	struct hnae3_dev_specs *dev_specs = &ae_dev->dev_specs;
+	struct hnae3_knic_private_info *kinfo = &h->kinfo;
+
+	*pos += scnprintf(buf + *pos, len - *pos, "dev_spec:\n");
+	*pos += scnprintf(buf + *pos, len - *pos, "MAC entry num: %u\n",
+			  dev_specs->mac_entry_num);
+	*pos += scnprintf(buf + *pos, len - *pos, "MNG entry num: %u\n",
+			  dev_specs->mng_entry_num);
+	*pos += scnprintf(buf + *pos, len - *pos, "MAX non tso bd num: %u\n",
+			  dev_specs->max_non_tso_bd_num);
+	*pos += scnprintf(buf + *pos, len - *pos, "RSS ind tbl size: %u\n",
+			  dev_specs->rss_ind_tbl_size);
+	*pos += scnprintf(buf + *pos, len - *pos, "RSS key size: %u\n",
+			  dev_specs->rss_key_size);
+	*pos += scnprintf(buf + *pos, len - *pos, "RSS size: %u\n",
+			  kinfo->rss_size);
+	*pos += scnprintf(buf + *pos, len - *pos, "Allocated RSS size: %u\n",
+			  kinfo->req_rss_size);
+	*pos += scnprintf(buf + *pos, len - *pos,
+			  "Task queue pairs numbers: %u\n",
+			  kinfo->num_tqps);
+	*pos += scnprintf(buf + *pos, len - *pos, "RX buffer length: %u\n",
+			  kinfo->rx_buf_len);
+	*pos += scnprintf(buf + *pos, len - *pos, "Desc num per TX queue: %u\n",
+			  kinfo->num_tx_desc);
+	*pos += scnprintf(buf + *pos, len - *pos, "Desc num per RX queue: %u\n",
+			  kinfo->num_rx_desc);
+	*pos += scnprintf(buf + *pos, len - *pos,
+			  "Total number of enabled TCs: %u\n",
+			  kinfo->tc_info.num_tc);
+	*pos += scnprintf(buf + *pos, len - *pos, "MAX INT QL: %u\n",
+			  dev_specs->int_ql_max);
+	*pos += scnprintf(buf + *pos, len - *pos, "MAX INT GL: %u\n",
+			  dev_specs->max_int_gl);
+	*pos += scnprintf(buf + *pos, len - *pos, "MAX TM RATE: %u\n",
+			  dev_specs->max_tm_rate);
+	*pos += scnprintf(buf + *pos, len - *pos, "MAX QSET number: %u\n",
+			  dev_specs->max_qset_num);
+}
+
+static int hns3_dbg_dev_info(struct hnae3_handle *h, char *buf, int len)
+{
+	int pos = 0;
+
+	hns3_dbg_dev_caps(h, buf, len, &pos);
+
+	hns3_dbg_dev_specs(h, buf, len, &pos);
+
+	return 0;
+}
+
 static int hns3_dbg_rx_bd_info(struct hns3_dbg_data *d, char *buf, int len)
 {
 	char data_str[ARRAY_SIZE(rx_bd_info_items)][HNS3_DBG_DATA_STR_LEN];
@@ -809,6 +883,10 @@ static const struct hns3_dbg_func hns3_dbg_cmd_func[] = {
 	{
 		.cmd = HNAE3_DBG_CMD_TX_QUEUE_INFO,
 		.dbg_dump = hns3_dbg_tx_queue_info,
+	},
+	{
+		.cmd = HNAE3_DBG_CMD_DEV_INFO,
+		.dbg_dump = hns3_dbg_dev_info,
 	},
 };
 

@@ -1360,6 +1360,9 @@ static void hclge_set_default_dev_specs(struct hclge_dev *hdev)
 	ae_dev->dev_specs.max_non_tso_bd_num = HCLGE_MAX_NON_TSO_BD_NUM;
 	ae_dev->dev_specs.rss_ind_tbl_size = HCLGE_RSS_IND_TBL_SIZE;
 	ae_dev->dev_specs.rss_key_size = HCLGE_RSS_KEY_SIZE;
+	ae_dev->dev_specs.max_qset_num = HCLGE_MAX_QSET_NUM;
+	ae_dev->dev_specs.max_tm_rate = HCLGE_ETHER_MAX_RATE;
+	ae_dev->dev_specs.max_int_gl = HCLGE_DEF_MAX_INT_GL;
 }
 
 static void hclge_parse_dev_specs(struct hclge_dev *hdev,
@@ -1367,14 +1370,19 @@ static void hclge_parse_dev_specs(struct hclge_dev *hdev,
 {
 	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(hdev->pdev);
 	struct hclge_dev_specs_0_cmd *req0;
+	struct hclge_dev_specs_1_cmd *req1;
 
 	req0 = (struct hclge_dev_specs_0_cmd *)desc[0].data;
+	req1 = (struct hclge_dev_specs_1_cmd *)desc[1].data;
 
 	ae_dev->dev_specs.max_non_tso_bd_num = req0->max_non_tso_bd_num;
 	ae_dev->dev_specs.rss_ind_tbl_size =
 		le16_to_cpu(req0->rss_ind_tbl_size);
+	ae_dev->dev_specs.max_qset_num = le16_to_cpu(req1->max_qset_num);
 	ae_dev->dev_specs.int_ql_max = le16_to_cpu(req0->int_ql_max);
 	ae_dev->dev_specs.rss_key_size = le16_to_cpu(req0->rss_key_size);
+	ae_dev->dev_specs.max_tm_rate = le32_to_cpu(req0->max_tm_rate);
+	ae_dev->dev_specs.max_int_gl = le16_to_cpu(req1->max_int_gl);
 }
 
 static int hclge_query_dev_specs(struct hclge_dev *hdev)

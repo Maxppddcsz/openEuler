@@ -1324,16 +1324,16 @@ static int hclge_dbg_dump_mac_table(struct hclge_dev *hdev, char *buf, int len)
 	int j;
 
 	mc_tbl_len = sizeof(struct hclge_mac_vlan_idx_rd_mc) *
-		     HCLGE_DBG_MAC_TBL_MAX;
+						HCLGE_DBG_MAC_TBL_MAX;
 	mc_mac_tbl = kzalloc(mc_tbl_len, GFP_KERNEL);
 	if (!mc_mac_tbl)
 		return -ENOMEM;
 
 	pos += scnprintf(buf + pos, len - pos, "Unicast tab:\n");
 	pos += scnprintf(buf + pos, len - pos,
-			 " index  mac_addr            vlan_id  VMDq1  ");
+					 " index  mac_addr            vlan_id  VMDq1  ");
 	pos += scnprintf(buf + pos, len - pos,
-			 "U_M  mac_en  in_port  E_type  E_Port\n");
+					 "U_M  mac_en  in_port  E_type  E_Port\n");
 
 	mc_tbl_idx = 0;
 	for (i = 0; i < HCLGE_DBG_MAC_TBL_MAX; i++) {
@@ -1342,13 +1342,13 @@ static int hclge_dbg_dump_mac_table(struct hclge_dev *hdev, char *buf, int len)
 			msleep(HCLGE_DBG_PAUSE_TIME);
 
 		hclge_cmd_setup_basic_desc(&desc[0], HCLGE_PPP_MAC_VLAN_IDX_RD,
-					   true);
+								true);
 		desc[0].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
 		hclge_cmd_setup_basic_desc(&desc[1], HCLGE_PPP_MAC_VLAN_IDX_RD,
-					   true);
+								   true);
 		desc[1].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
 		hclge_cmd_setup_basic_desc(&desc[2], HCLGE_PPP_MAC_VLAN_IDX_RD,
-					   true);
+								   true);
 
 		mac_rd_cmd = (struct hclge_mac_vlan_idx_rd_cmd *)desc[0].data;
 
@@ -1356,7 +1356,7 @@ static int hclge_dbg_dump_mac_table(struct hclge_dev *hdev, char *buf, int len)
 		ret = hclge_cmd_send(&hdev->hw, desc, 3);
 		if (ret) {
 			dev_err(&hdev->pdev->dev,
-				"failed to dump mac table, ret = %d\n", ret);
+				    "failed to dump mac table, ret = %d\n", ret);
 			kfree(mc_mac_tbl);
 			return ret;
 		}
@@ -1367,58 +1367,58 @@ static int hclge_dbg_dump_mac_table(struct hclge_dev *hdev, char *buf, int len)
 		if (mac_rd_cmd->entry_type == HCLGE_DBG_MAC_MC_TBL) {
 			mc_mac_tbl[mc_tbl_idx].index = i;
 			memcpy(mc_mac_tbl[mc_tbl_idx].mac_addr,
-			       mac_rd_cmd->mac_addr, ETH_ALEN);
+				   mac_rd_cmd->mac_addr, ETH_ALEN);
 			memcpy(mc_mac_tbl[mc_tbl_idx].mg_vf_mb,
-			       desc[1].data, 24);
+				   desc[1].data, 24);
 			memcpy(&mc_mac_tbl[mc_tbl_idx].mg_vf_mb[24],
-			       desc[2].data, 8);
+				   desc[2].data, 8);
 			mc_tbl_idx++;
 
 			continue;
 		}
 
 		pos += scnprintf(buf + pos, len - pos, " %04u   %pM  ",
-				 i, mac_rd_cmd->mac_addr);
+						 i, mac_rd_cmd->mac_addr);
 
 		pos += scnprintf(buf + pos, len - pos,
-				 " %04u     %u      %u    %u       %u        ",
-				 le16_to_cpu(mac_rd_cmd->vlan_tag),
-				 mac_rd_cmd->entry_type &
-				 HCLGE_DBG_MAC_TBL_EN_TYPE,
-				 mac_rd_cmd->entry_type &
-				 HCLGE_DBG_MAC_TBL_MC_TYPE,
-				 mac_rd_cmd->mc_mac_en &
-				 HCLGE_DBG_MAC_TBL_MAC_EN,
-				 le16_to_cpu(mac_rd_cmd->port) &
-				 HCLGE_DBG_MAC_TBL_IN_PORT);
+						 " %04u     %u      %u    %u       %u        ",
+						 le16_to_cpu(mac_rd_cmd->vlan_tag),
+						 mac_rd_cmd->entry_type &
+						 HCLGE_DBG_MAC_TBL_EN_TYPE,
+						 mac_rd_cmd->entry_type &
+						 HCLGE_DBG_MAC_TBL_MC_TYPE,
+						 mac_rd_cmd->mc_mac_en &
+						 HCLGE_DBG_MAC_TBL_MAC_EN,
+						 le16_to_cpu(mac_rd_cmd->port) &
+						 HCLGE_DBG_MAC_TBL_IN_PORT);
 
 		pos += scnprintf(buf + pos, len - pos,
-				 "%lu       %04x\n",
-				 le16_to_cpu(mac_rd_cmd->egress_port) &
-				 HCLGE_DBG_MAC_TBL_E_PORT_B,
-				 le16_to_cpu(mac_rd_cmd->egress_port) &
-				 HCLGE_DBG_MAC_TBL_E_PORT);
+						 "%lu       %04x\n",
+						 le16_to_cpu(mac_rd_cmd->egress_port) &
+						 HCLGE_DBG_MAC_TBL_E_PORT_B,
+						 le16_to_cpu(mac_rd_cmd->egress_port) &
+						 HCLGE_DBG_MAC_TBL_E_PORT);
 	}
 
 	if (mc_tbl_idx > 0) {
 		pos += scnprintf(buf + pos, len - pos,
-				 "Multicast tab: entry number = %u\n",
-				 mc_tbl_idx);
+						 "Multicast tab: entry number = %u\n",
+						 mc_tbl_idx);
 		pos += scnprintf(buf + pos, len - pos,
-				 " index  mac_addr           UM_MC_RDATA\n");
+						 " index  mac_addr           UM_MC_RDATA\n");
 	}
 
 	for (i = 0; i < mc_tbl_idx; i++) {
 		pos += scnprintf(buf + pos, len - pos, " %04u   %pM  ",
-				 mc_mac_tbl[i].index, mc_mac_tbl[i].mac_addr);
+						 mc_mac_tbl[i].index, mc_mac_tbl[i].mac_addr);
 
 		for (j = 31; j >= 3; j -= 4)
 			pos += scnprintf(buf + pos, len - pos,
-					 "%02x%02x%02x%02x ",
-					 mc_mac_tbl[i].mg_vf_mb[j],
-					 mc_mac_tbl[i].mg_vf_mb[j - 1],
-					 mc_mac_tbl[i].mg_vf_mb[j - 2],
-					 mc_mac_tbl[i].mg_vf_mb[j - 3]);
+							 "%02x%02x%02x%02x ",
+							 mc_mac_tbl[i].mg_vf_mb[j],
+							 mc_mac_tbl[i].mg_vf_mb[j - 1],
+							 mc_mac_tbl[i].mg_vf_mb[j - 2],
+							 mc_mac_tbl[i].mg_vf_mb[j - 3]);
 
 		pos += scnprintf(buf + pos, len - pos, "\n");
 	}

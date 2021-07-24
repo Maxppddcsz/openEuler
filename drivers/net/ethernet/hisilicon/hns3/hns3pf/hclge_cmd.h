@@ -1148,7 +1148,8 @@ struct hclge_dev_specs_0_cmd {
 	__le16 rss_key_size;
 	__le16 int_ql_max;
 	u8 max_non_tso_bd_num;
-	u8 rsv1[5];
+	u8 rsv1;
+	__le32 max_tm_rate;
 };
 
 #define HCLGE_DEF_MAX_INT_GL		0x1FE0U
