@@ -5077,9 +5077,8 @@ static int hclge_set_promisc_mode(struct hnae3_handle *handle, bool en_uc_pmc,
 static void hclge_request_update_promisc_mode(struct hnae3_handle *handle)
 {
 	struct hclge_vport *vport = hclge_get_vport(handle);
-	struct hclge_dev *hdev = vport->back;
 
-	set_bit(HCLGE_STATE_PROMISC_CHANGED, &hdev->state);
+	set_bit(HCLGE_VPORT_STATE_PROMISC_CHANGE, &vport->state);
 }
 
 static int hclge_get_fd_mode(struct hclge_dev *hdev, u8 *fd_mode)
@@ -7266,6 +7265,8 @@ int hclge_vport_start(struct hclge_vport *vport)
 {
 	struct hclge_dev *hdev = vport->back;
 
+	set_bit(HCLGE_VPORT_STATE_ALIVE, &vport->state);
+	set_bit(HCLGE_VPORT_STATE_PROMISC_CHANGE, &vport->state);
 	vport->last_active_jiffies = jiffies;
 	set_bit(HCLGE_VPORT_STATE_START, &vport->state);
 	set_bit(HCLGE_VPORT_STATE_ALIVE, &vport->state);
@@ -9305,8 +9306,7 @@ static void hclge_restore_hw_table(struct hclge_dev *hdev)
 	hclge_restore_mac_table_common(vport);
 	hclge_restore_vport_port_base_vlan_config(hdev);
 	hclge_restore_vport_vlan_table(vport);
-	set_bit(HCLGE_STATE_PROMISC_CHANGED, &hdev->state);
-
+	set_bit(HCLGE_STATE_FD_USER_DEF_CHANGED, &hdev->state);
 	hclge_restore_fd_entries(handle);
 }
 
@@ -11030,7 +11030,7 @@ static int hclge_reset_ae_dev(struct hnae3_ae_dev *ae_dev)
 		return ret;
 	}
 
-	set_bit(HCLGE_STATE_PROMISC_CHANGED, &hdev->state);
+	set_bit(HCLGE_VPORT_STATE_PROMISC_CHANGE, &hdev->state);
 
 	/* Log and clear the hw errors those already occurred */
 	hclge_handle_all_hns_hw_errors(ae_dev);
@@ -11745,18 +11745,19 @@ static void hclge_sync_promisc_mode(struct hclge_dev *hdev)
 	int i;
 
 	if (vport->last_promisc_flags != vport->overflow_promisc_flags) {
-		set_bit(HCLGE_STATE_PROMISC_CHANGED, &hdev->state);
+		set_bit(HCLGE_VPORT_STATE_PROMISC_CHANGE, &vport->state);
 		vport->last_promisc_flags = vport->overflow_promisc_flags;
 	}
 
-	if (test_bit(HCLGE_STATE_PROMISC_CHANGED, &hdev->state)) {
+	if (test_bit(HCLGE_VPORT_STATE_PROMISC_CHANGE, &vport->state)) {
 		tmp_flags = handle->netdev_flags | vport->last_promisc_flags;
 		ret = hclge_set_promisc_mode(handle, tmp_flags & HNAE3_UPE,
 					     tmp_flags & HNAE3_MPE);
 		if (!ret) {
-			clear_bit(HCLGE_STATE_PROMISC_CHANGED, &hdev->state);
-			set_bit(HCLGE_VPORT_STATE_VLAN_FLTR_CHANGE,
-				&vport->state);
+			clear_bit(HCLGE_VPORT_STATE_PROMISC_CHANGE,
+				  &vport->state);
+			hclge_enable_vlan_filter(handle,
+						 tmp_flags & HNAE3_VLAN_FLTR);
 		}
 	}
 
