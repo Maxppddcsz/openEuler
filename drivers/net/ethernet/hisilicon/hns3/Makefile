@@ -35,7 +35,8 @@ HCLGE_OBJ = 	hns3pf/hclge_main.o \
 			hns3pf/hclge_debugfs.o \
 			hns3pf/hclge_tm.o \
 			hns3pf/hclge_mbx.o \
-			hns3pf/hclge_err.o
+			hns3pf/hclge_err.o \
+			hns3pf/hclge_ptp.o
 
 
 HCLGE_OBJ_IT_MAIN	=	hns3_extension/hns3pf/hclge_main_it.o \
