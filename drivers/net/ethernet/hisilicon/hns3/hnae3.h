@@ -89,6 +89,8 @@ enum HNAE3_DEV_CAP_BITS {
 	HNAE3_DEV_SUPPORT_TQP_TXRX_INDEP_B,
 	HNAE3_DEV_SUPPORT_HW_PAD_B,
 	HNAE3_DEV_SUPPORT_STASH_B,
+	HNAE3_DEV_SUPPORT_UDP_TUNNEL_CSUM_B,
+	HNAE3_DEV_SUPPORT_PAUSE_B,
 };
 
 #define hnae3_dev_fd_supported(hdev) \
@@ -694,6 +696,12 @@ struct hnae3_ae_ops {
 	void (*ext_init)(struct hnae3_handle *handle);
 	void (*ext_uninit)(struct hnae3_handle *handle);
 	void (*ext_reset_done)(struct hnae3_handle *handle);
+#endif
+#ifndef __GENKSYMS__
+	int (*get_phy_link_ksettings)(struct hnae3_handle *handle,
+				      struct ethtool_link_ksettings *cmd);
+	int (*set_phy_link_ksettings)(struct hnae3_handle *handle,
+				      const struct ethtool_link_ksettings *cmd);
 #endif
 };
 
