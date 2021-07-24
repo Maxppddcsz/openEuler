@@ -1836,7 +1836,13 @@ struct ethtool_link_settings {
 	__u8	eth_tp_mdix_ctrl;
 	__s8	link_mode_masks_nwords;
 	__u8	transceiver;
-	__u8	reserved1[3];
+#ifndef __GENKSYMS__
+	__u8    master_slave_cfg;
+	__u8    master_slave_state;
+	__u8    reserved1[1];
+#else
+	__u8   reserved1[3];
+#endif
 	__u32	reserved[7];
 	__u32	link_mode_masks[0];
 	/* layout of link_mode_masks fields:

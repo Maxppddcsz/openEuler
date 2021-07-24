@@ -89,6 +89,8 @@ enum HNAE3_DEV_CAP_BITS {
 	HNAE3_DEV_SUPPORT_TQP_TXRX_INDEP_B,
 	HNAE3_DEV_SUPPORT_HW_PAD_B,
 	HNAE3_DEV_SUPPORT_STASH_B,
+	HNAE3_DEV_SUPPORT_UDP_TUNNEL_CSUM_B,
+	HNAE3_DEV_SUPPORT_PAUSE_B,
 };
 
 #define hnae3_dev_fd_supported(hdev) \
@@ -680,7 +682,10 @@ struct hnae3_ae_ops {
 	int (*get_module_eeprom)(struct hnae3_handle *handle, u32 offset,
 				 u32 len, u8 *data);
 	bool (*get_cmdq_stat)(struct hnae3_handle *handle);
-
+	int (*get_phy_link_ksettings)(struct hnae3_handle *handle,
+				      struct ethtool_link_ksettings *cmd);
+	int (*set_phy_link_ksettings)(struct hnae3_handle *handle,
+				      const struct ethtool_link_ksettings *cmd);
 /* Notice! If the function is not for test, the definition must before
  * CONFIG_HNS3_TEST! Because RoCE will use this head file, and it won't
  * set CONFIG_HNS3_TEST, that may cause RoCE calling the wrong function.
