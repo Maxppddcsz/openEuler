@@ -3194,7 +3194,35 @@ static bool hns3_page_is_reusable(struct page *page)
 
 static bool hns3_can_reuse_page(struct hns3_desc_cb *cb)
 {
-	return (page_count(cb->priv) - cb->pagecnt_bias) == 1;
+	return page_count(cb->priv) == cb->pagecnt_bias;
+}
+
+static int hns3_handle_rx_copybreak(struct sk_buff *skb, int i,
+				    struct hns3_enet_ring *ring,
+				    int pull_len,
+				    struct hns3_desc_cb *desc_cb)
+{
+	struct hns3_desc *desc = &ring->desc[ring->next_to_clean];
+	u32 frag_offset = desc_cb->page_offset + pull_len;
+	int size = le16_to_cpu(desc->rx.size);
+	u32 frag_size = size - pull_len;
+	void *frag = napi_alloc_frag(frag_size);
+
+	if (unlikely(!frag)) {
+		hns3_ring_stats_update(ring, frag_alloc_err);
+
+		hns3_rl_err(ring_to_netdev(ring),
+			    "failed to allocate rx frag\n");
+		return -ENOMEM;
+	}
+
+	desc_cb->reuse_flag = 1;
+	memcpy(frag, desc_cb->buf + frag_offset, frag_size);
+	skb_add_rx_frag(skb, i, virt_to_page(frag),
+			offset_in_page(frag), frag_size, frag_size);
+
+	hns3_ring_stats_update(ring, frag_alloc);
+	return 0;
 }
 
 static void hns3_nic_reuse_page(struct sk_buff *skb, int i,
@@ -3206,13 +3234,12 @@ static void hns3_nic_reuse_page(struct sk_buff *skb, int i,
 	int size = le16_to_cpu(desc->rx.size);
 	u32 truesize = hns3_buf_size(ring);
 	u32 frag_size = size - pull_len;
+	int ret = 0;
 	bool reused;
 
-	if (unlikely(!hns3_page_is_reusable(desc_cb->priv)) ||
-	    (!desc_cb->page_offset && !hns3_can_reuse_page(desc_cb))) {
-		__page_frag_cache_drain(desc_cb->priv, desc_cb->pagecnt_bias);
-		return;
-	}
+	/* Avoid re-using remote or pfmem page */
+	if (unlikely(!dev_page_is_reusable(desc_cb->priv)))
+		goto out;
 
 	reused = hns3_can_reuse_page(desc_cb);
 
@@ -3236,26 +3263,7 @@ static void hns3_nic_reuse_page(struct sk_buff *skb, int i,
 		desc_cb->page_offset = 0;
 		desc_cb->reuse_flag = 1;
 	} else if (frag_size <= ring->rx_copybreak) {
-		void *frag = napi_alloc_frag(frag_size);
-
-		if (unlikely(!frag)) {
-			u64_stats_update_begin(&ring->syncp);
-			ring->stats.frag_alloc_err++;
-			u64_stats_update_end(&ring->syncp);
-
-			hns3_rl_err(ring_to_netdev(ring),
-				    "failed to allocate rx frag\n");
-			goto out;
-		}
-
-		desc_cb->reuse_flag = 1;
-		memcpy(frag, desc_cb->buf + frag_offset, frag_size);
-		skb_add_rx_frag(skb, i, virt_to_page(frag),
-				offset_in_page(frag), frag_size, frag_size);
-
-		u64_stats_update_begin(&ring->syncp);
-		ring->stats.frag_alloc++;
-		u64_stats_update_end(&ring->syncp);
+		ret = hns3_handle_rx_copybreak(skb, i, ring, pull_len, desc_cb);
 		return;
 	}
 
