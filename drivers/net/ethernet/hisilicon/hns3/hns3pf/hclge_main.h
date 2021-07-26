@@ -8,6 +8,7 @@
 #include <linux/phy.h>
 #include <linux/if_vlan.h>
 #include <linux/kfifo.h>
+#include <net/devlink.h>
 
 #include "hclge_cmd.h"
 #include "hclge_ptp.h"
@@ -962,6 +963,7 @@ struct hclge_dev {
 	struct hclge_ptp *ptp;
 	struct hnae3_notify_pkt_param notify_param;
 	struct hnae3_torus_param torus_param;
+	struct devlink *devlink;
 };
 
 /* VPort level vlan tag configuration for TX direction */
