@@ -52,7 +52,7 @@ hclge-objs += hns3pf/hclge_ext.o
 hclge-$(CONFIG_HNS3_DCB) += hns3pf/hclge_dcb.o
 #### compile hclgevf.ko
 obj-$(CONFIG_HNS3_HCLGEVF) += hclgevf.o
-hclgevf-objs := hns3vf/hclgevf_main.o hns3vf/hclgevf_cmd.o hns3vf/hclgevf_mbx.o
+hclgevf-objs := hns3vf/hclgevf_main.o hns3vf/hclgevf_cmd.o hns3vf/hclgevf_mbx.o hns3vf/hclgevf_devlink.o
 
 #### compile hns3_cae.ko
 #add rally code
