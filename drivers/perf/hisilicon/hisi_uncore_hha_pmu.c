@@ -93,7 +93,7 @@ static void hisi_hha_pmu_config_ds(struct perf_event *event)
 
 		val = readl(hha_pmu->base + HHA_DATSRC_CTRL);
 		val |= HHA_DATSRC_SKT_EN;
-		writel(ds_skt, hha_pmu->base + HHA_DATSRC_CTRL);
+		writel(val, hha_pmu->base + HHA_DATSRC_CTRL);
 	}
 }
 
@@ -107,7 +107,7 @@ static void hisi_hha_pmu_clear_ds(struct perf_event *event)
 
 		val = readl(hha_pmu->base + HHA_DATSRC_CTRL);
 		val &= ~HHA_DATSRC_SKT_EN;
-		writel(ds_skt, hha_pmu->base + HHA_DATSRC_CTRL);
+		writel(val, hha_pmu->base + HHA_DATSRC_CTRL);
 	}
 }
 
