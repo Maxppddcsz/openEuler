@@ -13,6 +13,7 @@
 #define _HISI_SAS_H_
 
 #include <linux/acpi.h>
+#include <linux/async.h>
 #include <linux/clk.h>
 #include <linux/debugfs.h>
 #include <linux/dmapool.h>
