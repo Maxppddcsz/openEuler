@@ -2494,9 +2494,9 @@ static void slot_complete_v3_hw(struct hisi_hba *hisi_hba,
 
 		set_aborted_iptt(hisi_hba, slot);
 		slot_err_v3_hw(hisi_hba, task, slot);
-		dev_info(dev, "erroneous completion iptt=%d task=%pK dev id=%d sas_addr=0x%llx CQ hdr: 0x%x 0x%x 0x%x 0x%x Error info: 0x%x 0x%x 0x%x 0x%x\n",
+		dev_info(dev, "erroneous completion iptt=%d task=%pK dev id=%d addr%016llx sas_addr=0x%llx CQ hdr: 0x%x 0x%x 0x%x 0x%x Error info: 0x%x 0x%x 0x%x 0x%x\n",
 			 slot->idx, task, sas_dev->device_id,
-			 itct->sas_addr,
+			 SAS_ADDR(device->sas_addr), itct->sas_addr,
 			 dw0, dw1,
 			 complete_hdr->act, dw3,
 			 error_info[0], error_info[1],
