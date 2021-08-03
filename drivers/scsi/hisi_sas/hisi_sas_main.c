@@ -601,9 +601,10 @@ static int hisi_sas_task_exec(struct sas_task *task, gfp_t gfp_flags,
 	hisi_hba = dev_to_hisi_hba(device);
 	dev = hisi_hba->dev;
 
-	if (unlikely(test_bit(HISI_SAS_REJECT_CMD_BIT, &hisi_hba->flags)))
-		return -EINVAL;
-
+	if (unlikely(test_bit(HISI_SAS_REJECT_CMD_BIT, &hisi_hba->flags))) {
+		if (!gfpflags_allow_blocking(gfp_flags))
+			return -EINVAL;
+	}
 
 	/* protect task_prep and start_delivery sequence */
 	rc = hisi_sas_task_prep(task, is_tmf, tmf, &pass, &dq);
