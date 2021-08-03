@@ -373,6 +373,7 @@ struct hisi_sas_hw {
 	const struct cpumask *(*get_managed_irq_aff)(struct hisi_hba
 			*hisi_hba, int queue);
 	void (*debugfs_work_handler)(struct work_struct *work);
+	void (*debugfs_snapshot_regs)(struct hisi_hba *hisi_hba);
 	int complete_hdr_size;
 	struct scsi_host_template *sht;
 };
