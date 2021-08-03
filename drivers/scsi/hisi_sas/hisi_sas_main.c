@@ -1670,6 +1670,7 @@ static int hisi_sas_controller_reset(struct hisi_hba *hisi_hba)
 	}
 
 	hisi_sas_controller_reset_done(hisi_hba);
+	clear_bit(HISI_SAS_HW_FAULT_BIT, &hisi_hba->flags);
 	dev_info(dev, "controller reset complete\n");
 
 	return 0;
@@ -2149,6 +2150,9 @@ _hisi_sas_internal_task_abort(struct hisi_hba *hisi_hba,
 	if (!hisi_hba->hw->prep_abort)
 		return TMF_RESP_FUNC_FAILED;
 
+	if (test_bit(HISI_SAS_HW_FAULT_BIT, &hisi_hba->flags))
+		return -EIO;
+
 	task = sas_alloc_slow_task(GFP_KERNEL);
 	if (!task)
 		return -ENOMEM;
@@ -2178,6 +2182,8 @@ _hisi_sas_internal_task_abort(struct hisi_hba *hisi_hba,
 
 		if (!(task->task_state_flags & SAS_TASK_STATE_DONE)) {
 			struct hisi_sas_slot *slot = task->lldd_task;
+
+			set_bit(HISI_SAS_HW_FAULT_BIT, &hisi_hba->flags);
 
 			if (slot) {
 				struct hisi_sas_cq *cq =
