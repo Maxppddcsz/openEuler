@@ -204,6 +204,7 @@ struct hisi_sas_phy {
 	enum sas_linkrate	maximum_linkrate;
 	u32		code_error_count;
 	int enable;
+	int wait_phyup_cnt;
 	atomic_t down_cnt;
 
 	/* Trace FIFO */
