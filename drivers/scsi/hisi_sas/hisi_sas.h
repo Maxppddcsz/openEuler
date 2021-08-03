@@ -260,24 +260,6 @@ struct hisi_sas_slot {
 	int	idx;
 };
 
-#define HISI_SAS_DEBUGFS_REG(x) {#x, x}
-
-struct hisi_sas_debugfs_reg_lu {
-	char *name;
-	int off;
-};
-
-struct hisi_sas_debugfs_reg {
-	const struct hisi_sas_debugfs_reg_lu *lu;
-	int count;
-	int base_off;
-	union {
-		u32 (*read_global_reg)(struct hisi_hba *hisi_hba, u32 off);
-		u32 (*read_port_reg)(struct hisi_hba *hisi_hba, int port,
-				     u32 off);
-	};
-};
-
 enum {
 	HISI_SAS_BIST_LOOPBACK_MODE_DIGITAL = 0,
 	HISI_SAS_BIST_LOOPBACK_MODE_SERDES,
@@ -377,15 +359,8 @@ struct hisi_sas_hw {
 	const struct cpumask *(*get_managed_irq_aff)(struct hisi_hba
 			*hisi_hba, int queue);
 	void (*debugfs_work_handler)(struct work_struct *work);
-	void (*read_iost_itct_cache)(struct hisi_hba *hisi_hba,
-				     enum hisi_sas_debugfs_cache_type type,
-				     u32 *cache);
 	int complete_hdr_size;
 	struct scsi_host_template *sht;
-
-	const struct hisi_sas_debugfs_reg *debugfs_reg_array[DEBUGFS_REGS_NUM];
-	const struct hisi_sas_debugfs_reg *debugfs_reg_port;
-	int (*set_bist)(struct hisi_hba *hisi_hba, bool enable);
 };
 
 #define HISI_SAS_MAX_DEBUGFS_DUMP (50)
@@ -710,8 +685,5 @@ extern void hisi_sas_release_tasks(struct hisi_hba *hisi_hba);
 extern u8 hisi_sas_get_prog_phy_linkrate_mask(enum sas_linkrate max);
 extern void hisi_sas_controller_reset_prepare(struct hisi_hba *hisi_hba);
 extern void hisi_sas_controller_reset_done(struct hisi_hba *hisi_hba);
-extern void hisi_sas_debugfs_init(struct hisi_hba *hisi_hba);
-extern void hisi_sas_debugfs_exit(struct hisi_hba *hisi_hba);
 extern void hisi_sas_snapshot_regs(struct hisi_hba *hisi_hba);
-extern void hisi_sas_debugfs_work_handler(struct work_struct *work);
 #endif
