@@ -2273,7 +2273,6 @@ int sas_ex_revalidate_domain(struct domain_device *port_dev)
 	 * go again to pick up on any new devices on a separate pass
 	 */
 	if (unregistered > 0) {
-		struct asd_sas_port *port = dev->port;
 		struct asd_sas_phy *sas_phy;
 		struct ex_phy *phy;
 
@@ -2288,7 +2287,8 @@ int sas_ex_revalidate_domain(struct domain_device *port_dev)
 		sas_phy = container_of(dev->port->phy_list.next,
 				struct asd_sas_phy,
 				port_phy_el);
-		port->ha->notify_port_event(sas_phy, PORTE_BROADCAST_RCVD);
+		sas_notify_port_event(sas_phy, PORTE_BROADCAST_RCVD,
+				      in_interrupt() ? GFP_ATOMIC : GFP_KERNEL);
 
 		return 0;
 	}
