@@ -568,11 +568,6 @@ module_param(user_ctl_irq, bool, 0444);
 MODULE_PARM_DESC(user_ctl_irq, "Enable user control irq affinity:\n"
 			       "default is auto-control irq affinity");
 
-static bool auto_affine_msi_experimental;
-module_param(auto_affine_msi_experimental, bool, 0444);
-MODULE_PARM_DESC(auto_affine_msi_experimental, "Enable auto-affinity of MSI IRQs as experimental:\n"
-		 "default is off");
-
 static void debugfs_work_handler_v3_hw(struct work_struct *work);
 
 static u32 hisi_sas_read32(struct hisi_hba *hisi_hba, u32 off)
