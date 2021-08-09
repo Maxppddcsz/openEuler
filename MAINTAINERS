@@ -6679,6 +6679,13 @@ S:	Maintained
 F:	drivers/infiniband/hw/hns/Makefile
 F:	drivers/infiniband/hw/hns/roce-customer/
 
+HISILICON SPI Controller DRIVER FOR KUNPENG SOCS
+M:	Jay Fang <f.fangjian@huawei.com>
+L:	linux-spi@vger.kernel.org
+S:	Maintained
+W:	http://www.hisilicon.com
+F:	drivers/spi/spi-hisi-kunpeng.c
+
 HISILICON WARPDRIVE USER
 M:	Zaibo Xu <xuzaibo@huawei.com>
 M:	Zhou Wang <wangzhou1@hisilicon.com>
