@@ -22,6 +22,7 @@ int hclge_devlink_init(struct hclge_dev *hdev)
 
 	priv = devlink_priv(devlink);
 	priv->hdev = hdev;
+	hdev->devlink = devlink;
 
 	ret = devlink_register(devlink, &pdev->dev);
 	if (ret) {
@@ -30,7 +31,7 @@ int hclge_devlink_init(struct hclge_dev *hdev)
 		goto out_reg_fail;
 	}
 
-	hdev->devlink = devlink;
+	devlink_reload_enable(devlink);
 
 	return 0;
 
@@ -43,12 +44,9 @@ void hclge_devlink_uninit(struct hclge_dev *hdev)
 {
 	struct devlink *devlink = hdev->devlink;
 
-	if (!devlink)
-		return;
+	devlink_reload_disable(devlink);
 
 	devlink_unregister(devlink);
 
 	devlink_free(devlink);
-
-	hdev->devlink = NULL;
 }
