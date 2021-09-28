@@ -185,30 +185,6 @@ struct hclge_hw_error {
 	enum hnae3_reset_type reset_level;
 };
 
-extern const struct hclge_hw_error hclge_imp_tcm_ecc_int[];
-extern const struct hclge_hw_error hclge_cmdq_nic_mem_ecc_int[];
-extern const struct hclge_hw_error hclge_tqp_int_ecc_int[];
-extern const struct hclge_hw_error hclge_msix_sram_ecc_int[];
-extern const struct hclge_hw_error hclge_igu_int[];
-extern const struct hclge_hw_error hclge_igu_egu_tnl_int[];
-extern const struct hclge_hw_error hclge_ncsi_err_int[];
-extern const struct hclge_hw_error hclge_ppp_mpf_abnormal_int_st1[];
-extern const struct hclge_hw_error hclge_ppp_pf_abnormal_int[];
-extern const struct hclge_hw_error hclge_ppp_mpf_abnormal_int_st3[];
-extern const struct hclge_hw_error hclge_tm_sch_rint[];
-extern const struct hclge_hw_error hclge_qcn_fifo_rint[];
-extern const struct hclge_hw_error hclge_qcn_ecc_rint[];
-extern const struct hclge_hw_error hclge_mac_afifo_tnl_int[];
-extern const struct hclge_hw_error hclge_ppu_mpf_abnormal_int_st2[];
-extern const struct hclge_hw_error hclge_ppu_mpf_abnormal_int_st3[];
-extern const struct hclge_hw_error hclge_ppu_pf_abnormal_int[];
-extern const struct hclge_hw_error hclge_ssu_com_err_int[];
-extern const struct hclge_hw_error hclge_ssu_mem_ecc_err_int[];
-extern const struct hclge_hw_error hclge_ssu_port_based_err_int[];
-extern const struct hclge_hw_error hclge_ssu_fifo_overflow_int[];
-extern const struct hclge_hw_error hclge_ssu_ets_tcg_int[];
-extern const struct hclge_hw_error hclge_ssu_port_based_pf_int[];
-extern const struct hclge_hw_error hclge_rocee_qmm_ovf_err_int[];
 struct hclge_hw_module_id {
 	enum hclge_mod_name_list module_id;
 	const char *msg;
