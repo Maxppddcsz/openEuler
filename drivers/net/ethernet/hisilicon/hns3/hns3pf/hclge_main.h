@@ -208,6 +208,7 @@ enum HLCGE_PORT_TYPE {
 #define HCLGE_SUPPORT_40G_BIT		BIT(5)
 #define HCLGE_SUPPORT_100M_BIT		BIT(6)
 #define HCLGE_SUPPORT_10M_BIT		BIT(7)
+#define HCLGE_SUPPORT_200G_BIT         BIT(8)
 #define HCLGE_SUPPORT_GE \
 	(HCLGE_SUPPORT_1G_BIT | HCLGE_SUPPORT_100M_BIT | HCLGE_SUPPORT_10M_BIT)
 
@@ -385,7 +386,7 @@ struct hclge_cfg {
 	u8 default_speed;
 	u32 numa_node_map;
 	u32 tx_spare_buf_size;
-	u8 speed_ability;
+	u16 speed_ability;
 	u16 umv_space;
 };
 
@@ -1010,6 +1011,11 @@ struct hclge_vport {
 	/* for sysfs */
 	struct kobject kobj;
 #endif
+};
+
+struct hclge_speed_bit_map {
+	u32 speed;
+	u32 speed_bit;
 };
 
 int hclge_set_vport_promisc_mode(struct hclge_vport *vport, bool en_uc_pmc,
