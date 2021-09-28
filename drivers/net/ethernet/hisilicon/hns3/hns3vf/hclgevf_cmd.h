@@ -156,6 +156,8 @@ enum HCLGEVF_CAP_BITS {
 	HCLGEVF_CAP_TQP_TXRX_INDEP_B,
 	HCLGEVF_CAP_HW_PAD_B,
 	HCLGEVF_CAP_STASH_B,
+	HCLGEVF_CAP_UDP_TUNNEL_CSUM_B,
+	HCLGEVF_CAP_RXD_ADV_LAYOUT_B = 15,
 };
 
 #define HCLGEVF_QUERY_CAP_LENGTH		3
@@ -283,6 +285,12 @@ struct hclgevf_dev_specs_1_cmd {
        __le32 rsv0;
        __le16 max_int_gl;
        u8 rsv1[18];
+};
+
+/* capabilities bits map between imp firmware and local driver */
+struct hclgevf_caps_bit_map {
+	u16 imp_bit;
+	u16 local_bit;
 };
 
 static inline void hclgevf_write_reg(void __iomem *base, u32 reg, u32 value)
