@@ -2467,7 +2467,7 @@ static void hclge_handle_over_8bd_err(struct hclge_dev *hdev,
 		ret = hclge_inform_reset_assert_to_vf(&hdev->vport[vf_id]);
 		if (ret)
 			dev_err(dev, "inform reset to vport(%u) failed %d!\n",
-				hdev->vport->vport_id, ret);
+				vf_id, ret);
 	} else {
 		set_bit(HNAE3_FUNC_RESET, reset_requests);
 	}
