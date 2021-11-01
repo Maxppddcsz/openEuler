@@ -62,6 +62,7 @@ struct symbol {
 struct reloc {
 	struct list_head list;
 	struct hlist_node hash;
+	struct reloc *next;
 	union {
 		GElf_Rela rela;
 		GElf_Rel  rel;
