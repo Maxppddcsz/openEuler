@@ -7931,10 +7931,6 @@ int hclge_add_uc_addr_common(struct hclge_vport *vport,
 	if (!ret)
 		return -EEXIST;
 
-	dev_err(&hdev->pdev->dev,
-		"PF failed to add unicast entry(%pM) in the MAC table\n",
-		addr);
-
 	return -ENOSPC;
 }
 
@@ -8091,7 +8087,13 @@ static void hclge_sync_mac_list(struct hclge_vport *vport,
 		} else {
 			set_bit(HCLGE_VPORT_STATE_MAC_TBL_CHANGE,
 				&vport->state);
-			break;
+
+			/* If one unicast mac address is existing in hardware,
+			 * we need to try whether other unicast mac addresses
+			 * are new addresses that can be added.
+			 */
+			if (ret != -EEXIST)
+				break;
 		}
 	}
 }
