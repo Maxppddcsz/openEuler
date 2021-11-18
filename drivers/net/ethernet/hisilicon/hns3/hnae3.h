@@ -349,6 +349,9 @@ struct hnae3_dev_specs {
 	u16 max_int_gl; /* max value of interrupt coalesce based on INT_GL */
 	u8 max_non_tso_bd_num; /* max BD number of one non-TSO packet */
 	u16 max_qset_num;
+	u16 umv_size;
+	u16 mc_mac_size;
+	u32 mac_stats_num;
 };
 
 struct hnae3_client_ops {
