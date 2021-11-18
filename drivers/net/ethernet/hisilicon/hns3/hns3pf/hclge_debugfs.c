@@ -521,7 +521,8 @@ static int hclge_dbg_dump_dcb_port(struct hclge_dev *hdev, char *buf, int len,
 
 	req.bitmap = (u8)le32_to_cpu(desc.data[1]);
 
-	*pos += scnprintf(buf + *pos, len - *pos, "port_mask: %#x\n", req.bit0);
+	*pos += scnprintf(buf + *pos, len - *pos, "port_mask: %#x\n",
+			 req.bit0);
 	*pos += scnprintf(buf + *pos, len - *pos, "port_shaping_pass: %#x\n",
 			 req.bit1);
 
