@@ -842,7 +842,7 @@ static const struct hns3_dbg_item tx_bd_info_items[] = {
 	{ "SIZE", 2 },
 	{ "T_CS_VLAN_TSO", 2 },
 	{ "OT_VLAN_TAG", 3 },
-	{ "TV", 2 },
+	{ "TV", 5 },
 	{ "OLT_VLAN_LEN", 2 },
 	{ "PAYLEN_OL4CS", 2 },
 	{ "BD_FE_SC_VLD", 2 },
