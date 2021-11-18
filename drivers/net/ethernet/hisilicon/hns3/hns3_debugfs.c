@@ -448,7 +448,7 @@ static const struct hns3_dbg_item rx_queue_info_items[] = {
 	{ "TAIL", 2 },
 	{ "HEAD", 2 },
 	{ "FBDNUM", 2 },
-	{ "PKTNUM", 2 },
+	{ "PKTNUM", 5 },
 	{ "COPYBREAK", 2 },
 	{ "RING_EN", 2 },
 	{ "RX_RING_EN", 2 },
