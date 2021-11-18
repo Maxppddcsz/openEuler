@@ -1069,6 +1069,15 @@ static inline int hclge_get_queue_id(struct hnae3_queue *queue)
 	return tqp->index;
 }
 
+static inline void linkmode_mod_bit(int nr, volatile unsigned long *addr,
+				    int set)
+{
+	if (set)
+		linkmode_set_bit(nr, addr);
+	else
+		linkmode_clear_bit(nr, addr);
+}
+
 static inline bool hclge_is_reset_pending(struct hclge_dev *hdev)
 {
 	return !!hdev->reset_pending;
