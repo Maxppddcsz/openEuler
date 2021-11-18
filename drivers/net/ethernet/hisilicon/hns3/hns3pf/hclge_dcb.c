@@ -525,13 +525,18 @@ static int hclge_setup_tc(struct hnae3_handle *h,
 	return hclge_notify_init_up(hdev);
 
 err_out:
-	/* roll-back */
-	memcpy(&kinfo->tc_info, &old_tc_info, sizeof(old_tc_info));
-	if (hclge_config_tc(hdev, &kinfo->tc_info))
-		dev_err(&hdev->pdev->dev,
-			"failed to roll back tc configuration\n");
-
-	(void)hclge_notify_init_up(hdev);
+	if (!tc) {
+		dev_warn(&hdev->pdev->dev,
+			 "failed to destroy mqprio, will active after reset, ret = %d\n",
+			 ret);
+	} else {
+		/* roll-back */
+		memcpy(&kinfo->tc_info, &old_tc_info, sizeof(old_tc_info));
+		if (hclge_config_tc(hdev, &kinfo->tc_info))
+			dev_err(&hdev->pdev->dev,
+				"failed to roll back tc configuration\n");
+	}
+	hclge_notify_init_up(hdev);
 
 	return ret;
 }
