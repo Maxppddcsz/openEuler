@@ -68,6 +68,7 @@ static int register_cpu_capacity_sysctl(void)
 }
 subsys_initcall(register_cpu_capacity_sysctl);
 
+static u32 capacity_scale;
 static int update_topology;
 
 int topology_update_cpu_topology(void)
@@ -75,7 +76,14 @@ int topology_update_cpu_topology(void)
 	return update_topology;
 }
 
-static u32 capacity_scale;
+void __weak arch_rebuild_cpu_topology(void)
+{
+	update_topology = 1;
+	rebuild_sched_domains();
+	pr_debug("sched_domain hierarchy rebuilt, flags updated\n");
+	update_topology = 0;
+}
+
 static u32 *raw_capacity;
 
 static int free_raw_capacity(void)

@@ -1190,6 +1190,12 @@ static inline void rq_repin_lock(struct rq *rq, struct rq_flags *rf)
 #endif
 }
 
+#ifdef CONFIG_SCHED_CLUSTER
+extern void set_sched_cluster(void);
+#else
+static inline void set_sched_cluster(void) { }
+#endif
+
 #ifdef CONFIG_NUMA
 enum numa_topology_type {
 	NUMA_DIRECT,
