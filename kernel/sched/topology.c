@@ -1330,8 +1330,16 @@ static struct sched_domain_topology_level default_topology[] = {
 static struct sched_domain_topology_level *sched_domain_topology =
 	default_topology;
 
+static struct sched_domain_topology_level *
+next_tl(struct sched_domain_topology_level *tl)
+{
+	while (tl->mask && tl->flags & SDTL_SKIP)
+		++tl;
+	return tl;
+}
+
 #define for_each_sd_topology(tl)			\
-	for (tl = sched_domain_topology; tl->mask; tl++)
+	for (tl = next_tl(sched_domain_topology); tl->mask; tl = next_tl(++tl))
 
 void set_sched_topology(struct sched_domain_topology_level *tl)
 {
@@ -1872,7 +1880,7 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 		for_each_sd_topology(tl) {
 			sd = build_sched_domain(tl, cpu_map, attr, sd, i);
 			has_cluster |= sd->flags & SD_CLUSTER;
-			if (tl == sched_domain_topology)
+			if (tl == next_tl(sched_domain_topology))
 				*per_cpu_ptr(d.sd, i) = sd;
 			if (tl->flags & SDTL_OVERLAP)
 				sd->flags |= SD_OVERLAP;
