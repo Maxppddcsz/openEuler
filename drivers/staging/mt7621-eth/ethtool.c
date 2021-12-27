@@ -145,7 +145,9 @@ out_get_link:
 }
 
 static int mtk_set_ringparam(struct net_device *dev,
-			     struct ethtool_ringparam *ring)
+			     struct ethtool_ringparam *ring,
+			     struct kernel_ethtool_ringparam *kernel_param,
+			     struct netlink_ext_ack *extack)
 {
 	struct mtk_mac *mac = netdev_priv(dev);
 
@@ -164,7 +166,9 @@ static int mtk_set_ringparam(struct net_device *dev,
 }
 
 static void mtk_get_ringparam(struct net_device *dev,
-			      struct ethtool_ringparam *ring)
+			      struct ethtool_ringparam *ring,
+			      struct kernel_ethtool_ringparam *kernel_param,
+			      struct netlink_ext_ack *extack)
 {
 	struct mtk_mac *mac = netdev_priv(dev);
 

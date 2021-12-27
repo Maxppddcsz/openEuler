@@ -21,6 +21,7 @@
 #include <linux/ethtool.h>
 #include <linux/linkmode.h>
 #include <linux/mdio.h>
+#include <linux/netlink.h>
 #include <linux/mii.h>
 #include <linux/module.h>
 #include <linux/timer.h>

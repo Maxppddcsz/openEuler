@@ -2973,7 +2973,9 @@ static int cpsw_nway_reset(struct net_device *ndev)
 }
 
 static void cpsw_get_ringparam(struct net_device *ndev,
-			       struct ethtool_ringparam *ering)
+			       struct ethtool_ringparam *ering,
+			       struct kernel_ethtool_ringparam *kernel_ring,
+			       struct netlink_ext_ack *extack)
 {
 	struct cpsw_priv *priv = netdev_priv(ndev);
 	struct cpsw_common *cpsw = priv->cpsw;
@@ -2986,7 +2988,9 @@ static void cpsw_get_ringparam(struct net_device *ndev,
 }
 
 static int cpsw_set_ringparam(struct net_device *ndev,
-			      struct ethtool_ringparam *ering)
+			      struct ethtool_ringparam *ering,
+			      struct kernel_ethtool_ringparam *kernel_ring,
+			      struct netlink_ext_ack *extack)
 {
 	struct cpsw_priv *priv = netdev_priv(ndev);
 	struct cpsw_common *cpsw = priv->cpsw;
