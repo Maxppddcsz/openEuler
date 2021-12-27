@@ -349,7 +349,9 @@ static void i40evf_get_drvinfo(struct net_device *netdev,
  * but the number of rings is not reported.
  **/
 static void i40evf_get_ringparam(struct net_device *netdev,
-				 struct ethtool_ringparam *ring)
+				 struct ethtool_ringparam *ring,
+				 struct kernel_ethtool_ringparam *kernel_ring,
+				 struct netlink_ext_ack *extack)
 {
 	struct i40evf_adapter *adapter = netdev_priv(netdev);
 
@@ -368,7 +370,9 @@ static void i40evf_get_ringparam(struct net_device *netdev,
  * number of rings is not specified, so all rings get the same settings.
  **/
 static int i40evf_set_ringparam(struct net_device *netdev,
-				struct ethtool_ringparam *ring)
+				struct ethtool_ringparam *ring,
+				struct kernel_ethtool_ringparam *kernel_ring,
+				struct netlink_ext_ack *extack)
 {
 	struct i40evf_adapter *adapter = netdev_priv(netdev);
 	u32 new_rx_count, new_tx_count;

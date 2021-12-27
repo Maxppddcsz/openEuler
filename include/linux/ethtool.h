@@ -16,6 +16,7 @@
 #include <linux/kabi.h>
 #include <linux/bitmap.h>
 #include <linux/compat.h>
+#include <linux/netlink.h>
 #include <uapi/linux/ethtool.h>
 
 #ifdef CONFIG_COMPAT
@@ -247,6 +248,7 @@ bool ethtool_convert_link_mode_to_legacy_u32(u32 *legacy_u32,
 	ETHTOOL_COALESCE_TX_MAX_FRAMES_IRQ)
 #define ETHTOOL_COALESCE_USE_ADAPTIVE					\
 	(ETHTOOL_COALESCE_USE_ADAPTIVE_RX | ETHTOOL_COALESCE_USE_ADAPTIVE_TX)
+
 /**
  * struct ethtool_ops - optional netdev operations
  * @supported_coalesce_params: supported types of interrupt coalescing.
@@ -418,9 +420,13 @@ struct ethtool_ops {
 	int	(*get_coalesce)(struct net_device *, struct ethtool_coalesce *);
 	int	(*set_coalesce)(struct net_device *, struct ethtool_coalesce *);
 	void	(*get_ringparam)(struct net_device *,
-				 struct ethtool_ringparam *);
+				 struct ethtool_ringparam *,
+				 struct kernel_ethtool_ringparam *,
+				 struct netlink_ext_ack *);
 	int	(*set_ringparam)(struct net_device *,
-				 struct ethtool_ringparam *);
+				 struct ethtool_ringparam *,
+				 struct kernel_ethtool_ringparam *,
+				 struct netlink_ext_ack *);
 	void	(*get_pauseparam)(struct net_device *,
 				  struct ethtool_pauseparam*);
 	int	(*set_pauseparam)(struct net_device *,
