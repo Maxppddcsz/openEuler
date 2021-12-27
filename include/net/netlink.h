@@ -191,6 +191,17 @@ enum {
 
 #define NLA_TYPE_MAX (__NLA_TYPE_MAX - 1)
 
+enum nla_policy_validation {
+	NLA_VALIDATE_NONE,
+	NLA_VALIDATE_RANGE,
+	NLA_VALIDATE_RANGE_WARN_TOO_LONG,
+	NLA_VALIDATE_MIN,
+	NLA_VALIDATE_MAX,
+	NLA_VALIDATE_MASK,
+	NLA_VALIDATE_RANGE_PTR,
+	NLA_VALIDATE_FUNCTION,
+};
+
 /**
  * struct nla_policy - attribute validation policy
  * @type: Type of attribute or NLA_UNSPEC
@@ -228,8 +239,45 @@ enum {
 struct nla_policy {
 	u16		type;
 	u16		len;
-	void            *validation_data;
+	void		*validation_data;
+#ifndef __GENKSYMS__
+	u8		validation_type;
+	union {
+		const u32 bitfield32_valid;
+		const u32 mask;
+		const char *reject_message;
+		const struct nla_policy *nested_policy;
+		struct netlink_range_validation *range;
+		struct netlink_range_validation_signed *range_signed;
+		struct {
+			s16 min, max;
+		};
+		int (*validate)(const struct nlattr *attr,
+				struct netlink_ext_ack *extack);
+		u16 strict_start_type;
+	};
+#endif
 };
+
+#define __NLA_IS_UINT_TYPE(tp)						\
+	(tp == NLA_U8 || tp == NLA_U16 || tp == NLA_U32 || tp == NLA_U64)
+#define __NLA_IS_SINT_TYPE(tp)						\
+	(tp == NLA_S8 || tp == NLA_S16 || tp == NLA_S32 || tp == NLA_S64)
+
+#define __NLA_ENSURE(condition) BUILD_BUG_ON_ZERO(!(condition))
+
+#define NLA_ENSURE_INT_OR_BINARY_TYPE(tp)		\
+	(__NLA_ENSURE(__NLA_IS_UINT_TYPE(tp) ||		\
+		      __NLA_IS_SINT_TYPE(tp) ||		\
+		      tp == NLA_MSECS ||		\
+		      tp == NLA_BINARY) + tp)
+
+
+#define NLA_POLICY_MIN(tp, _min) {			\
+	.type = NLA_ENSURE_INT_OR_BINARY_TYPE(tp),	\
+	.validation_type = NLA_VALIDATE_MIN,		\
+	.min = _min,					\
+}
 
 /**
  * struct nl_info - netlink source information
