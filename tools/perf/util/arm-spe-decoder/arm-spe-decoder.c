@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <linux/bitops.h>
 #include <linux/compiler.h>
 
 #include "cache.h"
@@ -15,10 +16,6 @@
 
 #include "arm-spe-pkt-decoder.h"
 #include "arm-spe-decoder.h"
-
-#ifndef BIT
-#define BIT(n)		(1UL << (n))
-#endif
 
 struct arm_spe_decoder {
 	int (*get_trace)(struct arm_spe_buffer *buffer, void *data);
