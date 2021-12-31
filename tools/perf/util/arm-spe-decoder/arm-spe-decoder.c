@@ -200,13 +200,13 @@ static int arm_spe_walk_trace(struct arm_spe_decoder *decoder)
 			}
 			break;
 		case ARM_SPE_EVENTS:
-			if (payload & BIT(EV_TLB_REFILL)) {
+			if (payload & BIT(EV_TLB_WALK)) {
 				decoder->state.type |= ARM_SPE_TLB_MISS;
 				decoder->state.is_tlb_miss = true;
 			}
 			if (payload & BIT(EV_MISPRED))
 				decoder->state.type |= ARM_SPE_BRANCH_MISS;
-			if (idx > 1 && (payload & BIT(EV_LLC_REFILL))) {
+			if (idx > 1 && (payload & BIT(EV_LLC_MISS))) {
 				decoder->state.type |= ARM_SPE_LLC_MISS;
 				decoder->state.is_llc_miss = true;
 			}
