@@ -620,6 +620,13 @@ static void smc_link_save_peer_info(struct smc_link *link,
 	memcpy(link->peer_mac, clc->r0.lcl.mac, sizeof(link->peer_mac));
 	link->peer_psn = ntoh24(clc->r0.psn);
 	link->peer_mtu = clc->r0.qp_mtu;
+	link->credits_enable = clc->r0.init_credits ? 1 : 0;
+	if (link->credits_enable) {
+		atomic_set(&link->peer_rq_credits, clc->r0.init_credits);
+		// set peer rq credits watermark, if less than init_credits * 2/3,
+		// then credit announcement is needed.
+		link->peer_cr_watermark_low = max(clc->r0.init_credits * 2 / 3, 1);
+	}
 }
 
 /* must be called under rcu read lock */
@@ -1047,6 +1054,11 @@ static int smc_connect_rdma(struct smc_sock *smc,
 			goto connect_abort;
 		}
 	} else {
+		if (smc_llc_announce_credits(link, SMC_LLC_RESP, true)) {
+			reason_code = SMC_CLC_DECL_CREDITSERR;
+			goto connect_abort;
+		}
+
 		/* reg sendbufs if they were vzalloced */
 		if (smc->conn.sndbuf_desc->is_vm) {
 			if (smcr_lgr_reg_sndbufs(link, smc->conn.sndbuf_desc)) {
