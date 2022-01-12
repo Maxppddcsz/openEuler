@@ -77,7 +77,7 @@ static int hclge_comm_alloc_cmd_desc(struct hclge_comm_cmq_ring *ring)
 {
 	int size  = ring->desc_num * sizeof(struct hclge_desc);
 
-	ring->desc = dma_alloc_coherent(&ring->pdev->dev,
+	ring->desc = dma_zalloc_coherent(&ring->pdev->dev,
 					size, &ring->desc_dma_addr, GFP_KERNEL);
 	if (!ring->desc)
 		return -ENOMEM;
