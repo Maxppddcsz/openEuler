@@ -23,12 +23,9 @@ struct hclge_misc_vector {
 	char name[HNAE3_INT_NAME_LEN];
 };
 
-#define HCLGE_CMD_FLAG_IN	BIT(0)
-#define HCLGE_CMD_FLAG_OUT	BIT(1)
-#define HCLGE_CMD_FLAG_NEXT	BIT(2)
-#define HCLGE_CMD_FLAG_WR	BIT(3)
-#define HCLGE_CMD_FLAG_NO_INTR	BIT(4)
-#define HCLGE_CMD_FLAG_ERR_INTR	BIT(5)
+#define hclge_cmd_setup_basic_desc(desc, opcode, is_read) \
+	hclge_comm_cmd_setup_basic_desc(desc, (enum hclge_comm_opcode_type)opcode, \
+					is_read)
 
 #define HCLGE_TQP_REG_OFFSET		0x80000
 #define HCLGE_TQP_REG_SIZE		0x200
@@ -94,34 +91,6 @@ struct hclge_rx_priv_buff_cmd {
 	__le16 buf_num[HCLGE_MAX_TC_NUM];
 	__le16 shared_buf;
 	u8 rsv[6];
-};
-
-enum HCLGE_CAP_BITS {
-	HCLGE_CAP_UDP_GSO_B,
-	HCLGE_CAP_QB_B,
-	HCLGE_CAP_FD_FORWARD_TC_B,
-	HCLGE_CAP_PTP_B,
-	HCLGE_CAP_INT_QL_B,
-	HCLGE_CAP_HW_TX_CSUM_B,
-	HCLGE_CAP_TX_PUSH_B,
-	HCLGE_CAP_PHY_IMP_B,
-	HCLGE_CAP_TQP_TXRX_INDEP_B,
-	HCLGE_CAP_HW_PAD_B,
-	HCLGE_CAP_STASH_B,
-	HCLGE_CAP_UDP_TUNNEL_CSUM_B,
-	HCLGE_CAP_RAS_IMP_B = 12,
-	HCLGE_CAP_FEC_B = 13,
-	HCLGE_CAP_PAUSE_B = 14,
-	HCLGE_CAP_RXD_ADV_LAYOUT_B = 15,
-	HCLGE_CAP_PORT_VLAN_BYPASS_B = 17,
-};
-
-#define HCLGE_QUERY_CAP_LENGTH		3
-struct hclge_query_version_cmd {
-	__le32 firmware;
-	__le32 hardware;
-	__le32 rsv;
-	__le32 caps[HCLGE_QUERY_CAP_LENGTH]; /* capabilities of device */
 };
 
 #define HCLGE_RX_PRIV_EN_B	15
@@ -747,13 +716,6 @@ struct hclge_common_lb_cmd {
 #define HCLGE_DEFAULT_NON_DCB_DV	0x7800	/* 30K byte */
 #define HCLGE_NON_DCB_ADDITIONAL_BUF	0x1400	/* 5120 byte */
 
-#define HCLGE_TYPE_CRQ			0
-#define HCLGE_TYPE_CSQ			1
-
-/* this bit indicates that the driver is ready for hardware reset */
-#define HCLGE_NIC_SW_RST_RDY_B		16
-#define HCLGE_NIC_SW_RST_RDY		BIT(HCLGE_NIC_SW_RST_RDY_B)
-
 #define HCLGE_NIC_CMQ_DESC_NUM		1024
 #define HCLGE_NIC_CMQ_DESC_NUM_S	3
 
@@ -894,16 +856,6 @@ struct hclge_query_ppu_pf_other_int_dfx_cmd {
 	u8 rsv[4];
 };
 
-#define HCLGE_LINK_EVENT_REPORT_EN_B	0
-#define HCLGE_NCSI_ERROR_REPORT_EN_B	1
-#define HCLGE_PHY_IMP_EN_B		2
-#define HCLGE_MAC_STATS_EXT_EN_B	3
-#define HCLGE_SYNC_RX_RING_HEAD_EN_B	4
-struct hclge_firmware_compat_cmd {
-	__le32 compat;
-	u8 rsv[20];
-};
-
 #define HCLGE_SFP_INFO_CMD_NUM	6
 #define HCLGE_SFP_INFO_BD0_LEN	20
 #define HCLGE_SFP_INFO_BDX_LEN	24
@@ -989,12 +941,6 @@ struct hclge_phy_reg_cmd {
 	u8 rsv2[12];
 };
 
-/* capabilities bits map between imp firmware and local driver */
-struct hclge_caps_bit_map {
-	u16 imp_bit;
-	u16 local_bit;
-};
-
 int hclge_cmd_init(struct hclge_dev *hdev);
 enum HCLGE_WOL_MODE {
 	HCLGE_WOL_PHY           = BIT(0),
@@ -1022,10 +968,6 @@ struct hclge_query_wol_supported_cmd {
 
 struct hclge_hw;
 int hclge_cmd_send(struct hclge_hw *hw, struct hclge_desc *desc, int num);
-void hclge_cmd_setup_basic_desc(struct hclge_desc *desc,
-				enum hclge_opcode_type opcode, bool is_read);
-void hclge_cmd_reuse_desc(struct hclge_desc *desc, bool is_read);
-
 enum hclge_comm_cmd_status hclge_cmd_mdio_write(struct hclge_hw *hw,
 						struct hclge_desc *desc);
 enum hclge_comm_cmd_status hclge_cmd_mdio_read(struct hclge_hw *hw,

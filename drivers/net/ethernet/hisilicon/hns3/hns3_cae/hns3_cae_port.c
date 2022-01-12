@@ -102,10 +102,10 @@ int hns3_get_port_info(const struct hns3_nic_priv *net_priv,
 		hns3_cae_cmd_setup_basic_desc(&port_desc[i],
 					      HCLGE_OPC_DUMP_PORT_INFO, true);
 		if (i < bd_num - 1)
-			port_desc[i].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+			port_desc[i].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 		else
 			port_desc[i].flag &=
-			    ~(cpu_to_le16(HCLGE_CMD_FLAG_NEXT));
+			    ~(cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT));
 	}
 
 	ret = hns3_cae_cmd_send(hdev, port_desc, bd_num);
