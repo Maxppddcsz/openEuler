@@ -54,7 +54,7 @@
 #define HCLGE_COMM_NIC_SW_RST_RDY		BIT(HCLGE_COMM_NIC_SW_RST_RDY_B)
 #define HCLGE_COMM_NIC_CMQ_DESC_NUM_S		3
 #define HCLGE_COMM_NIC_CMQ_DESC_NUM		1024
-#define HCLGE_COMM_CMDQ_TX_TIMEOUT_DEFAULT	30000
+#define HCLGE_COMM_CMDQ_TX_TIMEOUT		30000
 #define HCLGE_COMM_CMDQ_TX_TIMEOUT_500MS	500000
 
 enum hclge_opcode_type {
@@ -468,4 +468,11 @@ void hclge_comm_cmd_setup_basic_desc(struct hclge_desc *desc,
 				     enum hclge_opcode_type opcode,
 				     bool is_read);
 void hclge_comm_cmd_reuse_desc(struct hclge_desc *desc, bool is_read);
+void hclge_comm_cmd_uninit(struct hnae3_ae_dev *ae_dev, bool is_pf,
+			   struct hclge_comm_hw *hw);
+int hclge_comm_cmd_queue_init(struct pci_dev *pdev, struct hclge_comm_hw *hw);
+int hclge_comm_cmd_init(struct hnae3_ae_dev *ae_dev, struct hclge_comm_hw *hw,
+			u32 *fw_version, bool is_pf,
+			unsigned long reset_pending);
+
 #endif
