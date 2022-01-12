@@ -23,7 +23,7 @@ static int hclge_set_rss_algo_key(struct hclge_dev *hdev,
 				  const u8 hfunc, const u8 *key)
 {
 	struct hclge_rss_config_cmd *req = NULL;
-	enum hclge_cmd_status status;
+	enum hclge_comm_cmd_status status;
 	struct hclge_desc desc;
 	int key_offset;
 	int key_size;
@@ -64,7 +64,7 @@ static int hns3_cae_set_rss_cfg(const struct hns3_nic_priv *net_priv,
 	struct hclge_vport *vport = hns3_cae_get_vport(net_priv->ae_handle);
 	struct hclge_dev *hdev = vport->back;
 	u8 *key = vport->rss_hash_key;
-	enum hclge_cmd_status status;
+	enum hclge_comm_cmd_status status;
 	u8 hash_config;
 
 	if (check) {
@@ -93,7 +93,7 @@ static int hns3_cae_get_rss_cfg(const struct hns3_nic_priv *net_priv,
 	bool check = !buf_out || out_size < sizeof(u8);
 	struct hclge_rss_config_cmd *req = NULL;
 	struct hclge_dev *hdev = vport->back;
-	enum hclge_cmd_status status;
+	enum hclge_comm_cmd_status status;
 	u8 *out_buf = (u8 *)buf_out;
 	struct hclge_desc desc;
 
