@@ -32,7 +32,6 @@ hns3-$(CONFIG_HNS3_DCB) += hns3_dcbnl.o
 
 #### compile hclge.ko
 HCLGE_OBJ = 	hns3pf/hclge_main.o \
-			hns3pf/hclge_cmd.o \
 			hns3pf/hclge_mdio.o \
 			hns3pf/hclge_debugfs.o \
 			hns3pf/hclge_tm.o \
@@ -52,7 +51,7 @@ hclge-objs += hns3_common/hclge_comm_cmd.o
 hclge-$(CONFIG_HNS3_DCB) += hns3pf/hclge_dcb.o
 #### compile hclgevf.ko
 obj-$(CONFIG_HNS3_HCLGEVF) += hclgevf.o
-hclgevf-objs := hns3vf/hclgevf_main.o hns3vf/hclgevf_cmd.o hns3vf/hclgevf_mbx.o hns3vf/hclgevf_devlink.o hns3_common/hclge_comm_cmd.o
+hclgevf-objs := hns3vf/hclgevf_main.o hns3vf/hclgevf_mbx.o hns3vf/hclgevf_devlink.o hns3_common/hclge_comm_cmd.o
 
 #### compile hns3_cae.ko
 #add rally code
