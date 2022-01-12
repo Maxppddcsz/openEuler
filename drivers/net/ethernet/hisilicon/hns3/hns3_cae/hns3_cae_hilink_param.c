@@ -39,10 +39,10 @@ static int hns3_get_hilink_ctle(struct hclge_dev *hdev,
 			ctle_desc[0].data[0] = lane_start | (lane_len << 4);
 
 		if (i < HILINK_PARAM_CMD_BD_LEN - 1)
-			ctle_desc[i].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+			ctle_desc[i].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 		else
 			ctle_desc[i].flag &=
-			    ~(cpu_to_le16(HCLGE_CMD_FLAG_NEXT));
+			    ~(cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT));
 	}
 
 	ret = hns3_cae_cmd_send(hdev, ctle_desc, HILINK_PARAM_CMD_BD_LEN);
@@ -91,9 +91,9 @@ static int hns3_get_hilink_dfe(struct hclge_dev *hdev,
 			dfe_desc[0].data[0] = lane_start | (lane_len << 4);
 
 		if (i < HILINK_PARAM_CMD_BD_LEN - 1)
-			dfe_desc[i].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+			dfe_desc[i].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 		else
-			dfe_desc[i].flag &= ~(cpu_to_le16(HCLGE_CMD_FLAG_NEXT));
+			dfe_desc[i].flag &= ~(cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT));
 	}
 
 	ret = hns3_cae_cmd_send(hdev, dfe_desc, HILINK_PARAM_CMD_BD_LEN);
@@ -138,9 +138,9 @@ static int hns3_get_hilink_ffe(struct hclge_dev *hdev,
 			ffe_desc[0].data[0] = lane_start | (lane_len << 4);
 
 		if (i < HILINK_PARAM_CMD_BD_LEN - 1)
-			ffe_desc[i].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+			ffe_desc[i].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 		else
-			ffe_desc[i].flag &= ~(cpu_to_le16(HCLGE_CMD_FLAG_NEXT));
+			ffe_desc[i].flag &= ~(cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT));
 	}
 
 	ret = hns3_cae_cmd_send(hdev, ffe_desc, HILINK_PARAM_CMD_BD_LEN);

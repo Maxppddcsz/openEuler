@@ -57,9 +57,9 @@ static int _hns3_get_sfpinfo(struct hnae3_handle *handle, u8 *buff,
 			desc[0].data[0] = offset | (size << 16);
 
 		if (i < HCLGE_SFP_INFO_LEN - 1)
-			desc[i].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+			desc[i].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 		else
-			desc[i].flag &= ~(cpu_to_le16(HCLGE_CMD_FLAG_NEXT));
+			desc[i].flag &= ~(cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT));
 	}
 
 	ret = hns3_cae_cmd_send(hdev, desc, HCLGE_SFP_INFO_LEN);

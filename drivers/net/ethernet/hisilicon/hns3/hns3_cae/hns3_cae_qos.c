@@ -34,9 +34,9 @@ int hns3_cmd_rx_priv_wl_config(struct hclge_dev *hdev, u16 tc,
 		req = (struct hclge_rx_priv_wl_buf *)desc[i].data;
 		/* The first descriptor set the NEXT bit to 1 */
 		if (i == 0)
-			desc[i].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+			desc[i].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 		else
-			desc[i].flag &= ~cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+			desc[i].flag &= ~cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 
 		for (j = 0; j < HCLGE_TC_NUM_ONE_DESC; j++) {
 			idx = i * HCLGE_TC_NUM_ONE_DESC + j;
@@ -107,9 +107,9 @@ int hns3_cmd_common_thrd_config(struct hclge_dev *hdev, u16 tc,
 		req = (struct hclge_rx_com_thrd *)desc[i].data;
 
 		if (i == 0)
-			desc[i].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+			desc[i].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 		else
-			desc[i].flag &= ~cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+			desc[i].flag &= ~cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 
 		for (j = 0; j < HCLGE_TC_NUM_ONE_DESC; j++) {
 			idx = i * HCLGE_TC_NUM_ONE_DESC + j;
@@ -353,9 +353,9 @@ int hns3_cae_show_comm_thres(const struct hns3_nic_priv *net_priv,
 					      HCLGE_OPC_RX_COM_THRD_ALLOC,
 					      true);
 		if (i == 0)
-			desc[i].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+			desc[i].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 		else
-			desc[i].flag &= ~cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+			desc[i].flag &= ~cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 	}
 
 	status = hns3_cae_cmd_send(hdev, desc, HNS3_CAE_THRD_ALLOC_BD_NUM);
@@ -404,9 +404,9 @@ int hns3_cae_show_rx_priv_wl(const struct hns3_nic_priv *net_priv,
 					      HCLGE_OPC_RX_PRIV_WL_ALLOC,
 					      true);
 		if (i == 0)
-			desc[i].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+			desc[i].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 		else
-			desc[i].flag &= ~cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+			desc[i].flag &= ~cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 	}
 
 	status = hns3_cae_cmd_send(hdev, desc, HNS3_CAE_WL_ALLOC_BD_NUM);

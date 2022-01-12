@@ -171,7 +171,7 @@ static int hns3_cae_send_tcam_op_cmd(struct hclge_dev *hdev, u8 *buf_in,
 		hns3_cae_cmd_setup_basic_desc(pdesc, HCLGE_OPC_FD_TCAM_OP,
 					      param->is_read ? true : false);
 		if (i < HNS3_CAE_FD_TCAM_BD_NUM - 1)
-			pdesc->flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+			pdesc->flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 	}
 
 	req1 = (struct hclge_fd_tcam_config_1_cmd *)desc[0].data;

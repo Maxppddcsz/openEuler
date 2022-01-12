@@ -137,11 +137,11 @@ static int hns3_cae_cmd_check_retval(struct hclge_hw *hw,
 
 void hns3_cae_cmd_reuse_desc(struct hclge_desc *desc, bool is_read)
 {
-	desc->flag = cpu_to_le16(HCLGE_CMD_FLAG_NO_INTR | HCLGE_CMD_FLAG_IN);
+	desc->flag = cpu_to_le16(HCLGE_COMM_CMD_FLAG_NO_INTR | HCLGE_COMM_CMD_FLAG_IN);
 	if (is_read)
-		desc->flag |= cpu_to_le16(HCLGE_CMD_FLAG_WR);
+		desc->flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_WR);
 	else
-		desc->flag &= cpu_to_le16(~HCLGE_CMD_FLAG_WR);
+		desc->flag &= cpu_to_le16(~HCLGE_COMM_CMD_FLAG_WR);
 }
 
 void hns3_cae_cmd_setup_basic_desc(struct hclge_desc *desc,
@@ -149,10 +149,10 @@ void hns3_cae_cmd_setup_basic_desc(struct hclge_desc *desc,
 {
 	memset((void *)desc, 0, sizeof(struct hclge_desc));
 	desc->opcode = cpu_to_le16(opcode);
-	desc->flag = cpu_to_le16(HCLGE_CMD_FLAG_NO_INTR | HCLGE_CMD_FLAG_IN);
+	desc->flag = cpu_to_le16(HCLGE_COMM_CMD_FLAG_NO_INTR | HCLGE_COMM_CMD_FLAG_IN);
 
 	if (is_read)
-		desc->flag |= cpu_to_le16(HCLGE_CMD_FLAG_WR);
+		desc->flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_WR);
 }
 
 /**
