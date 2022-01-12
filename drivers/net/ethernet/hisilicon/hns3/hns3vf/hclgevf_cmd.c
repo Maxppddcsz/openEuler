@@ -138,7 +138,7 @@ static void hclgevf_cmd_clear_regs(struct hclgevf_hw *hw)
 
 static int hclgevf_alloc_cmd_desc(struct hclgevf_cmq_ring *ring)
 {
-	int size = ring->desc_num * sizeof(struct hclgevf_desc);
+	int size = ring->desc_num * sizeof(struct hclge_desc);
 
 	ring->desc = dma_zalloc_coherent(cmq_ring_to_dev(ring),
 					 size, &ring->desc_dma_addr,
@@ -151,7 +151,7 @@ static int hclgevf_alloc_cmd_desc(struct hclgevf_cmq_ring *ring)
 
 static void hclgevf_free_cmd_desc(struct hclgevf_cmq_ring *ring)
 {
-	int size  = ring->desc_num * sizeof(struct hclgevf_desc);
+	int size  = ring->desc_num * sizeof(struct hclge_desc);
 
 	if (ring->desc) {
 		dma_free_coherent(cmq_ring_to_dev(ring), size,
@@ -179,10 +179,10 @@ static int hclgevf_alloc_cmd_queue(struct hclgevf_dev *hdev, int ring_type)
 	return ret;
 }
 
-void hclgevf_cmd_setup_basic_desc(struct hclgevf_desc *desc,
+void hclgevf_cmd_setup_basic_desc(struct hclge_desc *desc,
 				  enum hclgevf_opcode_type opcode, bool is_read)
 {
-	memset(desc, 0, sizeof(struct hclgevf_desc));
+	memset(desc, 0, sizeof(struct hclge_desc));
 	desc->opcode = cpu_to_le16(opcode);
 	desc->flag = cpu_to_le16(HCLGEVF_CMD_FLAG_NO_INTR |
 				 HCLGEVF_CMD_FLAG_IN);
@@ -198,9 +198,9 @@ struct vf_errcode {
 };
 
 static void hclgevf_cmd_copy_desc(struct hclgevf_hw *hw,
-				  struct hclgevf_desc *desc, int num)
+				  struct hclge_desc *desc, int num)
 {
-	struct hclgevf_desc *desc_to_use;
+	struct hclge_desc *desc_to_use;
 	int handle = 0;
 
 	while (handle < num) {
@@ -240,7 +240,7 @@ static int hclgevf_cmd_convert_err_code(u16 desc_ret)
 }
 
 static int hclgevf_cmd_check_retval(struct hclgevf_hw *hw,
-				    struct hclgevf_desc *desc, int num, int ntc)
+				    struct hclge_desc *desc, int num, int ntc)
 {
 	u16 opcode, desc_ret;
 	int handle;
@@ -263,7 +263,7 @@ static int hclgevf_cmd_check_retval(struct hclgevf_hw *hw,
 }
 
 static int hclgevf_cmd_check_result(struct hclgevf_hw *hw,
-				    struct hclgevf_desc *desc, int num, int ntc)
+				    struct hclge_desc *desc, int num, int ntc)
 {
 	struct hclgevf_dev *hdev = (struct hclgevf_dev *)hw->hdev;
 	bool is_completed = false;
@@ -307,7 +307,7 @@ static int hclgevf_cmd_check_result(struct hclgevf_hw *hw,
  * This is the main send command for command queue, it
  * sends the queue, cleans the queue, etc
  */
-int hclgevf_cmd_send(struct hclgevf_hw *hw, struct hclgevf_desc *desc, int num)
+int hclgevf_cmd_send(struct hclgevf_hw *hw, struct hclge_desc *desc, int num)
 {
 	struct hclgevf_dev *hdev = (struct hclgevf_dev *)hw->hdev;
 	struct hclgevf_cmq_ring *csq = &hw->cmq.csq;
@@ -384,7 +384,7 @@ static int hclgevf_cmd_query_version_and_capability(struct hclgevf_dev *hdev)
 {
 	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(hdev->pdev);
 	struct hclgevf_query_version_cmd *resp;
-	struct hclgevf_desc desc;
+	struct hclge_desc desc;
 	int status;
 
 	resp = (struct hclgevf_query_version_cmd *)desc.data;
@@ -448,7 +448,7 @@ err_csq:
 static int hclgevf_firmware_compat_config(struct hclgevf_dev *hdev, bool en)
 {
 	struct hclgevf_firmware_compat_cmd *req;
-	struct hclgevf_desc desc;
+	struct hclge_desc desc;
 	u32 compat = 0;
 
 	hclgevf_cmd_setup_basic_desc(&desc, HCLGEVF_OPC_IMP_COMPAT_CFG, false);
