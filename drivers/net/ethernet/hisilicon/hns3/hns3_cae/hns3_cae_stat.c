@@ -30,7 +30,7 @@ static int hns3_get_stat_val(struct ring_stats *r_stats, char *val_name,
 
 	if (!r_stats || !val_name || !val || strlen(val_name) >= max_name_len) {
 		pr_info("%s param is null.\n", __func__);
-		return HCLGE_ERR_CSQ_ERROR;
+		return HCLGE_COMM_ERR_CSQ_ERROR;
 	}
 
 	*val = NULL;
@@ -92,10 +92,10 @@ static int hns3_get_stat_val(struct ring_stats *r_stats, char *val_name,
 		break;
 	default:
 		pr_info("val name [%s] is not existed.\n", val_name);
-		return HCLGE_ERR_CSQ_ERROR;
+		return HCLGE_COMM_ERR_CSQ_ERROR;
 	}
 
-	return HCLGE_STATUS_SUCCESS;
+	return HCLGE_COMM_STATUS_SUCCESS;
 }
 
 static int hns3_read_stat_mode_cfg(const struct hns3_nic_priv *nic_dev,
@@ -119,7 +119,7 @@ static int hns3_read_stat_mode_cfg(const struct hns3_nic_priv *nic_dev,
 	stat_sw_param = (struct stat_sw_mode_param *)buf_in;
 	if (!buf_out || out_size < sizeof(u64)) {
 		dev_err(&hdev->pdev->dev, "Get stat buf out is null.\n");
-		return HCLGE_ERR_CSQ_ERROR;
+		return HCLGE_COMM_ERR_CSQ_ERROR;
 	}
 
 	ring_idx = stat_sw_param->ring_idx;
@@ -127,7 +127,7 @@ static int hns3_read_stat_mode_cfg(const struct hns3_nic_priv *nic_dev,
 		dev_err(&hdev->pdev->dev,
 			"Get stat ring_idx[%d] >= num_tqps[%d].\n", ring_idx,
 			kinfo->num_tqps);
-		return HCLGE_ERR_CSQ_ERROR;
+		return HCLGE_COMM_ERR_CSQ_ERROR;
 	}
 
 	if (stat_sw_param->is_rx)
@@ -139,12 +139,12 @@ static int hns3_read_stat_mode_cfg(const struct hns3_nic_priv *nic_dev,
 	if (ret || !val) {
 		pr_info("get stat val name [%s] error.\n",
 			stat_sw_param->val_name);
-		return HCLGE_ERR_CSQ_ERROR;
+		return HCLGE_COMM_ERR_CSQ_ERROR;
 	}
 
 	*ret_data = le64_to_cpu(*val);
 
-	return HCLGE_STATUS_SUCCESS;
+	return HCLGE_COMM_STATUS_SUCCESS;
 }
 
 static int hns3_set_stat_mode_cfg(const struct hns3_nic_priv *nic_dev,
@@ -170,7 +170,7 @@ static int hns3_set_stat_mode_cfg(const struct hns3_nic_priv *nic_dev,
 		dev_err(&hdev->pdev->dev,
 			"Set stat ring_idx[%d] >= num_tqps[%d].\n", ring_idx,
 			kinfo->num_tqps);
-		return HCLGE_ERR_CSQ_ERROR;
+		return HCLGE_COMM_ERR_CSQ_ERROR;
 	}
 
 	if (stat_sw_param->is_rx)
@@ -182,12 +182,12 @@ static int hns3_set_stat_mode_cfg(const struct hns3_nic_priv *nic_dev,
 	if (ret || !val) {
 		pr_info("Set stat val name [%s] error.\n",
 			stat_sw_param->val_name);
-		return HCLGE_ERR_CSQ_ERROR;
+		return HCLGE_COMM_ERR_CSQ_ERROR;
 	}
 
 	*val = cpu_to_le64(stat_sw_param->data);
 
-	return HCLGE_STATUS_SUCCESS;
+	return HCLGE_COMM_STATUS_SUCCESS;
 }
 
 int hns3_stat_mode_cfg(const struct hns3_nic_priv *nic_dev,

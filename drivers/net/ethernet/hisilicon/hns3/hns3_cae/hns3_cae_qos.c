@@ -21,7 +21,7 @@ int hns3_cmd_rx_priv_wl_config(struct hclge_dev *hdev, u16 tc,
 			       u32 high, u32 low, u32 en)
 {
 	struct hclge_rx_priv_wl_buf *req = NULL;
-	enum hclge_cmd_status status;
+	enum hclge_comm_cmd_status status;
 	struct hclge_desc desc[2];
 	int idx;
 	int i;
@@ -94,7 +94,7 @@ int hns3_cmd_common_thrd_config(struct hclge_dev *hdev, u16 tc,
 {
 #define HNS3_CAE_THRD_ALLOC_BD_NUM	2
 	struct hclge_rx_com_thrd *req = NULL;
-	enum hclge_cmd_status status;
+	enum hclge_comm_cmd_status status;
 	struct hclge_desc desc[2];
 	int idx;
 	int i;
@@ -166,7 +166,7 @@ int hns3_cae_common_thrd_cfg(const struct hns3_nic_priv *net_priv,
 
 int hns3_cmd_common_wl_config(struct hclge_dev *hdev, u32 high, u32 low, u32 en)
 {
-	enum hclge_cmd_status status;
+	enum hclge_comm_cmd_status status;
 	struct hclge_rx_com_wl *req = NULL;
 	struct hclge_desc desc;
 
@@ -196,7 +196,7 @@ int hns3_cae_common_wl_cfg(const struct hns3_nic_priv *net_priv,
 				    (struct hns3_rx_priv_buff_wl_param *)buf_in;
 	bool check = !buf_in ||
 		     in_size < sizeof(struct hns3_rx_priv_buff_wl_param);
-	enum hclge_cmd_status status;
+	enum hclge_comm_cmd_status status;
 	struct hclge_rx_com_wl *req = NULL;
 	struct hclge_vport *vport = NULL;
 	struct hclge_desc desc;
@@ -248,7 +248,7 @@ int hns3_cae_rx_buff_cfg(const struct hns3_nic_priv *net_priv,
 					   (struct hns3_rx_buff_param *)buf_out;
 	struct hns3_rx_buff_param *in_info =
 					    (struct hns3_rx_buff_param *)buf_in;
-	enum hclge_cmd_status status;
+	enum hclge_comm_cmd_status status;
 	struct hclge_vport *vport = NULL;
 	struct hclge_dev *hdev = NULL;
 	struct hclge_desc desc;
@@ -293,7 +293,7 @@ int hns3_cae_tx_buff_cfg(const struct hns3_nic_priv *net_priv,
 					   (struct hns3_tx_buff_param *)buf_out;
 	struct hns3_tx_buff_param *in_info =
 					    (struct hns3_tx_buff_param *)buf_in;
-	enum hclge_cmd_status status;
+	enum hclge_comm_cmd_status status;
 	struct hclge_vport *vport = NULL;
 	struct hclge_desc desc;
 	struct hclge_dev *hdev = NULL;
@@ -335,7 +335,7 @@ int hns3_cae_show_comm_thres(const struct hns3_nic_priv *net_priv,
 	struct hns3_total_priv_wl_param *out_info =
 				     (struct hns3_total_priv_wl_param *)buf_out;
 	struct hclge_rx_com_thrd *req = NULL;
-	enum hclge_cmd_status status;
+	enum hclge_comm_cmd_status status;
 	struct hclge_desc desc[2];
 	bool check = !buf_out ||
 		     out_size < sizeof(struct hns3_total_priv_wl_param);
@@ -386,7 +386,7 @@ int hns3_cae_show_rx_priv_wl(const struct hns3_nic_priv *net_priv,
 	struct hns3_total_priv_wl_param *out_info =
 				     (struct hns3_total_priv_wl_param *)buf_out;
 	struct hclge_rx_priv_wl_buf *req = NULL;
-	enum hclge_cmd_status status;
+	enum hclge_comm_cmd_status status;
 	struct hclge_desc desc[2];
 	bool check = !buf_out ||
 		     out_size < sizeof(struct hns3_total_priv_wl_param);
