@@ -53,12 +53,45 @@ void hclge_comm_cmd_reuse_desc(struct hclge_desc *desc, bool is_read)
 static void hclge_comm_set_default_capability(struct hnae3_ae_dev *ae_dev,
 					      bool is_pf)
 {
+	set_bit(HNAE3_DEV_SUPPORT_FD_B, ae_dev->caps);
 	set_bit(HNAE3_DEV_SUPPORT_GRO_B, ae_dev->caps);
-	if (is_pf) {
-		set_bit(HNAE3_DEV_SUPPORT_FD_B, ae_dev->caps);
+	if (is_pf && ae_dev->dev_version == HNAE3_DEVICE_VERSION_V2) {
 		set_bit(HNAE3_DEV_SUPPORT_FEC_B, ae_dev->caps);
 		set_bit(HNAE3_DEV_SUPPORT_PAUSE_B, ae_dev->caps);
 	}
+}
+
+void hclge_comm_free_cmd_desc(struct hclge_comm_cmq_ring *ring)
+{
+	int size  = ring->desc_num * sizeof(struct hclge_desc);
+
+	if (!ring->desc)
+		return;
+
+	dma_free_coherent(&ring->pdev->dev, size,
+			  ring->desc, ring->desc_dma_addr);
+	ring->desc = NULL;
+}
+
+static int hclge_comm_alloc_cmd_desc(struct hclge_comm_cmq_ring *ring)
+{
+	int size  = ring->desc_num * sizeof(struct hclge_desc);
+
+	ring->desc = dma_alloc_coherent(&ring->pdev->dev,
+					size, &ring->desc_dma_addr, GFP_KERNEL);
+	if (!ring->desc)
+		return -ENOMEM;
+
+	return 0;
+}
+
+static __le32 hclge_comm_build_api_caps(void)
+{
+	u32 api_caps = 0;
+
+	hnae3_set_bit(api_caps, HCLGE_COMM_API_CAP_FLEX_RSS_TBL_B, 1);
+
+	return cpu_to_le32(api_caps);
 }
 
 void hclge_comm_cmd_setup_basic_desc(struct hclge_desc *desc,
@@ -98,39 +131,6 @@ int hclge_comm_firmware_compat_config(struct hnae3_ae_dev *ae_dev,
 	}
 
 	return hclge_comm_cmd_send(hw, &desc, 1);
-}
-
-void hclge_comm_free_cmd_desc(struct hclge_comm_cmq_ring *ring)
-{
-	int size  = ring->desc_num * sizeof(struct hclge_desc);
-
-	if (!ring->desc)
-		return;
-
-	dma_free_coherent(&ring->pdev->dev, size,
-			  ring->desc, ring->desc_dma_addr);
-	ring->desc = NULL;
-}
-
-static int hclge_comm_alloc_cmd_desc(struct hclge_comm_cmq_ring *ring)
-{
-	int size  = ring->desc_num * sizeof(struct hclge_desc);
-
-	ring->desc = dma_alloc_coherent(&ring->pdev->dev,
-					size, &ring->desc_dma_addr, GFP_KERNEL);
-	if (!ring->desc)
-		return -ENOMEM;
-
-	return 0;
-}
-
-static __le32 hclge_comm_build_api_caps(void)
-{
-	u32 api_caps = 0;
-
-	hnae3_set_bit(api_caps, HCLGE_COMM_API_CAP_FLEX_RSS_TBL_B, 1);
-
-	return cpu_to_le32(api_caps);
 }
 
 static const struct hclge_comm_caps_bit_map hclge_pf_cmd_caps[] = {
