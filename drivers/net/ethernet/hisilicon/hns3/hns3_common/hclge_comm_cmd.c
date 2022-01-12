@@ -526,7 +526,7 @@ static void hclge_comm_cmd_uninit_regs(struct hclge_comm_hw *hw)
 	hclge_comm_write_dev(hw, HCLGE_COMM_NIC_CRQ_TAIL_REG, 0);
 }
 
-void hclge_comm_cmd_uninit(struct hnae3_ae_dev *ae_dev,
+void hclge_comm_cmd_uninit(struct hnae3_ae_dev *ae_dev, bool is_pf,
 			   struct hclge_comm_hw *hw)
 {
 	struct hclge_comm_cmq *cmdq = &hw->cmq;
@@ -565,7 +565,7 @@ int hclge_comm_cmd_queue_init(struct pci_dev *pdev, struct hclge_comm_hw *hw)
 	cmdq->crq.desc_num = HCLGE_COMM_NIC_CMQ_DESC_NUM;
 
 	/* Setup Tx write back timeout */
-	cmdq->tx_timeout = HCLGE_COMM_CMDQ_TX_TIMEOUT_DEFAULT;
+	cmdq->tx_timeout = HCLGE_COMM_CMDQ_TX_TIMEOUT;
 
 	/* Setup queue rings */
 	ret = hclge_comm_alloc_cmd_queue(hw, HCLGE_COMM_TYPE_CSQ);
