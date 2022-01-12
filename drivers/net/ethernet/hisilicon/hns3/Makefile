@@ -13,7 +13,8 @@ ccflags-y += 	-I$(PWD) \
 		-I$(PWD)/hns3_extension \
 		-I$(PWD)/hns3_extension/hns3pf \
 		-I$(PWD)/hns3vf \
-		-I$(PWD)/hns3_cae
+		-I$(PWD)/hns3_cae \
+		-I$(PWD)/hns3_common
 
 #### compile hnae3.ko
 obj-$(CONFIG_HNS3) += hnae3.o
