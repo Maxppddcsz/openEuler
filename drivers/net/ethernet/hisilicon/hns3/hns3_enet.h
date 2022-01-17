@@ -24,6 +24,8 @@ enum hns3_nic_state {
 	HNS3_NIC_STATE_MAX
 };
 
+#define HNS3_MAX_PUSH_BD_NUM		2
+
 #define HNS3_RING_RX_RING_BASEADDR_L_REG	0x00000
 #define HNS3_RING_RX_RING_BASEADDR_H_REG	0x00004
 #define HNS3_RING_RX_RING_BD_NUM_REG		0x00008
@@ -397,6 +399,8 @@ struct ring_stats {
 			u64 tx_pkts;
 			u64 tx_bytes;
 			u64 tx_more;
+			u64 tx_push;
+			u64 tx_mem_doorbell;
 			u64 restart_queue;
 			u64 tx_busy;
 			u64 tx_copy;

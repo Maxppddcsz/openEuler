@@ -126,6 +126,16 @@
 #define HCLGEVF_RSS_INPUT_TUPLE_SCTP6 \
 	(HCLGEVF_D_IP_BIT | HCLGEVF_S_IP_BIT | HCLGEVF_V_TAG_BIT)
 
+#define HCLGEVF_TQP_MEM_SIZE		0x10000
+#define HCLGEVF_MEM_BAR			4
+/* in the bar4, the first half is for roce, and the second half is for nic */
+#define HCLGEVF_NIC_MEM_OFFSET(hdev)	\
+	(pci_resource_len((hdev)->pdev, HCLGEVF_MEM_BAR) >> 1)
+#define HCLGEVF_TQP_MEM_OFFSET(hdev, i)		\
+	(HCLGEVF_NIC_MEM_OFFSET(hdev) + HCLGEVF_TQP_MEM_SIZE * (i))
+
+#define HCLGEVF_MAC_MAX_FRAME		9728
+
 #define HCLGEVF_STATS_TIMER_INTERVAL	36U
 
 enum hclgevf_evt_cause {
@@ -167,12 +177,13 @@ struct hclgevf_mac {
 };
 
 struct hclgevf_hw {
+	struct hclge_comm_hw hw;
 	void __iomem *io_base;
 	void __iomem *mem_base;
 	int num_vec;
 	struct hclgevf_cmq cmq;
 	struct hclgevf_mac mac;
-	void *hdev; /* hchgevf device it is part of */
+	void *hdev; /* hclgevf device it is par of */
 };
 
 /* TQP stats */
