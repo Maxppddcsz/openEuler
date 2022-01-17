@@ -1683,6 +1683,7 @@ static int hclge_config_gro(struct hclge_dev *hdev)
 static int hclge_alloc_tqps(struct hclge_dev *hdev)
 {
 	struct hclge_tqp *tqp;
+	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(hdev->pdev);
 	int i;
 
 	hdev->htqp = devm_kcalloc(&hdev->pdev->dev, hdev->num_tqps,
@@ -1702,6 +1703,14 @@ static int hclge_alloc_tqps(struct hclge_dev *hdev)
 		tqp->q.rx_desc_num = hdev->num_rx_desc;
 		tqp->q.io_base = hdev->hw.io_base + HCLGE_TQP_REG_OFFSET +
 			i * HCLGE_TQP_REG_SIZE;
+
+		/* when device supports tx push and has device memory,
+		 * the queue can execute push mode or doorbell mode on
+		 * device memory.
+		 */
+		if (test_bit(HNAE3_DEV_SUPPORT_TX_PUSH_B, ae_dev->caps))
+			tqp->q.mem_base = hdev->hw.hw.mem_base +
+					  HCLGE_TQP_MEM_OFFSET(hdev, i);
 
 		tqp++;
 	}
