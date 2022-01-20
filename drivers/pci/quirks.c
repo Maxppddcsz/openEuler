@@ -269,6 +269,14 @@ DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_LOONGSON,
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_LOONGSON,
 			PCI_DEVICE_ID_LOONGSON_GMAC, loongson_pci_pin_quirk);
 
+static void loongson_ohci_quirk(struct pci_dev *dev)
+{
+	if (dev->revision == 0x2)
+		dev->resource[0].start += 0x1000;
+}
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_LOONGSON,
+			PCI_DEVICE_ID_LOONGSON_OHCI, loongson_ohci_quirk);
+
 static void loongson_mrrs_quirk(struct pci_dev *dev)
 {
 	struct pci_bus *bus = dev->bus;
