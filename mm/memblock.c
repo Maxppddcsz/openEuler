@@ -380,6 +380,7 @@ tests fds fds
 		if (memblock_memory_in_slab)
 			kfree(memblock.memory.regions);
 		else
+suggestion for source code
 			__memblock_free_late(addr, size);
 	}
 
