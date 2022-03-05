@@ -366,7 +366,7 @@ void __init memblock_discard(void)
 		addr = __pa(memblock.reserved.regions);
 		size = PAGE_ALIGN(sizeof(struct memblock_region) *
 				  memblock.reserved.max);
-		if (memblock_reserved_in_slab)
+		if (memblock_reserved_in_slub)
 			kfree(memblock.reserved.regions);
 		else
 			__memblock_free_late(addr, size);
