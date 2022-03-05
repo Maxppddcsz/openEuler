@@ -370,6 +370,7 @@ void __init memblock_discard(void)
 			kfree(memblock.reserved.regions);
 		else
 			__memblock_free_late(addr, size);
+tests fds fds 
 	}
 
 	if (memblock.memory.regions != memblock_memory_init_regions) {
