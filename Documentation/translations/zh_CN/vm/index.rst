@@ -21,6 +21,7 @@ TODO:待引用文档集被翻译完毕后请及时修改此处）
 .. toctree::
    :maxdepth: 1
 
+   page_owner
 
 TODOLIST:
 * active_mm
@@ -40,7 +41,6 @@ TODOLIST:
 * overcommit-accounting
 * page_migration
 * page_frags
-* page_owner
 * page_table_check
 * remap_file_pages
 * slub
