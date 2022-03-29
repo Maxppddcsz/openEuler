@@ -1,5 +1,5 @@
 diff --git a/arch/arm64/configs/openeuler_defconfig b/arch/arm64/configs/openeuler_defconfig
-index 401ab0f99..925ecec23 100644
+index 5020f94ee..1d3c36228 100644
 --- a/arch/arm64/configs/openeuler_defconfig
 +++ b/arch/arm64/configs/openeuler_defconfig
 @@ -73,6 +73,7 @@ CONFIG_HIGH_RES_TIMERS=y
@@ -51,7 +51,7 @@ index 84520f116..aa631771e 100644
  
  static bool have_cpu_fpsimd_context(void)
 diff --git a/arch/x86/configs/openeuler_defconfig b/arch/x86/configs/openeuler_defconfig
-index 64afe7021..be178738d 100644
+index 351a89b54..9f0ae04e2 100644
 --- a/arch/x86/configs/openeuler_defconfig
 +++ b/arch/x86/configs/openeuler_defconfig
 @@ -88,9 +88,10 @@ CONFIG_NO_HZ=y
@@ -117,25 +117,29 @@ index a3b73de27..dda9ec24f 100644
 +#endif
 +
  #endif /* __ASM_PREEMPT_H */
+diff --git a/include/linux/printk.h b/include/linux/printk.h
+index 9331b131b..23946f482 100644
+--- a/include/linux/printk.h
++++ b/include/linux/printk.h
+@@ -241,7 +241,7 @@ __printf(1, 2) void dump_stack_set_arch_desc(const char *fmt, ...);
+ void dump_stack_print_info(const char *log_lvl);
+ void show_regs_print_info(const char *log_lvl);
+ extern asmlinkage void dump_stack(void) __cold;
+-#if defined(CONFIG_X86) || defined(CONFIG_ARM64_PSEUDO_NMI)
++#if (defined(CONFIG_X86) || defined(CONFIG_ARM64_PSEUDO_NMI)) && !defined(CONFIG_PREEMPT_RT)
+ extern void zap_locks(void);
+ #else
+ static inline void zap_locks(void) { }
 diff --git a/kernel/printk/printk.c b/kernel/printk/printk.c
-index eeeb590e1..c5c2a0088 100644
+index eeeb590e1..d6fc0ae57 100644
 --- a/kernel/printk/printk.c
 +++ b/kernel/printk/printk.c
-@@ -1811,6 +1811,7 @@ static void print_sync_until(struct console *con, u64 seq)
+@@ -1811,7 +1811,7 @@ static void print_sync_until(struct console *con, u64 seq)
  	console_atomic_unlock(flags);
  }
  
-+#ifndef CONFIG_PREEMPT_RT
- #if defined(CONFIG_X86) || defined(CONFIG_ARM64_PSEUDO_NMI)
+-#if defined(CONFIG_X86) || defined(CONFIG_ARM64_PSEUDO_NMI)
++#if (defined(CONFIG_X86) || defined(CONFIG_ARM64_PSEUDO_NMI)) && !defined(CONFIG_PREEMPT_RT)
  void zap_locks(void)
  {
-@@ -1829,6 +1830,9 @@ void zap_locks(void)
- 	sema_init(&console_sem, 1);
- }
- #endif
-+#else
-+void zap_locks(void) {}
-+#endif
- 
- #ifdef CONFIG_PRINTK_NMI
- #define NUM_RECURSION_CTX 2
+ 	if (raw_spin_is_locked(&logbuf_lock)) {
