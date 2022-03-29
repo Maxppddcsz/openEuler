@@ -12,7 +12,7 @@
 %global upstream_sublevel   0
 %global devel_release       60
 %global maintenance_release .18.0
-%global pkg_release         .50
+%global pkg_release         .51
 %global rt_release          .rt62
 
 %define with_debuginfo 1
@@ -885,6 +885,9 @@ fi
 %endif
 
 %changelog
+* Tue Mar 29 2022 kylin-mayukun <mayukun@kylinos.cn> - 5.10.0-60.18.0.51
+- remove localversion-rt from rt patch
+
 * Sun Mar 27 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.18.0.50
 - net/spnic: Remove spnic driver.
 - SCSI: spfc: remove SPFC driver

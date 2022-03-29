@@ -392,7 +392,6 @@ Signed-off-by: zhangyuanhang <zhangyuanhang@kylinos.cn>
  lib/scatterlist.c                             |    2 +-
  lib/smp_processor_id.c                        |    5 +
  lib/test_lockup.c                             |   16 +
- localversion-rt                               |    1 +
  mm/Kconfig                                    |    5 +-
  mm/highmem.c                                  |  262 ++-
  mm/memcontrol.c                               |   66 +-
@@ -452,7 +451,6 @@ Signed-off-by: zhangyuanhang <zhangyuanhang@kylinos.cn>
  create mode 100644 kernel/locking/mutex-rt.c
  create mode 100644 kernel/locking/rwlock-rt.c
  create mode 100644 kernel/locking/rwsem-rt.c
- create mode 100644 localversion-rt
 
 @@ -156,3 +156,5 @@ x509.genkey
  
@@ -23884,13 +23882,6 @@ index f1a020bcc..864554e76 100644
  #endif
  
  	if ((wait_state != TASK_RUNNING ||
-diff --git a/localversion-rt b/localversion-rt
-new file mode 100644
-index 000000000..40d81d8e6
---- /dev/null
-+++ b/localversion-rt
-@@ -0,0 +1 @@
-+-rt62
 diff --git a/mm/Kconfig b/mm/Kconfig
 index 4475bd9f8..9d225b5c2 100644
 --- a/mm/Kconfig

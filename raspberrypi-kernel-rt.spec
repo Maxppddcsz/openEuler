@@ -8,7 +8,7 @@
 
 Name:	 raspberrypi-kernel-rt
 Version: 5.10.0
-Release: %{hulkrelease}.rt62.13
+Release: %{hulkrelease}.rt62.14
 Summary: Linux Kernel
 License: GPLv2
 URL:	 http://www.kernel.org/
@@ -170,6 +170,9 @@ install -m 644 /boot/dtb-%{KernelVer}/overlays/README /boot/overlays/
 /lib/modules/%{KernelVer}
 
 %changelog
+* Tue Mar 29 2022 zhangyuanhang <zhangyuanhang@kylinos.cn> - 5.10.0-60.18.0.14
+- remove localversion-rt from raspberrypi rt patch
+
 * Sun Mar 27 2022 Yafen Fang <yafen@iscas.ac.cn> - 5.10.0-60.18.0.13
 - update kernel version to openEuler 5.10.0-60.18.0
 
