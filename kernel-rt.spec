@@ -12,7 +12,7 @@
 %global upstream_sublevel   0
 %global devel_release       60
 %global maintenance_release .18.0
-%global pkg_release         .52
+%global pkg_release         .53
 %global rt_release          .rt62
 
 %define with_debuginfo 1
@@ -97,7 +97,7 @@ BuildRequires: audit-libs-devel
 BuildRequires: pciutils-devel gettext
 BuildRequires: rpm-build, elfutils
 BuildRequires: numactl-devel python3-devel glibc-static python3-docutils
-BuildRequires: perl-generators perl(Carp) libunwind-devel gtk2-devel libbabeltrace-devel java-1.8.0-openjdk perl-devel
+BuildRequires: perl-generators perl(Carp) libunwind-devel gtk2-devel libbabeltrace-devel java-1.8.0-openjdk java-1.8.0-openjdk-devel perl-devel
 AutoReq: no
 AutoProv: yes
 
@@ -885,6 +885,9 @@ fi
 %endif
 
 %changelog
+* Wed Mar 30 2022 zhangyuanhang <zhangyuanhang@kylinos.cn> - 5.10.0-60.18.0.53
+- fix build error libperf-jvmti.so not found
+
 * Tue Mar 29 2022 kylin-mayukun <mayukun@kylinos.cn> - 5.10.0-60.18.0.52
 - update rt62 openeuler_defconfig patch
 
