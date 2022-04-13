@@ -12,7 +12,7 @@
 %global upstream_sublevel   0
 %global devel_release       60
 %global maintenance_release .20.0
-%global pkg_release         .52
+%global pkg_release         .53
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -94,7 +94,7 @@ BuildRequires: audit-libs-devel
 BuildRequires: pciutils-devel gettext
 BuildRequires: rpm-build, elfutils
 BuildRequires: numactl-devel python3-devel glibc-static python3-docutils
-BuildRequires: perl-generators perl(Carp) libunwind-devel gtk2-devel libbabeltrace-devel java-1.8.0-openjdk perl-devel
+BuildRequires: perl-generators perl(Carp) libunwind-devel gtk2-devel libbabeltrace-devel java-1.8.0-openjdk java-1.8.0-openjdk-devel perl-devel
 AutoReq: no
 AutoProv: yes
 
@@ -336,7 +336,7 @@ TargetImage=$(basename $(make -s image_name))
 make ARCH=%{Arch} $TargetImage %{?_smp_mflags}
 make ARCH=%{Arch} modules %{?_smp_mflags}
 
-%if 0%{?with_kabichk}
+%if 0%{?with_kabichk} && !%{with_64kb}
     chmod 0755 %{SOURCE18}
     if [ -e $RPM_SOURCE_DIR/Module.kabi_%{_target_cpu} ]; then
         %{SOURCE18} -k $RPM_SOURCE_DIR/Module.kabi_%{_target_cpu} -s Module.symvers || exit 1
@@ -520,6 +520,7 @@ popd
         chmod 0755 %{modsign_cmd} \
         %{modsign_cmd} $RPM_BUILD_ROOT/lib/modules/%{KernelVer} || exit 1 \
     fi \
+    find $RPM_BUILD_ROOT/lib/modules/ -type f -name '*.ko' | xargs -n1 -P`nproc --all` xz; \
 %{nil}
 
 # deal with header
@@ -882,6 +883,11 @@ fi
 %endif
 
 %changelog
+* Wed Apr 13 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.20.0.53
+- Add java-1.8.0-openjdk-devel BuildRequires for kernel.spec
+- Compress modules to xz format in kernel.spec, which reduces disk consumption
+- kabichk: do kabi check only for 4K page_size
+
 * Wed Apr 13 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.20.0.52
 - USB: gadget: validate endpoint index for xilinx udc
 - sr9700: sanity check for packet length
