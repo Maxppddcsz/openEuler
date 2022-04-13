@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .19.0
-%global pkg_release         .51
+%global maintenance_release .20.0
+%global pkg_release         .52
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -882,6 +882,12 @@ fi
 %endif
 
 %changelog
+* Wed Apr 13 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.20.0.52
+- USB: gadget: validate endpoint index for xilinx udc
+- sr9700: sanity check for packet length
+- Reinstate some of "swiotlb: rework "fix info leak with DMA_FROM_DEVICE""
+- swiotlb: fix info leak with DMA_FROM_DEVICE
+
 * Tue Apr 12 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.19.0.51
 - sched/fair: Add qos_throttle_list node in struct cfs_rq
 - ARM: 9142/1: kasan: work around LPAE build warning
