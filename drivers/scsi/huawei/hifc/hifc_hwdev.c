@@ -663,7 +663,7 @@ static bool is_sfp_info_cmd_cached(struct hifc_hwdev *hwdev,
 	struct card_node *chip_node = hwdev->chip_node;
 
 	sfp_info = buf_in;
-	if (!chip_node->rt_cmd || sfp_info->port_id >= HIFC_MAX_PORT_ID ||
+	if (sfp_info->port_id >= HIFC_MAX_PORT_ID ||
 	    *out_size < sizeof(*sfp_info))
 		return false;
 
@@ -688,8 +688,7 @@ static bool is_sfp_abs_cmd_cached(struct hifc_hwdev *hwdev,
 	struct card_node *chip_node = hwdev->chip_node;
 
 	abs = buf_in;
-	if (!chip_node->rt_cmd || abs->port_id >= HIFC_MAX_PORT_ID ||
-	    *out_size < sizeof(*abs))
+	if (abs->port_id >= HIFC_MAX_PORT_ID || *out_size < sizeof(*abs))
 		return false;
 
 	if (abs->version == HIFC_GET_SFP_INFO_REAL_TIME)
@@ -3019,9 +3018,6 @@ static void __port_sfp_info_event(struct hifc_hwdev *hwdev,
 		return;
 	}
 
-	if (!chip_node->rt_cmd)
-		return;
-
 	rt_cmd = &chip_node->rt_cmd[sfp_info->port_id];
 	mutex_lock(&chip_node->sfp_mutex);
 	memcpy(&rt_cmd->sfp_info, sfp_info, sizeof(rt_cmd->sfp_info));
@@ -3048,9 +3044,6 @@ static void __port_sfp_abs_event(struct hifc_hwdev *hwdev,
 			sfp_abs->port_id, HIFC_MAX_PORT_ID - 1);
 		return;
 	}
-
-	if (!chip_node->rt_cmd)
-		return;
 
 	rt_cmd = &chip_node->rt_cmd[sfp_abs->port_id];
 	mutex_lock(&chip_node->sfp_mutex);
