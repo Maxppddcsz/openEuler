@@ -5310,6 +5310,8 @@ static int _suspend_v3_hw(struct device *device)
 	if (test_and_set_bit(HISI_SAS_RESET_BIT, &hisi_hba->flags))
 		return -EPERM;
 
+	dev_warn(dev, "entering suspend state\n");
+
 	scsi_block_requests(shost);
 	set_bit(HISI_SAS_REJECT_CMD_BIT, &hisi_hba->flags);
 	flush_workqueue(hisi_hba->wq);
@@ -5335,6 +5337,8 @@ static int _suspend_v3_hw(struct device *device)
 	hisi_sas_release_tasks(hisi_hba);
 
 	sas_suspend_ha(sha);
+
+	dev_warn(dev, "end of suspending controller\n");
 	return 0;
 }
 
@@ -5381,6 +5385,8 @@ static int _resume_v3_hw(struct device *device)
 	 */
 	sas_resume_ha_no_sync(sha);
 	clear_bit(HISI_SAS_RESET_BIT, &hisi_hba->flags);
+
+	dev_warn(dev, "end of resuming controller\n");
 
 	return 0;
 }
