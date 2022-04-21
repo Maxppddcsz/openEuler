@@ -2314,6 +2314,7 @@ static void pci_configure_device(struct pci_dev *dev)
 static void pci_release_capabilities(struct pci_dev *dev)
 {
 	pci_aer_exit(dev);
+	pci_rcec_exit(dev);
 	pci_vpd_release(dev);
 	pci_iov_release(dev);
 	pci_free_cap_save_buffers(dev);
@@ -2939,29 +2940,18 @@ static void pci_init_capabilities(struct pci_dev *dev)
 	/* Buffers for saving PCIe and PCI-X capabilities */
 	pci_allocate_cap_save_buffers(dev);
 
-	/* Power Management */
-	pci_pm_init(dev);
-
-	/* Vital Product Data */
-	pci_vpd_init(dev);
-
-	/* Alternative Routing-ID Forwarding */
-	pci_configure_ari(dev);
-
-	/* Single Root I/O Virtualization */
-	pci_iov_init(dev);
-
-	/* Address Translation Services */
-	pci_ats_init(dev);
-
-	/* Enable ACS P2P upstream forwarding */
-	pci_enable_acs(dev);
-
-	/* Precision Time Measurement */
-	pci_ptm_init(dev);
-
-	/* Advanced Error Reporting */
-	pci_aer_init(dev);
+	pci_pm_init(dev);		/* Power Management */
+	pci_vpd_init(dev);		/* Vital Product Data */
+	pci_configure_ari(dev);		/* Alternative Routing-ID Forwarding */
+	pci_iov_init(dev);		/* Single Root I/O Virtualization */
+	pci_ats_init(dev);		/* Address Translation Services */
+	pci_pri_init(dev);		/* Page Request Interface */
+	pci_pasid_init(dev);		/* Process Address Space ID */
+	pci_acs_init(dev);		/* Access Control Services */
+	pci_ptm_init(dev);		/* Precision Time Measurement */
+	pci_aer_init(dev);		/* Advanced Error Reporting */
+	pci_dpc_init(dev);		/* Downstream Port Containment */
+	pci_rcec_init(dev);		/* Root Complex Event Collector */
 
 	pcie_report_downtraining(dev);
 
