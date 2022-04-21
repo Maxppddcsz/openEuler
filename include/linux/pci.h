@@ -311,10 +311,6 @@ struct pci_dev {
 	u16		aer_cap;	/* AER capability offset */
 	struct aer_stats *aer_stats;	/* AER stats for this device */
 #endif
-#ifdef CONFIG_PCIEPORTBUS
-	struct rcec_ea	*rcec_ea;	/* RCEC cached endpoint association */
-	struct pci_dev  *rcec;          /* Associated RCEC device */
-#endif
 	u8		pcie_cap;	/* PCIe capability offset */
 	u8		msi_cap;	/* MSI capability offset */
 	u8		msix_cap;	/* MSI-X capability offset */
@@ -479,8 +475,19 @@ struct pci_dev {
 #else
 	KABI_RESERVE(1)
 #endif
+
+#ifndef __GENKSYMS__
+#ifdef CONFIG_PCIEPORTBUS
+	struct rcec_ea  *rcec_ea;       /* RCEC cached endpoint association */
+	struct pci_dev  *rcec;          /* Associated RCEC device */
+#else
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
+#endif
+#else
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+#endif
 	KABI_RESERVE(4)
 	KABI_RESERVE(5)
 	KABI_RESERVE(6)
