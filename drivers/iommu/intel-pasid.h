@@ -17,6 +17,14 @@
 #define PDE_PFN_MASK			PAGE_MASK
 #define PASID_PDE_SHIFT			6
 
+/*
+ * The SUPERVISOR_MODE flag indicates a first level translation which
+ * can be used for access to kernel addresses. It is valid only for
+ * access to the kernel's static 1:1 mapping of physical memory — not
+ * to vmalloc or even module mappings.
+ */
+#define PASID_FLAG_SUPERVISOR_MODE	BIT(0)
+
 struct pasid_dir_entry {
 	u64 val;
 };
@@ -43,7 +51,9 @@ struct pasid_table *intel_pasid_get_table(struct device *dev);
 int intel_pasid_get_dev_max_id(struct device *dev);
 struct pasid_entry *intel_pasid_get_entry(struct device *dev, int pasid);
 void intel_pasid_clear_entry(struct device *dev, int pasid);
-
+int intel_pasid_setup_first_level(struct intel_iommu *iommu,
+				  struct device *dev, pgd_t *pgd,
+				  int pasid, u16 did, int flags);
 int intel_pasid_setup_second_level(struct intel_iommu *iommu,
 				   struct dmar_domain *domain,
 				   struct device *dev, int pasid);
