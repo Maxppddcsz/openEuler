@@ -36,6 +36,8 @@
 #include <asm/cacheflush.h>
 #include <asm/iommu.h>
 
+#define CONTEXT_PASIDE		BIT_ULL(3)
+
 /*
  * Intel IOMMU register specification per version 1.0 public spec.
  */
