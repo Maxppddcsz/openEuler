@@ -1203,6 +1203,7 @@ static int qi_check_fault(struct intel_iommu *iommu, int index)
 	 * is cleared.
 	 */
 	if (fault & DMA_FSTS_IQE) {
+		head = readl(iommu->reg + DMAR_IQH_REG);
 		if ((head >> shift) == index) {
 			struct qi_desc *desc = qi->desc + head;
 
