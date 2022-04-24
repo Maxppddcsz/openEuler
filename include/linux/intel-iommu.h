@@ -84,6 +84,7 @@
 /*
  * Decoding Capability Register
  */
+#define ecap_smts(e)		(((e) >> 43) & 0x1)
 #define ecap_smpwc(e)		(((e) >> 48) & 0x1)
 #define ecap_flts(e)		(((e) >> 47) & 0x1)
 #define ecap_slts(e)		(((e) >> 46) & 0x1)
