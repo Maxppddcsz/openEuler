@@ -327,6 +327,14 @@ static int hw_pass_through = 1;
 /* si_domain contains mulitple devices */
 #define DOMAIN_FLAG_STATIC_IDENTITY		BIT(0)
 
+/*
+ * This is a DMA domain allocated through the iommu domain allocation
+ * interface. But one or more devices belonging to this domain have
+ * been chosen to use a private domain. We should avoid to use the
+ * map/unmap/iova_to_phys APIs on it.
+ */
+#define DOMAIN_FLAG_LOSE_CHILDREN		BIT(1)
+
 #define for_each_domain_iommu(idx, domain)			\
 	for (idx = 0; idx < g_num_of_iommus; idx++)		\
 		if (domain->iommu_refcnt[idx])
@@ -4908,6 +4916,7 @@ static void domain_context_clear(struct intel_iommu *iommu, struct device *dev)
 
 static void __dmar_remove_one_dev_info(struct device_domain_info *info)
 {
+	struct dmar_domain *domain;
 	struct intel_iommu *iommu;
 	unsigned long flags;
 
@@ -4917,6 +4926,7 @@ static void __dmar_remove_one_dev_info(struct device_domain_info *info)
 		return;
 
 	iommu = info->iommu;
+	domain = info->domain;
 
 	if (info->dev) {
 		iommu_disable_dev_iotlb(info);
@@ -4927,8 +4937,13 @@ static void __dmar_remove_one_dev_info(struct device_domain_info *info)
 	unlink_domain_info(info);
 
 	spin_lock_irqsave(&iommu->lock, flags);
-	domain_detach_iommu(info->domain, iommu);
+	domain_detach_iommu(domain, iommu);
 	spin_unlock_irqrestore(&iommu->lock, flags);
+
+	/* free the private domain */
+	if (domain->flags & DOMAIN_FLAG_LOSE_CHILDREN &&
+	    !(domain->flags & DOMAIN_FLAG_STATIC_IDENTITY))
+		domain_exit(info->domain);
 
 	free_devinfo_mem(info);
 }
@@ -5253,6 +5268,9 @@ static int intel_iommu_map(struct iommu_domain *domain,
 	int prot = 0;
 	int ret;
 
+	if (dmar_domain->flags & DOMAIN_FLAG_LOSE_CHILDREN)
+		return -EINVAL;
+
 	if (iommu_prot & IOMMU_READ)
 		prot |= DMA_PTE_READ;
 	if (iommu_prot & IOMMU_WRITE)
@@ -5294,6 +5312,8 @@ static size_t intel_iommu_unmap(struct iommu_domain *domain,
 	/* Cope with horrid API which requires us to unmap more than the
 	   size argument if it happens to be a large-page mapping. */
 	BUG_ON(!pfn_to_dma_pte(dmar_domain, iova >> VTD_PAGE_SHIFT, &level));
+	if (dmar_domain->flags & DOMAIN_FLAG_LOSE_CHILDREN)
+		return 0;
 
 	if (size < VTD_PAGE_SIZE << level_to_offset_bits(level))
 		size = VTD_PAGE_SIZE << level_to_offset_bits(level);
@@ -5324,6 +5344,9 @@ static phys_addr_t intel_iommu_iova_to_phys(struct iommu_domain *domain,
 	struct dma_pte *pte;
 	int level = 0;
 	u64 phys = 0;
+
+	if (dmar_domain->flags & DOMAIN_FLAG_LOSE_CHILDREN)
+		return 0;
 
 	pte = pfn_to_dma_pte(dmar_domain, iova >> VTD_PAGE_SHIFT, &level);
 	if (pte)
@@ -5380,6 +5403,8 @@ static bool intel_iommu_capable(enum iommu_cap cap)
 
 static int intel_iommu_add_device(struct device *dev)
 {
+	struct dmar_domain *dmar_domain;
+	struct iommu_domain *domain;
 	struct intel_iommu *iommu;
 	struct iommu_group *group;
 	u8 bus, devfn;
@@ -5399,6 +5424,42 @@ static int intel_iommu_add_device(struct device *dev)
 	}
 
 	iommu_group_put(group);
+
+	domain = iommu_get_domain_for_dev(dev);
+	dmar_domain = to_dmar_domain(domain);
+	if (domain->type == IOMMU_DOMAIN_DMA) {
+		if (device_def_domain_type(dev, 1) == IOMMU_DOMAIN_IDENTITY) {
+			ret = iommu_request_dm_for_dev(dev);
+			if (ret) {
+				dmar_domain->flags |= DOMAIN_FLAG_LOSE_CHILDREN;
+				domain_add_dev_info(si_domain, dev);
+				dev_info(dev,
+					 "Device uses a private identity domain.\n");
+				return 0;
+			}
+
+			return -ENODEV;
+		}
+	} else {
+		if (device_def_domain_type(dev, 1) == IOMMU_DOMAIN_DMA) {
+			ret = iommu_request_dma_domain_for_dev(dev);
+			if (ret) {
+				dmar_domain->flags |= DOMAIN_FLAG_LOSE_CHILDREN;
+				if (!get_valid_domain_for_dev(dev)) {
+					dev_warn(dev,
+						 "Failed to get a private domain.\n");
+					return -ENOMEM;
+				}
+
+				dev_info(dev,
+					 "Device uses a private dma domain.\n");
+				return 0;
+			}
+
+			return -ENODEV;
+		}
+	}
+
 	return 0;
 
 unlink:
