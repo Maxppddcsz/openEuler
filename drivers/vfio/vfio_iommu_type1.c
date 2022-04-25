@@ -101,6 +101,7 @@ struct vfio_group {
 	struct iommu_group	*iommu_group;
 	struct list_head	next;
 	bool                    sva_enabled;
+	bool			mdev_group;	/* An mdev group */
 };
 
 struct vfio_mm {
