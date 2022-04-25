@@ -2951,24 +2951,6 @@ static int device_def_domain_type(struct device *dev, int startup)
 			return IOMMU_DOMAIN_DMA;
 	}
 
-	/*
-	 * At boot time, we don't yet know if devices will be 64-bit capable.
-	 * Assume that they will — if they turn out not to be, then we can
-	 * take them out of the 1:1 domain later.
-	 */
-	if (!startup) {
-		/*
-		 * If the device's dma_mask is less than the system's memory
-		 * size then this is not a candidate for identity mapping.
-		 */
-		u64 dma_mask = *dev->dma_mask;
-
-		if (dev->coherent_dma_mask &&
-		    dev->coherent_dma_mask < dma_mask)
-			dma_mask = dev->coherent_dma_mask;
-
-		return dma_mask >= dma_get_required_mask(dev);
-	}
 	return (iommu_identity_mapping & IDENTMAP_ALL) ?
 			IOMMU_DOMAIN_IDENTITY : 0;
 }
@@ -3580,39 +3562,37 @@ out:
 /* Check if the dev needs to go through non-identity map and unmap process.*/
 static int iommu_no_mapping(struct device *dev)
 {
-	int found;
+	int ret;
 
 	if (iommu_dummy(dev))
 		return 1;
+	ret = identity_mapping(dev);
+	if (ret) {
+		u64 dma_mask = *dev->dma_mask;
+	if (dev->coherent_dma_mask && dev->coherent_dma_mask < dma_mask)
+			dma_mask = dev->coherent_dma_mask;
 
-	found = identity_mapping(dev);
-	if (found) {
-		if (iommu_should_identity_map(dev, 0))
+		if (dma_mask >= dma_get_required_mask(dev))
 			return 1;
-		else {
-			/*
-			 * 32 bit DMA is removed from si_domain and fall back
-			 * to non-identity mapping.
-			 */
-			dmar_remove_one_dev_info(dev);
-			pr_info("32bit %s uses non-identity mapping\n",
-				dev_name(dev));
-			return 0;
-		}
-	} else {
 		/*
-		 * In case of a detached 64 bit DMA device from vm, the device
-		 * is put into si_domain for identity mapping.
+		 * 32 bit DMA is removed from si_domain and fall back
+		 * to non-identity mapping.
 		 */
-		if (iommu_should_identity_map(dev, 0)) {
-			int ret;
-			ret = domain_add_dev_info(si_domain, dev);
-			if (!ret) {
-				pr_info("64bit %s uses identity mapping\n",
-					dev_name(dev));
-				return 1;
+		dmar_remove_one_dev_info(si_domain, dev);
+		ret = iommu_request_dma_domain_for_dev(dev);
+		if (ret) {
+			struct iommu_domain *domain;
+			struct dmar_domain *dmar_domain;
+
+			domain = iommu_get_domain_for_dev(dev);
+			if (domain) {
+				dmar_domain = to_dmar_domain(domain);
+				dmar_domain->flags |= DOMAIN_FLAG_LOSE_CHILDREN;
 			}
+			get_valid_domain_for_dev(dev);
 		}
+
+		dev_info(dev, "32bit DMA uses non-identity mapping\n");
 	}
 
 	return 0;
