@@ -2906,7 +2906,7 @@ static bool device_is_rmrr_locked(struct device *dev)
  *  - IOMMU_DOMAIN_IDENTITY: device requires an identical mapping domain
  *  - 0: both identity and dynamic domains work for this device
  */
-static int device_def_domain_type(struct device *dev, int startup)
+static int device_def_domain_type(struct device *dev)
 {
 
 	if (dev_is_pci(dev)) {
@@ -2954,16 +2954,16 @@ static int device_def_domain_type(struct device *dev, int startup)
 			IOMMU_DOMAIN_IDENTITY : 0;
 }
 
-static inline int iommu_should_identity_map(struct device *dev, int startup)
+static inline int iommu_should_identity_map(struct device *dev)
 {
-	return device_def_domain_type(dev, startup) == IOMMU_DOMAIN_IDENTITY;
+	return device_def_domain_type(dev) == IOMMU_DOMAIN_IDENTITY;
 }
 
 static int __init dev_prepare_static_identity_mapping(struct device *dev, int hw)
 {
 	int ret;
 
-	if (!iommu_should_identity_map(dev, 1))
+	if (!iommu_should_identity_map(dev))
 		return 0;
 
 	ret = domain_add_dev_info(si_domain, dev);
@@ -3589,7 +3589,7 @@ static int iommu_no_mapping(struct device *dev)
 				dmar_domain = to_dmar_domain(domain);
 				dmar_domain->flags |= DOMAIN_FLAG_LOSE_CHILDREN;
 			}
-			get_valid_domain_for_dev(dev);
+			get_private_domain_for_dev(dev);
 		}
 
 		dev_info(dev, "32bit DMA uses non-identity mapping\n");
@@ -5408,7 +5408,7 @@ static int intel_iommu_add_device(struct device *dev)
 	domain = iommu_get_domain_for_dev(dev);
 	dmar_domain = to_dmar_domain(domain);
 	if (domain->type == IOMMU_DOMAIN_DMA) {
-		if (device_def_domain_type(dev, 1) == IOMMU_DOMAIN_IDENTITY) {
+		if (device_def_domain_type(dev) == IOMMU_DOMAIN_IDENTITY) {
 			ret = iommu_request_dm_for_dev(dev);
 			if (ret) {
 				dmar_domain->flags |= DOMAIN_FLAG_LOSE_CHILDREN;
@@ -5421,7 +5421,7 @@ static int intel_iommu_add_device(struct device *dev)
 			return -ENODEV;
 		}
 	} else {
-		if (device_def_domain_type(dev, 1) == IOMMU_DOMAIN_DMA) {
+		if (device_def_domain_type(dev) == IOMMU_DOMAIN_DMA) {
 			ret = iommu_request_dma_domain_for_dev(dev);
 			if (ret) {
 				dmar_domain->flags |= DOMAIN_FLAG_LOSE_CHILDREN;
