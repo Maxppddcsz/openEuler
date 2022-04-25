@@ -4405,7 +4405,7 @@ static int device_notifier(struct notifier_block *nb,
 
 		dmar_remove_one_dev_info(dev);
 	} else if (action == BUS_NOTIFY_ADD_DEVICE) {
-		if (iommu_should_identity_map(dev, 1))
+		if (iommu_should_identity_map(dev))
 			domain_add_dev_info(si_domain, dev);
 	}
 
