@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .22.0
-%global pkg_release         .55
+%global maintenance_release .23.0
+%global pkg_release         .56
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -883,6 +883,16 @@ fi
 %endif
 
 %changelog
+* Sun Apr 24 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.23.0.56
+- sysctl: Modify sysctl_overload_detect_period minimum to 100ms
+- ax25: Fix NULL pointer dereferences in ax25 timers
+- ax25: fix NPD bug in ax25_disconnect
+- ax25: Fix NULL pointer dereference in ax25_kill_by_device
+- ax25: improve the incomplete fix to avoid UAF and NPD bugs
+- arm64: clear_page() shouldn't use DC ZVA when DCZID_EL0.DZP == 1
+- mm: gup: fix potential pgmap refcnt leak in __gup_device_huge()
+- mtd: phram: Fix error return code in phram_setup()
+
 * Thu Apr 21 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.22.0.55
 - scsi: hisi_sas: Limit users changing debugfs BIST count value
 - netfilter: nf_tables: initialize registers in nft_do_chain()
