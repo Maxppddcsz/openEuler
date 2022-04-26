@@ -3153,9 +3153,6 @@ out_unmap:
 static int __init init_dmars(void)
 {
 	struct dmar_drhd_unit *drhd;
-	struct dmar_rmrr_unit *rmrr;
-	bool copied_tables = false;
-	struct device *dev;
 	struct intel_iommu *iommu;
 	int ret;
 
@@ -5068,7 +5065,6 @@ static int intel_iommu_attach_device(struct iommu_domain *domain,
 		old_domain = find_domain(dev);
 		if (old_domain)
 			dmar_remove_one_dev_info(dev);
-		}
 	}
 
 	ret = prepare_domain_attach_device(domain, dev);
@@ -5391,7 +5387,7 @@ int intel_iommu_enable_pasid(struct intel_iommu *iommu, struct device *dev)
 	u64 ctx_lo;
 	int ret;
 
-	domain = find_domain(sdev->dev);
+	domain = find_domain(dev);
 	if (!domain)
 		return -EINVAL;
 
