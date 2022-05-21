@@ -810,6 +810,13 @@ int f2fs_get_dnode_of_data(struct dnode_of_data *dn, pgoff_t index, int mode)
 	dn->ofs_in_node = offset[level];
 	dn->node_page = npage[level];
 	dn->data_blkaddr = f2fs_data_blkaddr(dn);
+
+	if (is_inode_flag_set(dn->inode, FI_COMPRESSED_FILE) &&
+					f2fs_sb_has_readonly(sbi)) {
+		f2fs_readonly_update_extent_cache(dn, index);
+	}
+
+out:
 	return 0;
 
 release_pages:
