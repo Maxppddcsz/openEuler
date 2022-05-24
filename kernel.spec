@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .31.0
-%global pkg_release         .60
+%global maintenance_release .32.0
+%global pkg_release         .61
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -883,6 +883,27 @@ fi
 %endif
 
 %changelog
+* Mon May 23 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.32.0.61
+- ext4: fix bug_on in ext4_writepages
+- ext4: fix warning in ext4_handle_inode_extension
+- ext4: fix use-after-free in ext4_rename_dir_prepare
+- ext4: fix warning when submitting superblock in ext4_commit_super()
+- ipv6: annotate some data-races around sk->sk_prot
+- net/sched: cls_u32: fix netns refcount changes in u32_change()
+- ext4: fix bug_on in __es_tree_search
+- exec: Remove redundant check in do_open_execat/uselib
+- floppy: use a statically allocated error counter
+- ext4: fix race condition between ext4_write and ext4_convert_inline_data
+- arm64: Fix some build errors related to KEXEC
+- ubi: ubi_create_volume: Fix use-after-free when volume creation failed
+- ubi: fastmap: Don't reserve beb_rsvd_pebs while filling fm pool
+- net: ipv6: fix use after free of struct seg6_pernet_data
+- net: ipv6: check return value of rhashtable_init
+- KVM: arm64: vgic: Drop WARN from vgic_get_irq
+- Documentation: arm64: Add limitation for exactmap
+- arm64: Fix reserved memory via memmap
+- ARM: 9191/1: arm/stacktrace, kasan: Silence KASAN warnings in unwind_frame()
+
 * Wed May 18 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.31.0.60
 - io_uring: fix race between timeout flush and removal
 - net/x25: Fix null-ptr-deref caused by x25_disconnect
