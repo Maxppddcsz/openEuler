@@ -651,6 +651,8 @@ struct key_info {
 #define MAX_KEY_BYTES	(MAX_KEY_DWORDS * 4)
 #define MAX_META_DATA_LENGTH	32
 
+#define HCLGE_FD_VXLAN_VNI_UNMASK	GENMASK(31, 0)
+
 /* assigned by firmware, the real filter number for each pf may be less */
 #define MAX_FD_FILTER_NUM	4096
 #define HCLGE_ARFS_EXPIRE_INTERVAL	5UL
@@ -707,6 +709,7 @@ struct hclge_fd_rule_tuples {
 	u16 ether_proto;
 	u8 ip_tos;
 	u8 ip_proto;
+	u32 outer_tun_vni;
 };
 
 struct hclge_fd_rule {
