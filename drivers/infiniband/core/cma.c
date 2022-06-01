@@ -3375,13 +3375,8 @@ int rdma_listen(struct rdma_cm_id *id, int backlog)
 
 	id_priv = container_of(id, struct rdma_id_private, id);
 	if (id_priv->state == RDMA_CM_IDLE) {
-		struct sockaddr_in any_in = {
-			.sin_family = AF_INET,
-			.sin_addr.s_addr = htonl(INADDR_ANY),
-		};
-
-		/* For a well behaved ULP state will be RDMA_CM_IDLE */
-		ret = rdma_bind_addr(id, (struct sockaddr *)&any_in);
+		id->route.addr.src_addr.ss_family = AF_INET;
+		ret = rdma_bind_addr(id, cma_src_addr(id_priv));
 		if (ret)
 			return ret;
 	}
