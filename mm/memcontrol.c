@@ -4556,6 +4556,55 @@ static void mem_cgroup_oom_unregister_event(struct mem_cgroup *memcg,
 	spin_unlock(&memcg_oom_lock);
 }
 
+static const char* memcg_flag_name[5] = {
+	"NO_REF", 
+	"ONLINE", 
+	"RELEASED", 
+	"VISIBLE", 
+	"DYING"
+};
+
+void memcg_flag_stat_get(int flags, int* stat) {
+    	int i;
+    	for(i=0; i<ARRAY_SIZE(memcg_flag_name); i++){
+        	if(flags&1){
+            		stat[i] += 1;
+        	}
+        	flags>>=1;
+    	}
+    	return;
+}
+
+static int memcg_flag_stat_show(struct seq_file *sf, void *v)
+{
+    	int self_flag[ARRAY_SIZE(memcg_flag_name)] = {0};
+    	int child_flag[ARRAY_SIZE(memcg_flag_name)] = {0};
+	int iter;
+
+    	struct cgroup_subsys_state *child; 
+	struct mem_cgroup *memcg = mem_cgroup_from_seq(sf);
+    	struct cgroup_subsys_state *sys_state = &memcg->css;
+	
+	/* get self flag stat */ 
+    	memcg_flag_stat_get(sys_state->flags, self_flag);
+
+    	/* get children flag stat in a loop */
+    	css_for_each_child(child, sys_state)	
+    	{
+        	memcg_flag_stat_get(child->flags, child_flag);
+    	}
+
+	for(iter=0; iter<ARRAY_SIZE(memcg_flag_name); iter++){
+       		seq_printf(sf, "%s %d\n", memcg_flag_name[iter], self_flag[iter]);
+    	}
+	
+    	for(iter=0; iter<ARRAY_SIZE(memcg_flag_name); iter++){
+        	seq_printf(sf, "TOTAL_%s %d\n", memcg_flag_name[iter], child_flag[iter]);
+    	}
+    
+	return 0;
+}
+
 static int mem_cgroup_oom_control_read(struct seq_file *sf, void *v)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_seq(sf);
@@ -5258,6 +5307,10 @@ static struct cftype mem_cgroup_legacy_files[] = {
 		.seq_show = mem_cgroup_oom_control_read,
 		.write_u64 = mem_cgroup_oom_control_write,
 		.private = MEMFILE_PRIVATE(_OOM_TYPE, OOM_CONTROL),
+	},
+	{
+		.name = "flag_stat",
+		.seq_show = memcg_flag_stat_show,
 	},
 	{
 		.name = "pressure_level",
