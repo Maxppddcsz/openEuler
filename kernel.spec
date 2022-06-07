@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .35.0
-%global pkg_release         .64
+%global maintenance_release .36.0
+%global pkg_release         .65
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -883,6 +883,46 @@ fi
 %endif
 
 %changelog
+* Tue May 31 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.36.0.65
+- net, xdp: Update pkt_type if generic XDP changes unicast MAC
+- KVM: x86/mmu: fix NULL pointer dereference on guest INVPCID
+- sched/psi: report zeroes for CPU full at the system level
+- psi: Fix PSI_MEM_FULL state when tasks are in memstall and doing reclaim
+- psi: Fix psi state corruption when schedule() races with cgroup move
+- psi: Reduce calls to sched_clock() in psi
+- psi: Optimize task switch inside shared cgroups
+- psi: Pressure states are unlikely
+- psi: Use ONCPU state tracking machinery to detect reclaim
+- psi: Add PSI_CPU_FULL state
+- block/psi: remove PSI annotations from direct IO
+- psi: make kabi compatibility for psi in struct cgroup
+- psi, tracepoint: introduce tracepoints for psi_memstall_{enter, leave}
+- psi: fix wrong iteration in iterate_groups
+- config: change CONFIG_DMATEST from y to m
+- perf: Fix sys_perf_event_open() race against self
+- blk-mq: fix kabi broken by "blk-mq: Use request queue-wide tags for tagset-wide sbitmap"
+- blk-mq: fix use-after-free in blk_mq_exit_sched
+- blk-mq: Use request queue-wide tags for tagset-wide sbitmap
+- blk-mq: Some tag allocation code refactoring
+- arm64: Add memmap reserve range check to avoid conflict
+- ext4: add reserved GDT blocks check
+- ax25: Fix UAF bugs in ax25 timers
+- ax25: fix UAF bug in ax25_send_control()
+- ax25: Fix refcount leaks caused by ax25_cb_del()
+- ax25: fix UAF bugs of net_device caused by rebinding operation
+- ax25: fix reference count leaks of ax25_dev
+- ax25: add refcount in ax25_dev to avoid UAF bugs
+- driver core: fix deadlock in __driver_attach
+- driver core: fix deadlock in __device_attach
+- inet: fully convert sk->sk_rx_dst to RCU rules
+- Revert "ACPI: PM: s2idle: Cancel wakeup before dispatching EC GPE"
+- arm64: cpufeature: add HWCAP for FEAT_RPRES
+- arm64: cpufeature: add HWCAP for FEAT_AFP
+- arm64: Add Cortex-A510 CPU part definition
+- arm64: Add Cortex-X2 CPU part definition
+- arm64: Add Neoverse-N2, Cortex-A710 CPU part definition
+- arm64: cputype: Add CPU implementor & types for the Apple M1 cores
+
 * Sat May 28 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.35.0.64
 - sched/qos: Add qos_tg_{throttle,unthrottle}_{up,down}
 - sched: Throttle offline task at tracehook_notify_resume()
