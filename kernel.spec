@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .40.0
-%global pkg_release         .69
+%global maintenance_release .41.0
+%global pkg_release         .70
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -883,6 +883,16 @@ fi
 %endif
 
 %changelog
+* Tue Jun 28 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.41.0.70
+- NFC: netlink: fix sleep in atomic bug when firmware download timeout
+- KVM: x86: avoid calling x86 emulator without a decoded instruction
+- net: hns3: fix tm port shapping of fibre port is incorrect after driver initialization
+- net: hns3: fix PF rss size initialization bug
+- net: hns3: restore tm priority/qset to default settings when tc disabled
+- net: hns3: modify the ring param print info
+- net: hns3: don't push link state to VF if unalive
+- net: hns3: set port base vlan tbl_sta to false before removing old vlan
+
 * Mon Jun 27 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.40.0.69
 - KVM: x86/mmu: do compare-and-exchange of gPTE via the user address
 - bpf: Fix KASAN use-after-free Read in compute_effective_progs
