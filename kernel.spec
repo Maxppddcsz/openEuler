@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .42.0
-%global pkg_release         .71
+%global maintenance_release .43.0
+%global pkg_release         .72
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -883,6 +883,15 @@ fi
 %endif
 
 %changelog
+* Mon Jul 11 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.43.0.72
+- vt: drop old FONT ioctls
+- genirq: Take the proposed affinity at face value if force==true
+- irqchip/gic-v3: Always trust the managed affinity provided by the core code
+- genirq: Always limit the affinity to online CPUs
+- genirq/msi: Shutdown managed interrupts with unsatifiable affinities
+- sign-file: Support SM signature
+- arm64: Do not defer reserve_crashkernel() for platforms with no DMA memory zones
+
 * Tue Jul 05 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.42.0.71
 - smp: fix early_param csdlock_debug boot panic
 - RDMA/hns: Use hr_reg_read() instead of remaining roce_get_xxx()
