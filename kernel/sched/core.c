@@ -2464,7 +2464,11 @@ ttwu_stat(struct task_struct *p, int cpu, int wake_flags)
 static void ttwu_do_wakeup(struct rq *rq, struct task_struct *p, int wake_flags,
 			   struct rq_flags *rf)
 {
-	check_preempt_curr(rq, p, wake_flags);
+#ifdef CONFIG_DTS
+	if (p->by_pass != INIT_BY_PASS)
+#endif
+		check_preempt_curr(rq, p, wake_flags);
+	
 	p->state = TASK_RUNNING;
 	trace_sched_wakeup(p);
 
@@ -2991,7 +2995,16 @@ unlock:
 out:
 	if (success)
 		ttwu_stat(p, task_cpu(p), wake_flags);
-	preempt_enable();
+#ifdef CONFIG_DTS
+	if (p->by_pass == INIT_BY_PASS) {
+		p->by_pass = IN_BY_PASS;
+		p->se.by_pass = IN_BY_PASS;
+		p->dts_shared_se.by_pass = IN_BY_PASS;
+		preempt_enable_no_resched();
+	}
+	else
+#endif
+		preempt_enable();
 
 	return success;
 }
@@ -3080,6 +3093,16 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 	p->se.nr_migrations		= 0;
 	p->se.vruntime			= 0;
 	INIT_LIST_HEAD(&p->se.group_node);
+
+#ifdef CONFIG_DTS
+	p->dts_shared_se.on_rq			= 0;
+	p->dts_shared_se.exec_start		= 0;
+	p->dts_shared_se.sum_exec_runtime		= 0;
+	p->dts_shared_se.prev_sum_exec_runtime	= 0;
+	p->dts_shared_se.nr_migrations		= 0;
+	p->dts_shared_se.vruntime			= 0;
+	INIT_LIST_HEAD(&p->dts_shared_se.group_node);
+#endif
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	p->se.cfs_rq			= NULL;
@@ -3307,6 +3330,11 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 
 	init_entity_runnable_average(&p->se);
 
+#ifdef CONFIG_DTS
+	p->by_pass = NONE_BY_PASS;
+	p->se.by_pass = NONE_BY_PASS;
+	p->dts_shared_se.by_pass = NONE_BY_PASS;
+#endif
 
 #ifdef CONFIG_SCHED_INFO
 	if (likely(sched_info_on()))
@@ -3686,6 +3714,11 @@ static struct rq *finish_task_switch(struct task_struct *prev)
 		membarrier_mm_sync_core_before_usermode(mm);
 		mmdrop(mm);
 	}
+#ifdef CONFIG_DTS
+		prev->by_pass = NONE_BY_PASS;
+		prev->se.by_pass = NONE_BY_PASS;
+		prev->dts_shared_se.by_pass = NONE_BY_PASS;
+#endif
 	if (unlikely(prev_state == TASK_DEAD)) {
 		if (prev->sched_class->task_dead)
 			prev->sched_class->task_dead(prev);
@@ -3728,7 +3761,7 @@ static void __balance_callback(struct rq *rq)
 	raw_spin_unlock_irqrestore(&rq->lock, flags);
 }
 
-static inline void balance_callback(struct rq *rq)
+inline void balance_callback(struct rq *rq)
 {
 	if (unlikely(rq->balance_callback))
 		__balance_callback(rq);
@@ -3736,7 +3769,7 @@ static inline void balance_callback(struct rq *rq)
 
 #else
 
-static inline void balance_callback(struct rq *rq)
+inline void balance_callback(struct rq *rq)
 {
 }
 
@@ -3773,7 +3806,7 @@ asmlinkage __visible void schedule_tail(struct task_struct *prev)
 /*
  * context_switch - switch to the new MM and the new thread's register state.
  */
-static __always_inline struct rq *
+__always_inline struct rq *
 context_switch(struct rq *rq, struct task_struct *prev,
 	       struct task_struct *next, struct rq_flags *rf)
 {
@@ -3829,7 +3862,7 @@ context_switch(struct rq *rq, struct task_struct *prev,
 	barrier();
 
 	return finish_task_switch(prev);
-}
+}EXPORT_SYMBOL(context_switch);
 
 /*
  * nr_running and nr_context_switches:
@@ -4598,7 +4631,7 @@ void __noreturn do_task_dead(void)
 		cpu_relax();
 }
 
-static inline void sched_submit_work(struct task_struct *tsk)
+inline void sched_submit_work(struct task_struct *tsk)
 {
 	unsigned int task_flags;
 
@@ -4634,7 +4667,7 @@ static inline void sched_submit_work(struct task_struct *tsk)
 		blk_schedule_flush_plug(tsk);
 }
 
-static void sched_update_worker(struct task_struct *tsk)
+void sched_update_worker(struct task_struct *tsk)
 {
 	if (tsk->flags & (PF_WQ_WORKER | PF_IO_WORKER)) {
 		if (tsk->flags & PF_WQ_WORKER)

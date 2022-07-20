@@ -526,6 +526,12 @@ extern void sched_offline_group(struct task_group *tg);
 
 extern void sched_move_task(struct task_struct *tsk);
 
+#ifdef CONFIG_DTS
+extern void replace_shared_entity(struct cfs_rq *cfs_rq, struct sched_entity *prev_se, struct sched_entity *shared_se);
+#endif
+
+extern void set_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *se);
+
 #ifdef CONFIG_FAIR_GROUP_SCHED
 extern int sched_group_set_shares(struct task_group *tg, unsigned long shares);
 
@@ -2340,6 +2346,7 @@ static inline void double_rq_unlock(struct rq *rq1, struct rq *rq2)
 
 extern struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq);
 extern struct sched_entity *__pick_last_entity(struct cfs_rq *cfs_rq);
+extern void traverse_cfs_rq(struct cfs_rq *cfs_rq);
 
 #ifdef	CONFIG_SCHED_DEBUG
 extern bool sched_debug_enabled;
@@ -2725,3 +2732,16 @@ static inline bool is_per_cpu_kthread(struct task_struct *p)
 
 void swake_up_all_locked(struct swait_queue_head *q);
 void __prepare_to_swait(struct swait_queue_head *q, struct swait_queue *wait);
+
+#ifdef CONFIG_DTS
+extern void sched_submit_work(struct task_struct *tsk);
+extern void sched_update_worker(struct task_struct *tsk);
+extern struct rq *context_switch(struct rq *rq, struct task_struct *prev,
+	       struct task_struct *next, struct rq_flags *rf);
+#ifdef CONFIG_SCHED_STEAL
+extern int steal_task(struct rq *dst_rq, struct rq_flags *dst_rf, bool *locked,
+			struct task_struct *tsk);
+extern void update_before_bypass(void);
+extern void balance_callback(struct rq *rq);
+#endif
+#endif
