@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .45.0
-%global pkg_release         .73
+%global maintenance_release .46.0
+%global pkg_release         .74
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -883,6 +883,118 @@ fi
 %endif
 
 %changelog
+* Tue Jul 19 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.46.0.74
+- KEYS: Fix mistaken sizeof call in pgp_key_generate_id
+- KEYS: Add safe guard against faulty PGP key
+- KEYS: Fix error path return value in pgp_generate_fingerprint
+- block: fix mismatch size for flush_rq
+- crypto: hisilicon/sec - don't sleep when in softirq
+- xen/arm: Fix race in RB-tree based P2M accounting
+- nbd: fix io hung while disconnecting device
+- nbd: don't clear 'NBD_CMD_INFLIGHT' flag if request is not completed
+- filemap: Correct the conditions for marking a folio as accessed
+- Revert "mm/filemap: fix that first page is not mark accessed in filemap_read()"
+- net: rose: fix UAF bugs caused by timer handler
+- nbd: fix race between nbd_alloc_config() and module removal
+- nbd: call genl_unregister_family() first in nbd_cleanup()
+- openeuler_defconfig: Enable SENSORS_ZHAOXIN_CPUTEMP as module by default
+- Driver for Zhaoxin CPU core temperature monitoring
+- scsi: iscsi: fix kabi broken in struct iscsi_transport
+- scsi: iscsi: fix kabi broken in struct iscsi_cls_conn
+- scsi: iscsi: Fix unbound endpoint error handling
+- scsi: iscsi: Fix endpoint reuse regression
+- dma-direct: avoid redundant memory sync for swiotlb
+- timers: Fix warning condition in __run_timers()
+- i2c: pasemi: Wait for write xfers to finish
+- smp: Fix offline cpu check in flush_smp_call_function_queue()
+- dm integrity: fix memory corruption when tag_size is less than digest size
+- ARM: davinci: da850-evm: Avoid NULL pointer dereference
+- tick/nohz: Use WARN_ON_ONCE() to prevent console saturation
+- genirq/affinity: Consider that CPUs on nodes can be unbalanced
+- drm/amdgpu: Enable gfxoff quirk on MacBook Pro
+- drm/amd/display: don't ignore alpha property on pre-multiplied mode
+- ipv6: fix panic when forwarding a pkt with no in6 dev
+- nl80211: correctly check NL80211_ATTR_REG_ALPHA2 size
+- ALSA: pcm: Test for "silence" field in struct "pcm_format_data"
+- ALSA: hda/realtek: add quirk for Lenovo Thinkpad X12 speakers
+- ALSA: hda/realtek: Add quirk for Clevo PD50PNT
+- btrfs: mark resumed async balance as writing
+- btrfs: fix root ref counts in error handling in btrfs_get_root_ref
+- ath9k: Fix usage of driver-private space in tx_info
+- ath9k: Properly clear TX status area before reporting to mac80211
+- gcc-plugins: latent_entropy: use /dev/urandom
+- memory: renesas-rpc-if: fix platform-device leak in error path
+- KVM: x86/mmu: Resolve nx_huge_pages when kvm.ko is loaded
+- mm: kmemleak: take a full lowmem check in kmemleak_*_phys()
+- mm: fix unexpected zeroed page mapping with zram swap
+- mm, page_alloc: fix build_zonerefs_node()
+- perf/imx_ddr: Fix undefined behavior due to shift overflowing the constant
+- drivers: net: slip: fix NPD bug in sl_tx_timeout()
+- scsi: megaraid_sas: Target with invalid LUN ID is deleted during scan
+- scsi: mvsas: Add PCI ID of RocketRaid 2640
+- drm/amd/display: Fix allocate_mst_payload assert on resume
+- drm/amd/display: Revert FEC check in validation
+- myri10ge: fix an incorrect free for skb in myri10ge_sw_tso
+- net: usb: aqc111: Fix out-of-bounds accesses in RX fixup
+- net: axienet: setup mdio unconditionally
+- tlb: hugetlb: Add more sizes to tlb_remove_huge_tlb_entry
+- arm64: alternatives: mark patch_alternative() as `noinstr`
+- regulator: wm8994: Add an off-on delay for WM8994 variant
+- gpu: ipu-v3: Fix dev_dbg frequency output
+- ata: libata-core: Disable READ LOG DMA EXT for Samsung 840 EVOs
+- net: micrel: fix KS8851_MLL Kconfig
+- scsi: ibmvscsis: Increase INITIAL_SRP_LIMIT to 1024
+- scsi: lpfc: Fix queue failures when recovering from PCI parity error
+- scsi: target: tcmu: Fix possible page UAF
+- Drivers: hv: vmbus: Prevent load re-ordering when reading ring buffer
+- drm/amdkfd: Check for potential null return of kmalloc_array()
+- drm/amdgpu/vcn: improve vcn dpg stop procedure
+- drm/amdkfd: Fix Incorrect VMIDs passed to HWS
+- drm/amd/display: Update VTEM Infopacket definition
+- drm/amd/display: FEC check in timing validation
+- drm/amd/display: fix audio format not updated after edid updated
+- btrfs: do not warn for free space inode in cow_file_range
+- btrfs: fix fallocate to use file_modified to update permissions consistently
+- drm/amd: Add USBC connector ID
+- net: bcmgenet: Revert "Use stronger register read/writes to assure ordering"
+- dm mpath: only use ktime_get_ns() in historical selector
+- cifs: potential buffer overflow in handling symlinks
+- nfc: nci: add flush_workqueue to prevent uaf
+- perf tools: Fix misleading add event PMU debug message
+- testing/selftests/mqueue: Fix mq_perf_tests to free the allocated cpu set
+- sctp: Initialize daddr on peeled off socket
+- scsi: iscsi: Fix conn cleanup and stop race during iscsid restart
+- scsi: iscsi: Fix offload conn cleanup when iscsid restarts
+- scsi: iscsi: Move iscsi_ep_disconnect()
+- scsi: iscsi: Fix in-kernel conn failure handling
+- scsi: iscsi: Rel ref after iscsi_lookup_endpoint()
+- scsi: iscsi: Use system_unbound_wq for destroy_work
+- scsi: iscsi: Force immediate failure during shutdown
+- scsi: iscsi: Stop queueing during ep_disconnect
+- scsi: pm80xx: Enable upper inbound, outbound queues
+- scsi: pm80xx: Mask and unmask upper interrupt vectors 32-63
+- net/smc: Fix NULL pointer dereference in smc_pnet_find_ib()
+- drm/msm/dsi: Use connector directly in msm_dsi_manager_connector_init()
+- drm/msm: Fix range size vs end confusion
+- cfg80211: hold bss_lock while updating nontrans_list
+- net/sched: taprio: Check if socket flags are valid
+- net: ethernet: stmmac: fix altr_tse_pcs function when using a fixed-link
+- net: dsa: felix: suppress -EPROBE_DEFER errors
+- net/sched: fix initialization order when updating chain 0 head
+- mlxsw: i2c: Fix initialization error flow
+- net: mdio: Alphabetically sort header inclusion
+- gpiolib: acpi: use correct format characters
+- veth: Ensure eth header is in skb's linear part
+- SUNRPC: Fix the svc_deferred_event trace class
+- media: rockchip/rga: do proper error checking in probe
+- firmware: arm_scmi: Fix sorting of retrieved clock rates
+- memory: atmel-ebi: Fix missing of_node_put in atmel_ebi_probe
+- drm/msm: Add missing put_task_struct() in debugfs path
+- btrfs: remove unused variable in btrfs_{start,write}_dirty_block_groups()
+- ACPI: processor idle: Check for architectural support for LPI
+- cpuidle: PSCI: Move the `has_lpi` check to the beginning of the function
+- drm/amdkfd: Use drm_priv to pass VM from KFD to amdgpu
+
 * Thu Jul 14 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.45.0.73
 - powerpc: Fix virt_addr_valid() for 64-bit Book3E & 32-bit
 - Revert "powerpc: Fix virt_addr_valid() check"
