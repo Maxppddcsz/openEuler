@@ -67,7 +67,7 @@ void nvme_set_disk_name(char *disk_name, struct nvme_ns *ns,
 				ctrl->instance, ns->head->instance);
 		*flags = GENHD_FL_HIDDEN;
 	} else {
-		sprintf(disk_name, "nvme%dn%d", ctrl->subsys->instance,
+		sprintf(disk_name, "nvme%dn%d", ctrl->instance,
 				ns->head->instance);
 	}
 }
