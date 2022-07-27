@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .46.0
-%global pkg_release         .74
+%global maintenance_release .47.0
+%global pkg_release         .75
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -883,6 +883,99 @@ fi
 %endif
 
 %changelog
+* Tue Jul 26 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.47.0.75
+- lockdown: Fix kexec lockdown bypass with ima policy
+- fbmem: Check virtual screen sizes in fb_set_var()
+- fbcon: Prevent that screen size is smaller than font size
+- fbcon: Disallow setting font bigger than screen size
+- inotify: show inotify mask flags in proc fdinfo
+- block: prevent lockdep false positive warning about 'bd_mutex'
+- block: fix that part scan is disabled in device_add_disk()
+- block: Fix warning in bd_link_disk_holder()
+- ucounts: add missing data type changes
+- bpf: Don't redirect packets with invalid pkt_len
+- Revert "net: micrel: fix KS8851_MLL Kconfig"
+- block/compat_ioctl: fix range check in BLKGETSIZE
+- staging: ion: Prevent incorrect reference counting behavour
+- spi: atmel-quadspi: Fix the buswidth adjustment between spi-mem and controller
+- can: isotp: stop timeout monitoring when no first frame was sent
+- ext4: force overhead calculation if the s_overhead_cluster makes no sense
+- ext4: fix overhead calculation to account for the reserved gdt blocks
+- ext4, doc: fix incorrect h_reserved size
+- ext4: limit length to bitmap_maxbytes - blocksize in punch_hole
+- ext4: fix fallocate to use file_modified to update permissions consistently
+- perf report: Set PERF_SAMPLE_DATA_SRC bit for Arm SPE event
+- powerpc/perf: Fix power9 event alternatives
+- drm/vc4: Use pm_runtime_resume_and_get to fix pm_runtime_get_sync() usage
+- KVM: PPC: Fix TCE handling for VFIO
+- drm/panel/raspberrypi-touchscreen: Initialise the bridge in prepare
+- drm/panel/raspberrypi-touchscreen: Avoid NULL deref if not initialised
+- perf/core: Fix perf_mmap fail when CONFIG_PERF_USE_VMALLOC enabled
+- sched/pelt: Fix attach_entity_load_avg() corner case
+- arm_pmu: Validate single/group leader events
+- ARC: entry: fix syscall_trace_exit argument
+- e1000e: Fix possible overflow in LTR decoding
+- ASoC: soc-dapm: fix two incorrect uses of list iterator
+- gpio: Request interrupts after IRQ is initialized
+- openvswitch: fix OOB access in reserve_sfa_size()
+- xtensa: fix a7 clobbering in coprocessor context load/store
+- xtensa: patch_text: Fixup last cpu should be master
+- net: atlantic: invert deep par in pm functions, preventing null derefs
+- dma: at_xdmac: fix a missing check on list iterator
+- ata: pata_marvell: Check the 'bmdma_addr' beforing reading
+- mm/mmu_notifier.c: fix race in mmu_interval_notifier_remove()
+- mm, hugetlb: allow for "high" userspace addresses
+- EDAC/synopsys: Read the error count from the correct register
+- nvme-pci: disable namespace identifiers for Qemu controllers
+- nvme: add a quirk to disable namespace identifiers
+- stat: fix inconsistency between struct stat and struct compat_stat
+- scsi: qedi: Fix failed disconnect handling
+- net: macb: Restart tx only if queue pointer is lagging
+- drm/msm/mdp5: check the return of kzalloc()
+- dpaa_eth: Fix missing of_node_put in dpaa_get_ts_info()
+- brcmfmac: sdio: Fix undefined behavior due to shift overflowing the constant
+- mt76: Fix undefined behavior due to shift overflowing the constant
+- net: atlantic: Avoid out-of-bounds indexing
+- cifs: Check the IOCB_DIRECT flag, not O_DIRECT
+- vxlan: fix error return code in vxlan_fdb_append
+- arm64: dts: imx: Fix imx8*-var-som touchscreen property sizes
+- ALSA: usb-audio: Fix undefined behavior due to shift overflowing the constant
+- platform/x86: samsung-laptop: Fix an unsigned comparison which can never be negative
+- reset: tegra-bpmp: Restore Handle errors in BPMP response
+- ARM: vexpress/spc: Avoid negative array index when !SMP
+- arm64: mm: fix p?d_leaf()
+- arm64/mm: Remove [PUD|PMD]_TABLE_BIT from [pud|pmd]_bad()
+- selftests: mlxsw: vxlan_flooding: Prevent flooding of unwanted packets
+- dmaengine: idxd: add RO check for wq max_transfer_size write
+- dmaengine: idxd: add RO check for wq max_batch_size write
+- net: stmmac: Use readl_poll_timeout_atomic() in atomic state
+- netlink: reset network and mac headers in netlink_dump()
+- ipv6: fix kabi for ip6_rt_gc_expire in struct netns_ipv6
+- ipv6: make ip6_rt_gc_expire an atomic_t
+- l3mdev: l3mdev_master_upper_ifindex_by_index_rcu should be using netdev_master_upper_dev_get_rcu
+- net/sched: cls_u32: fix possible leak in u32_init_knode()
+- ip6_gre: Fix skb_under_panic in __gre6_xmit()
+- ip6_gre: Avoid updating tunnel->tun_hlen in __gre6_xmit()
+- net/packet: fix packet_sock xmit return value checking
+- net/smc: Fix sock leak when release after smc_shutdown()
+- rxrpc: Restore removed timer deletion
+- igc: Fix BUG: scheduling while atomic
+- igc: Fix infinite loop in release_swfw_sync
+- esp: limit skb_page_frag_refill use to a single page
+- spi: spi-mtk-nor: initialize spi controller after resume
+- dmaengine: mediatek:Fix PM usage reference leak of mtk_uart_apdma_alloc_chan_resources
+- dmaengine: imx-sdma: Fix error checking in sdma_event_remap
+- ASoC: codecs: wcd934x: do not switch off SIDO Buck when codec is in use
+- ASoC: msm8916-wcd-digital: Check failure for devm_snd_soc_register_component
+- ASoC: atmel: Remove system clock tree configuration for at91sam9g20ek
+- ALSA: hda/realtek: Add quirk for Clevo NP70PNP
+- ALSA: usb-audio: Clear MIDI port active flag after draining
+- gfs2: assign rgrp glock before compute_bitstructs
+- perf tools: Fix segfault accessing sample_id xyarray
+- tracing: Dump stacktrace trigger to the corresponding instance
+- mm: page_alloc: fix building error on -Werror=array-compare
+- etherdevice: Adjust ether_addr* prototypes to silence -Wstringop-overead
+
 * Tue Jul 19 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.46.0.74
 - KEYS: Fix mistaken sizeof call in pgp_key_generate_id
 - KEYS: Add safe guard against faulty PGP key
