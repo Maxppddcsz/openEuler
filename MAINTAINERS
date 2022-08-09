@@ -6660,8 +6660,11 @@ F:	Documentation/devicetree/bindings/net/hisilicon*.txt
 
 HISILICON PMU DRIVER
 M:	Shaokun Zhang <zhangshaokun@hisilicon.com>
-W:	http://www.hisilicon.com
+M:	Qi Liu <liuqi115@huawei.com>
 S:	Supported
+W:	http://www.hisilicon.com
+F:	Documentation/admin-guide/perf/hisi-pcie-pmu.rst
+F:	Documentation/admin-guide/perf/hisi-pmu.rst
 F:	drivers/perf/hisilicon
 F:	Documentation/perf/hisi-pmu.rst
 
