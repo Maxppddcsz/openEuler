@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .48.0
-%global pkg_release         .76
+%global maintenance_release .49.0
+%global pkg_release         .77
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -883,6 +883,24 @@ fi
 %endif
 
 %changelog
+* Tue Aug 09 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.49.0.77
+- netfilter: nf_queue: do not allow packet truncation below transport header offset
+- io_uring: use separate list entry for iopoll requests
+- io_uring: add missing item types for various requests
+- io_uring:drop identity before creating a private one
+- io-wq: Switch io_wqe_worker's fs before releasing request
+- coresight: etm4x: Workaround CPU hung bug on HiSilicon ETM
+- mm: userfaultfd: fix missing cache flush in mcopy_atomic_pte() and __mcopy_atomic()
+- mm: hugetlb: fix missing cache flush in copy_huge_page_from_user()
+- mm: fix missing cache flush for all tail pages of compound page
+- Bluetooth: Fix the creation of hdev->name
+- arm: remove CONFIG_ARCH_HAS_HOLES_MEMORYMODEL
+- nfp: bpf: silence bitwise vs. logical OR warning
+- drm/amd/display/dc/gpio/gpio_service: Pass around correct dce_{version, environment} types
+- block: drbd: drbd_nl: Make conversion to 'enum drbd_ret_code' explicit
+- regulator: consumer: Add missing stubs to regulator/consumer.h
+- MIPS: Use address-of operator on section symbols
+
 * Tue Aug 02 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.48.0.76
 - ipv6/addrconf: fix a null-ptr-deref bug for ip6_ptr
 - xfrm: xfrm_policy: fix a possible double xfrm_pols_put() in xfrm_bundle_lookup()
