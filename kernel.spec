@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .49.0
-%global pkg_release         .77
+%global maintenance_release .50.0
+%global pkg_release         .78
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -883,6 +883,9 @@ fi
 %endif
 
 %changelog
+* Wed Aug 10 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.50.0.78
+- x86: Clear .brk area at early boot
+
 * Tue Aug 09 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.49.0.77
 - netfilter: nf_queue: do not allow packet truncation below transport header offset
 - io_uring: use separate list entry for iopoll requests
