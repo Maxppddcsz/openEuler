@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .51.0
-%global pkg_release         .79
+%global maintenance_release .52.0
+%global pkg_release         .80
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -883,6 +883,90 @@ fi
 %endif
 
 %changelog
+* Wed Aug 17 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.52.0.80
+- module: check for exit sections in layout_sections() instead of module_init_section()
+- afs: Fix afs_getattr() to refetch file status if callback break occurred
+- i2c: mt7621: fix missing clk_disable_unprepare() on error in mtk_i2c_probe()
+- module: treat exit sections the same as init sections when !CONFIG_MODULE_UNLOAD
+- dt-bindings: pinctrl: aspeed-g6: remove FWQSPID group
+- Input: ili210x - fix reset timing
+- arm64: Enable repeat tlbi workaround on KRYO4XX gold CPUs
+- net: atlantic: verify hw_head_ lies within TX buffer ring
+- net: atlantic: add check for MAX_SKB_FRAGS
+- net: atlantic: reduce scope of is_rsc_complete
+- net: atlantic: fix "frag[0] not initialized"
+- net: stmmac: fix missing pci_disable_device() on error in stmmac_pci_probe()
+- ethernet: tulip: fix missing pci_disable_device() on error in tulip_init_one()
+- nl80211: fix locking in nl80211_set_tx_bitrate_mask()
+- selftests: add ping test with ping_group_range tuned
+- nl80211: validate S1G channel width
+- mac80211: fix rx reordering with non explicit / psmp ack policy
+- scsi: qla2xxx: Fix missed DMA unmap for aborted commands
+- perf bench numa: Address compiler error on s390
+- gpio: mvebu/pwm: Refuse requests with inverted polarity
+- gpio: gpio-vf610: do not touch other bits when set the target bit
+- riscv: dts: sifive: fu540-c000: align dma node name with dtschema
+- net: bridge: Clear offload_fwd_mark when passing frame up bridge interface.
+- igb: skip phy status check where unavailable
+- ARM: 9197/1: spectre-bhb: fix loop8 sequence for Thumb2
+- ARM: 9196/1: spectre-bhb: enable for Cortex-A15
+- net: af_key: add check for pfkey_broadcast in function pfkey_process
+- net/mlx5e: Properly block LRO when XDP is enabled
+- NFC: nci: fix sleep in atomic context bugs caused by nci_skb_alloc
+- net/qla3xxx: Fix a test in ql_reset_work()
+- clk: at91: generated: consider range when calculating best rate
+- ice: fix possible under reporting of ethtool Tx and Rx statistics
+- net: vmxnet3: fix possible NULL pointer dereference in vmxnet3_rq_cleanup()
+- net: vmxnet3: fix possible use-after-free bugs in vmxnet3_rq_alloc_rx_buf()
+- net: systemport: Fix an error handling path in bcm_sysport_probe()
+- net/sched: act_pedit: sanitize shift argument before usage
+- net: evaluate net.ipvX.conf.all.disable_policy and disable_xfrm
+- net: macb: Increment rx bd head after allocating skb and buffer
+- net: ipa: record proper RX transaction count
+- ARM: dts: aspeed-g6: fix SPI1/SPI2 quad pin group
+- pinctrl: pinctrl-aspeed-g6: remove FWQSPID group in pinctrl
+- ARM: dts: aspeed-g6: remove FWQSPID group in pinctrl dtsi
+- dma-buf: fix use of DMA_BUF_SET_NAME_{A,B} in userspace
+- drm/dp/mst: fix a possible memory leak in fetch_monitor_name()
+- libceph: fix potential use-after-free on linger ping and resends
+- crypto: qcom-rng - fix infinite loop on requests not multiple of WORD_SZ
+- arm64: mte: Ensure the cleared tags are visible before setting the PTE
+- arm64: paravirt: Use RCU read locks to guard stolen_time
+- KVM: x86/mmu: Update number of zapped pages even if page list is stable
+- PCI/PM: Avoid putting Elo i2 PCIe Ports in D3cold
+- Fix double fget() in vhost_net_set_backend()
+- selinux: fix bad cleanup on error in hashtab_duplicate()
+- ALSA: hda/realtek: Add quirk for TongFang devices with pop noise
+- ALSA: wavefront: Proper check of get_user() error
+- ALSA: usb-audio: Restore Rane SL-1 quirk
+- nilfs2: fix lockdep warnings during disk space reclamation
+- nilfs2: fix lockdep warnings in page operations for btree nodes
+- platform/chrome: cros_ec_debugfs: detach log reader wq from devm
+- drbd: remove usage of list iterator variable after loop
+- MIPS: lantiq: check the return value of kzalloc()
+- fs: fix an infinite loop in iomap_fiemap
+- rtc: mc146818-lib: Fix the AltCentury for AMD platforms
+- nvme-multipath: fix hang when disk goes live over reconnect
+- tools/virtio: compile with -pthread
+- vhost_vdpa: don't setup irq offloading when irq_num < 0
+- s390/pci: improve zpci_dev reference counting
+- ALSA: hda/realtek: Enable headset mic on Lenovo P360
+- crypto: x86/chacha20 - Avoid spurious jumps to other functions
+- crypto: stm32 - fix reference leak in stm32_crc_remove
+- rtc: sun6i: Fix time overflow handling
+- gfs2: Disable page faults during lockless buffered reads
+- nvme-pci: add quirks for Samsung X5 SSDs
+- Input: stmfts - fix reference leak in stmfts_input_open
+- Input: add bounds checking to input_set_capability()
+- um: Cleanup syscall_handler_t definition/cast, fix warning
+- rtc: pcf2127: fix bug when reading alarm registers
+- rtc: fix use-after-free on device removal
+- igc: Update I226_K device ID
+- igc: Remove phy->type checking
+- igc: Remove _I_PHY_ID checking
+- io_uring: always grab file table for deferred statx
+- usb: gadget: fix race when gadget driver register via ioctl
+
 * Tue Aug 16 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.51.0.79
 - crypto: arm64/poly1305 - fix a read out-of-bound
 - posix-cpu-timers: Cleanup CPU timers before freeing them during exec
