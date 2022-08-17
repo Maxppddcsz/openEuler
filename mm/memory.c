@@ -3529,8 +3529,6 @@ skip_uswap:
 		pte = pte_mkuffd_wp(pte);
 		pte = pte_wrprotect(pte);
 	}
-	set_pte_at(vma->vm_mm, vmf->address, vmf->pte, pte);
-	arch_do_swap_page(vma->vm_mm, vma, vmf->address, pte, vmf->orig_pte);
 	vmf->orig_pte = pte;
 
 	/* ksm created a completely new copy */
@@ -3540,6 +3538,9 @@ skip_uswap:
 	} else {
 		do_page_add_anon_rmap(page, vma, vmf->address, exclusive);
 	}
+
+	set_pte_at(vma->vm_mm, vmf->address, vmf->pte, pte);
+	arch_do_swap_page(vma->vm_mm, vma, vmf->address, pte, vmf->orig_pte);
 
 	swap_free(entry);
 	if (mem_cgroup_swap_full(page) ||
