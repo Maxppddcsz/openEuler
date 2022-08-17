@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .50.0
-%global pkg_release         .78
+%global maintenance_release .51.0
+%global pkg_release         .79
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -883,6 +883,101 @@ fi
 %endif
 
 %changelog
+* Tue Aug 16 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.51.0.79
+- crypto: arm64/poly1305 - fix a read out-of-bound
+- posix-cpu-timers: Cleanup CPU timers before freeing them during exec
+- net_sched: cls_route: remove from list when handle is 0
+- tty: serial: 8250: 8250_port: Move prototypes to shared location
+- mm/slub: add missing TID updates on slab deactivation
+- signal/seccomp: Dump core when there is only one live thread
+- netfilter: nft_compat: use nfnetlink_unicast()
+- netfilter: use nfnetlink_unicast()
+- dm-mpath: fix UAF in multipath_message()
+- tun: avoid double free in tun_free_netdev
+- efi/libstub: arm64: Fix KASLR and memmap= collision
+- efi/libstub: arm64: support strchr function for EFI stub
+- Revert "mm/page_cache_limit: add pagecache limit proc interface"
+- Revert "mm/page_cache_limit: create kernel thread for page cache limit"
+- Revert "mm/page_cache_limit: calculate reclaim pages for each node"
+- Revert "mm/page_cache_limit: shrink page cache"
+- Revert "mm/page_cache_limit: reconfiguration about page cache limit when memory plug/unplug"
+- Revert "mm/page_cache_limit: do shrink_page_cache when adding page to page cache"
+- Revert "mm/page_cache_limit: add support for droping caches for target node"
+- drivers/perf: hisi: Add Support for CPA PMU
+- drivers/perf: hisi: Associate PMUs in SICL with CPUs online
+- drivers/perf: hisi: Add driver for HiSilicon PCIe PMU
+- SUNRPC: Fix fall-through warnings for Clang
+- usb: gadget: uvc: allow for application to cleanly shutdown
+- usb: gadget: uvc: rename function to be more consistent
+- ping: fix address binding wrt vrf
+- arm[64]/memremap: don't abuse pfn_valid() to ensure presence of linear map
+- net: phy: Fix race condition on link status change
+- SUNRPC: Don't call connect() more than once on a TCP socket
+- SUNRPC: Prevent immediate close+reconnect
+- SUNRPC: Clean up scheduling of autoclose
+- drm/vmwgfx: Initialize drm_mode_fb_cmd2
+- cgroup/cpuset: Remove cpus_allowed/mems_allowed setup in cpuset_init_smp()
+- net: atlantic: always deep reset on pm op, fixing up my null deref regression
+- i40e: i40e_main: fix a missing check on list iterator
+- drm/nouveau/tegra: Stop using iommu_present()
+- ceph: fix setting of xattrs on async created inodes
+- serial: 8250_mtk: Fix register address for XON/XOFF character
+- serial: 8250_mtk: Fix UART_EFR register address
+- slimbus: qcom: Fix IRQ check in qcom_slim_probe
+- USB: serial: option: add Fibocom MA510 modem
+- USB: serial: option: add Fibocom L610 modem
+- USB: serial: qcserial: add support for Sierra Wireless EM7590
+- USB: serial: pl2303: add device id for HP LM930 Display
+- usb: typec: tcpci_mt6360: Update for BMC PHY setting
+- usb: typec: tcpci: Don't skip cleanup in .remove() on error
+- usb: cdc-wdm: fix reading stuck on device close
+- tty: n_gsm: fix mux activation issues in gsm_config()
+- tty/serial: digicolor: fix possible null-ptr-deref in digicolor_uart_probe()
+- firmware_loader: use kernel credentials when reading firmware
+- tcp: resalt the secret every 10 seconds
+- net: sfp: Add tx-fault workaround for Huawei MA5671A SFP ONT
+- net: emaclite: Don't advertise 1000BASE-T and do auto negotiation
+- s390: disable -Warray-bounds
+- ASoC: ops: Validate input values in snd_soc_put_volsw_range()
+- ASoC: max98090: Generate notifications on changes for custom control
+- ASoC: max98090: Reject invalid values in custom control put()
+- hwmon: (f71882fg) Fix negative temperature
+- gfs2: Fix filesystem block deallocation for short writes
+- tls: Fix context leak on tls_device_down
+- net: sfc: ef10: fix memory leak in efx_ef10_mtd_probe()
+- net/smc: non blocking recvmsg() return -EAGAIN when no data and signal_pending
+- net: dsa: bcm_sf2: Fix Wake-on-LAN with mac_link_down()
+- net: bcmgenet: Check for Wake-on-LAN interrupt probe deferral
+- net/sched: act_pedit: really ensure the skb is writable
+- s390/lcs: fix variable dereferenced before check
+- s390/ctcm: fix potential memory leak
+- s390/ctcm: fix variable dereferenced before check
+- selftests: vm: Makefile: rename TARGETS to VMTARGETS
+- hwmon: (ltq-cputemp) restrict it to SOC_XWAY
+- dim: initialize all struct fields
+- ionic: fix missing pci_release_regions() on error in ionic_probe()
+- nfs: fix broken handling of the softreval mount option
+- mac80211_hwsim: call ieee80211_tx_prepare_skb under RCU protection
+- net: sfc: fix memory leak due to ptp channel
+- sfc: Use swap() instead of open coding it
+- netlink: do not reset transport header in netlink_recvmsg()
+- drm/nouveau: Fix a potential theorical leak in nouveau_get_backlight_name()
+- ipv4: drop dst in multicast routing path
+- net: mscc: ocelot: avoid corrupting hardware counters when moving VCAP filters
+- net: mscc: ocelot: restrict tc-trap actions to VCAP IS2 lookup 0
+- net: mscc: ocelot: fix VCAP IS2 filters matching on both lookups
+- net: mscc: ocelot: fix last VCAP IS1/IS2 filter persisting in hardware when deleted
+- net: Fix features skip in for_each_netdev_feature()
+- mac80211: Reset MBSSID parameters upon connection
+- hwmon: (tmp401) Add OF device ID table
+- iwlwifi: iwl-dbg: Use del_timer_sync() before freeing
+- batman-adv: Don't skb_split skbuffs with frag_list
+- !68 scsi: mpt3sas: Transition IOC to Ready state during shutdown
+- scsi: mpt3sas: Stop fw fault watchdog work item during system shutdown
+- !48 Fix kabi header file being repeatedly referenced by the same file
+- scsi: mpt3sas: Transition IOC to Ready state during shutdown
+- Fix kabi header file being repeatedly referenced by the same file
+
 * Wed Aug 10 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.50.0.78
 - x86: Clear .brk area at early boot
 
