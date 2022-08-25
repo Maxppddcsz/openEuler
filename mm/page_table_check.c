@@ -180,7 +180,7 @@ void __page_table_check_pmd_clear(struct mm_struct *mm, unsigned long addr,
 
 	if(pmd_user_accessible_page(pmd)){
 		page_table_check_clear(mm, addr, pmd_pfn(pmd),
-							PMD_PAGE_SIZE >> PAGE_SHIFT);
+							PMD_SIZE >> PAGE_SHIFT);
 	}
 }
 EXPORT_SYMBOL(__page_table_check_pmd_clear);
@@ -193,7 +193,7 @@ void __page_table_check_pud_clear(struct mm_struct *mm, unsigned long addr,
 
 	if(pud_user_accessible_page(pud)){
 		page_table_check_clear(mm, addr, pud_pfn(pud),
-							PUD_PAGE_SIZE >> PAGE_SHIFT);
+							PUD_SIZE >> PAGE_SHIFT);
 	}
 }
 EXPORT_SYMBOL(__page_table_check_pud_clear);
@@ -236,7 +236,7 @@ void __page_table_check_pmd_set(struct mm_struct *mm, unsigned long addr,
 
 	if(pmd_user_accessible_page(pmd)){
 		page_table_check_set(mm, addr, pmd_pfn(pmd),
-							PMD_PAGE_SIZE >> PAGE_SHIFT,
+							PMD_SIZE >> PAGE_SHIFT,
 							pmd_write(pmd));
 	}
 }
@@ -258,7 +258,7 @@ void __page_table_check_pud_set(struct mm_struct *mm, unsigned long addr,
 
 	if(pud_user_accessible_page(pud)){
 		page_table_check_set(mm, addr, pud_pfn(pud),
-							PUD_PAGE_SIZE >> PAGE_SHIFT,
+							PUD_SIZE >> PAGE_SHIFT,
 							pud_write(pud));
 	}
 }
