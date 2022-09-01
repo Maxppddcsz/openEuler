@@ -1903,6 +1903,7 @@ struct file_operations {
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
+	bool may_pollfree;
 } __randomize_layout;
 
 struct inode_operations {
