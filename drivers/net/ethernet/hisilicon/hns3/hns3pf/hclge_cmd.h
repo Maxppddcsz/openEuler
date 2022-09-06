@@ -122,6 +122,7 @@ enum hclge_opcode_type {
 	HCLGE_OPC_MAC_TNL_INT_EN	= 0x0311,
 	HCLGE_OPC_CLEAR_MAC_TNL_INT	= 0x0312,
 	HCLGE_OPC_COMMON_LOOPBACK       = 0x0315,
+	HCLGE_OPC_QUERY_FEC_STATS       = 0x0316,
 	HCLGE_OPC_CONFIG_FEC_MODE	= 0x031A,
 	/* check sum command */
 	HCLGE_OPC_CFG_CHECKSUM_EN       = 0x0601,
@@ -725,6 +726,20 @@ struct hclge_config_fec_cmd {
 	u8 fec_mode;
 	u8 default_config;
 	u8 rsv[22];
+};
+
+#define HCLGE_FEC_STATS_CMD_NUM 4
+
+struct hclge_query_fec_stats_cmd {
+	/* fec rs mode total stats */
+	__le32 rs_fec_corr_blocks;
+	__le32 rs_fec_uncorr_blocks;
+	__le32 rs_fec_error_blocks;
+	/* fec base-r mode per lanes stats */
+	u8 base_r_lane_num;
+	u8 rsv[3];
+	__le32 base_r_fec_corr_blocks;
+	__le32 base_r_fec_uncorr_blocks;
 };
 
 #define HCLGE_MAC_UPLINK_PORT		0x100
