@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .54.0
-%global pkg_release         .82
+%global maintenance_release .55.0
+%global pkg_release         .83
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -883,6 +883,11 @@ fi
 %endif
 
 %changelog
+* Wed Sep 07 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.55.0.83
+- netfilter: nf_tables: do not allow RULE_ID to refer to another chain
+- netfilter: nf_tables: do not allow CHAIN_ID to refer to another table
+- netfilter: nf_tables: do not allow SET_ID to refer to another table
+
 * Tue Sep 06 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.54.0.82
 - bpf, cgroup: Fix kernel BUG in purge_effective_progs
 - bpf: Don't use tnum_range on array range checking for poke descriptors
