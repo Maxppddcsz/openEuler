@@ -20,6 +20,7 @@
 #include <asm/irq.h>
 #include <asm/loongson.h>
 #include <asm/setup.h>
+#include "legacy_boot.h"
 
 DEFINE_PER_CPU(unsigned long, irq_stack);
 DEFINE_PER_CPU_SHARED_ALIGNED(irq_cpustat_t, irq_stat);
@@ -99,7 +100,7 @@ static int __init get_ipi_irq(void)
 
 void __init init_IRQ(void)
 {
-	int i;
+	int i, ret;
 #ifdef CONFIG_SMP
 	int r, ipi_irq;
 	static int ipi_dummy_dev;
@@ -111,7 +112,13 @@ void __init init_IRQ(void)
 	clear_csr_estat(ESTATF_IP);
 
 	init_vec_parent_group();
-	irqchip_init();
+	if (efi_bp && bpi_version <= BPI_VERSION_V1) {
+		ret = setup_legacy_IRQ();
+		if (ret)
+			panic("IRQ domain init error!\n");
+	} else {
+		irqchip_init();
+	}
 #ifdef CONFIG_SMP
 	ipi_irq = get_ipi_irq();
 	if (ipi_irq < 0)
