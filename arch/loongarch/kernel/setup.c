@@ -40,6 +40,7 @@
 #include <asm/sections.h>
 #include <asm/setup.h>
 #include <asm/time.h>
+#include "legacy_boot.h"
 
 #define SMBIOS_BIOSSIZE_OFFSET		0x09
 #define SMBIOS_BIOSEXTERN_OFFSET	0x13
@@ -51,7 +52,7 @@
 
 struct screen_info screen_info __section(".data");
 
-unsigned long fw_arg0, fw_arg1;
+unsigned long fw_arg0, fw_arg1, fw_arg2;
 DEFINE_PER_CPU(unsigned long, kernelsp);
 struct cpuinfo_loongarch cpu_data[NR_CPUS] __read_mostly;
 
@@ -187,7 +188,7 @@ early_param("mem", early_parse_mem);
 
 void __init platform_init(void)
 {
-	efi_init();
+	loongson_efi_init();
 #ifdef CONFIG_ACPI_TABLE_UPGRADE
 	acpi_table_upgrade();
 #endif
@@ -345,6 +346,7 @@ void __init setup_arch(char **cmdline_p)
 {
 	cpu_probe();
 	*cmdline_p = boot_command_line;
+	legacy_boot_init(fw_arg0, fw_arg1, fw_arg2);
 
 	init_environ();
 	memblock_init();
