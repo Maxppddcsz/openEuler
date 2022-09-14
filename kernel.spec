@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .55.0
-%global pkg_release         .83
+%global maintenance_release .56.0
+%global pkg_release         .84
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -883,6 +883,16 @@ fi
 %endif
 
 %changelog
+* Wed Sep 14 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.56.0.84
+- netfilter: nf_tables: disallow binding to already bound chain
+- netfilter: nf_conntrack_irc: Tighten matching on DCC message
+- arm64: openeuler_defconfig: enable ACPI_HMAT and HOT_MEMREMOVE
+- video: fbdev: i740fb: Error out if 'pixclock' equals zero
+- block: fix the problem of io_ticks becoming smaller
+- KVM: x86: do not report a vCPU as preempted outside instruction boundaries
+- !107 video: fbdev: pxa3xx-gcu: Fix integer overflow in  pxa3xx_gcu_write
+- video: fbdev: pxa3xx-gcu: Fix integer overflow in pxa3xx_gcu_write
+
 * Wed Sep 07 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.55.0.83
 - netfilter: nf_tables: do not allow RULE_ID to refer to another chain
 - netfilter: nf_tables: do not allow CHAIN_ID to refer to another table
