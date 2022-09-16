@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .18.0
-%global pkg_release         .53
+%global maintenance_release .55.0
+%global pkg_release         .54
 %global rt_release          .rt62
 
 %define with_debuginfo 1
@@ -71,8 +71,8 @@ Source9002: series.conf
 Source9998: patches.tar.bz2
 %endif
 
-Patch0: patch-5.10.0-60.10.0-rt62.patch
-Patch1: patch-5.10.0-60.10.0-rt62_openeuler_defconfig.patch
+Patch0: 0000-kernel-rt62.patch
+Patch1: 0001-kernel-rt62-modify-defconfig.patch
 
 #BuildRequires:
 BuildRequires: module-init-tools, patch >= 2.5.4, bash >= 2.03, tar
@@ -885,6 +885,9 @@ fi
 %endif
 
 %changelog
+* Wed Sep 14 2022 kylin-mayukun <mayukun@kylinos.cn> - 5.10.0-60.55.0.54
+- update preempt-rt kernel to 5.10.0-60.55.0
+
 * Wed Mar 30 2022 zhangyuanhang <zhangyuanhang@kylinos.cn> - 5.10.0-60.18.0.53
 - fix build error libperf-jvmti.so not found
 
