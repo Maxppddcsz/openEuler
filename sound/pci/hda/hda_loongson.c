@@ -74,6 +74,7 @@
           platform_resource_start((dev),(bar)) + 1))
 
 #define PCI_DEVICE_ID_LOONGSON_HDA	0x7a07
+#define PCI_DEVICE_ID_LOONGSON_HDMI	0x7a37
 
 #define ICH6_NUM_CAPTURE	4
 #define ICH6_NUM_PLAYBACK	4
@@ -158,11 +159,13 @@ MODULE_DESCRIPTION("Loongson HDA driver");
 /* driver types */
 enum {
 	AZX_DRIVER_ICH,
+	AZX_DRIVER_HDMI,
 	AZX_NUM_DRIVERS, /* keep this as last entry */
 };
 
 static char *driver_short_names[] = {
 	[AZX_DRIVER_ICH] = "HDA Loongson",
+	[AZX_DRIVER_HDMI] = "HDA Loongson HDMI",
 };
 
 struct hda_loongson {
@@ -574,6 +577,7 @@ static int azx_create(struct snd_card *card, struct pci_dev *pcidev,
 	if (bdl_pos_adj[dev] < 0) {
 		switch (chip->driver_type) {
 		case AZX_DRIVER_ICH:
+		case AZX_DRIVER_HDMI:
 			bdl_pos_adj[dev] = 1;
 			break;
 		default:
@@ -589,7 +593,7 @@ static int azx_create(struct snd_card *card, struct pci_dev *pcidev,
 		return err;
 	}
 
-	azx_bus(chip)->codec_mask = chip->codec_probe_mask = 0x1;
+	azx_bus(chip)->codec_mask = chip->codec_probe_mask = 0xf;
 	azx_bus(chip)->polling_mode = 1;
 
 	err = snd_device_new(card, SNDRV_DEV_LOWLEVEL, chip, &ops);
@@ -847,7 +851,10 @@ static struct platform_driver azx_plat_driver = {
 };
 
 static const struct pci_device_id azx_ids[] = {
-	{PCI_DEVICE(PCI_VENDOR_ID_LOONGSON, PCI_DEVICE_ID_LOONGSON_HDA)},
+	{ PCI_DEVICE(PCI_VENDOR_ID_LOONGSON, PCI_DEVICE_ID_LOONGSON_HDMI),
+	.driver_data = AZX_DRIVER_HDMI | AZX_DCAPS_LOONGSON_HDA_WORKAROUND},
+	{ PCI_DEVICE(PCI_VENDOR_ID_LOONGSON, PCI_DEVICE_ID_LOONGSON_HDA),
+	.driver_data = AZX_DRIVER_ICH | AZX_DCAPS_LOONGSON_HDA_WORKAROUND },
 	{}
 };
 
@@ -892,7 +899,7 @@ static int azx_pci_probe(struct pci_dev *pdev, const struct pci_device_id *pid)
 		return ret;
 	}
 
-	ret = azx_create(card, pdev, NULL, dev, AZX_DRIVER_ICH | AZX_DCAPS_LOONGSON_HDA_WORKAROUND, &chip);
+	ret = azx_create(card, pdev, NULL, dev, pid->driver_data, &chip);
 	if (ret < 0)
 		goto out_free;
 	card->private_data = chip;
