@@ -1514,12 +1514,7 @@ static int cpufreq_supported_detect(void)
 static int __init loongson3_cpufreq_init(void)
 {
 	int ret;
-#ifdef CONFIG_LOONGARCH
 	if (!cpu_has_csr || !cpu_has_scalefreq)
-#endif
-#ifdef CONFIG_MIPS
-		if (!loongson_cpu_has_csr || !loongson_cpu_has_scalefreq)
-#endif
 			return -ENODEV;
 
 	/* don't keep reloading if cpufreq_driver exists */
