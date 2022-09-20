@@ -412,8 +412,8 @@ static int nested_vmx_check_exception(struct kvm_vcpu *vcpu, unsigned long *exit
 		if (nr == DB_VECTOR) {
 			if (!has_payload) {
 				payload = vcpu->arch.dr6;
-				payload &= ~(DR6_FIXED_1 | DR6_BT);
-				payload ^= DR6_RTM;
+				payload &= ~DR6_BT;
+				payload ^= DR6_ACTIVE_LOW;
 			}
 			*exit_qual = payload;
 		} else
@@ -5853,6 +5853,12 @@ static bool nested_vmx_l0_wants_exit(struct kvm_vcpu *vcpu,
 		return true;
 	case EXIT_REASON_VMFUNC:
 		/* VM functions are emulated through L2->L0 vmexits. */
+		return true;
+	case EXIT_REASON_BUS_LOCK:
+		/*
+		 * At present, bus lock VM exit is never exposed to L1.
+		 * Handle L2's bus locks in L0 directly.
+		 */
 		return true;
 	default:
 		break;
