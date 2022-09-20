@@ -372,13 +372,18 @@ static int tcp_comp_complete_pending_work(struct sock *sk, int flags,
 static int tcp_comp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 {
 	struct tcp_comp_context *ctx = comp_get_ctx(sk);
+	struct tcp_sock *tp = tcp_sk(sk);
 	int copied = 0, err = 0;
 	size_t try_to_copy;
 	int required_size;
 	long timeo;
 
 	lock_sock(sk);
-
+	if (!tp->comp_tx) {
+		int res = tcp_prot.sendmsg(sk, msg, size);
+		release_sock(sk);
+		return res;
+	}	
 	timeo = sock_sndtimeo(sk, msg->msg_flags & MSG_DONTWAIT);
 
 	err = tcp_comp_complete_pending_work(sk, msg->msg_flags, &timeo);
@@ -671,6 +676,7 @@ static int tcp_comp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len,
 			    int nonblock, int flags, int *addr_len)
 {
 	struct tcp_comp_context *ctx = comp_get_ctx(sk);
+	struct tcp_sock *tp = tcp_sk(sk);
 	struct strp_msg *rxm;
 	struct sk_buff *skb;
 	ssize_t copied = 0;
@@ -683,6 +689,12 @@ static int tcp_comp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len,
 		return sock_recv_errqueue(sk, msg, len, SOL_IP, IP_RECVERR);
 
 	lock_sock(sk);
+
+	if (tp->rx_opt.comp_rx == 0) {
+		int res = tcp_prot.recvmsg(sk, msg, len, nonblock, flags, addr_len);
+		release_sock(sk);
+		return res;
+	}
 
 	target = sock_rcvlowat(sk, flags & MSG_WAITALL, len);
 	timeo = sock_rcvtimeo(sk, flags & MSG_WAITALL);

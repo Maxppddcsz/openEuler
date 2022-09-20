@@ -417,6 +417,9 @@ static inline bool tcp_urg_mode(const struct tcp_sock *tp)
 #define OPTION_SMC		(1 << 9)
 #define OPTION_MPTCP		(1 << 10)
 #define OPTION_COMP		(1 << 11)
+#define OPTION_TCP_COMP_TX		(1 << 12)
+#define OPTION_NO_TCP_COMP_TX		(1 << 13)
+
 
 static void smc_options_write(__be32 *ptr, u16 *options)
 {
@@ -438,9 +441,26 @@ static void comp_options_write(__be32 *ptr, u16 *options)
 #if IS_ENABLED(CONFIG_TCP_COMP)
 	if (static_branch_unlikely(&tcp_have_comp)) {
 		if (unlikely(OPTION_COMP & *options)) {
-			*ptr++ = htonl((TCPOPT_EXP  << 24) |
+			*ptr++ = htonl((TCPOPT_EXP << 24) |
 				       (TCPOLEN_EXP_COMP_BASE  << 16) |
 				       (TCPOPT_COMP_MAGIC));
+		}
+	}
+#endif
+}
+
+static void comp_tx_options_write(__be32 *ptr, u16 *options)
+{
+#if IS_ENABLED(CONFIG_TCP_COMP)
+	if (static_branch_unlikely(&tcp_have_comp)) {
+		if (unlikely(OPTION_TCP_COMP_TX & *options)) {
+			*ptr++ = htonl((TCPOPT_EXP << 24) |
+				       (TCPOLEN_EXP_COMP_BASE  << 16) |
+				       (TCPOPT_COMP_TX_MAGIC));
+		} else if (unlikely(OPTION_NO_TCP_COMP_TX & *options)) {
+			*ptr++ = htonl((TCPOPT_EXP << 24) |
+				       (TCPOLEN_EXP_COMP_BASE  << 16) |
+				       (TCPOPT_NO_COMP_TX_MAGIC));
 		}
 	}
 #endif
@@ -718,6 +738,8 @@ static void tcp_options_write(__be32 *ptr, struct tcp_sock *tp,
 	mptcp_options_write(ptr, opts);
 
 	comp_options_write(ptr, &options);
+
+	comp_tx_options_write(ptr, &options);
 }
 
 static void smc_set_option(const struct tcp_sock *tp,
@@ -1023,6 +1045,15 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
 		size += TCPOLEN_SACK_BASE_ALIGNED +
 			opts->num_sack_blocks * TCPOLEN_SACK_PERBLOCK;
 	}
+
+#if IS_ENABLED(CONFIG_TCP_COMP) /* sunshouxun */
+	if (static_branch_unlikely(&tcp_have_comp)) {
+		if (tcp_syn_comp_enabled(sk)) {
+			opts->options |= tp->comp_tx ? OPTION_TCP_COMP_TX : OPTION_NO_TCP_COMP_TX;
+			size += TCPOLEN_EXP_COMP_BASE;
+		}
+	}
+#endif
 
 	if (unlikely(BPF_SOCK_OPS_TEST_FLAG(tp,
 					    BPF_SOCK_OPS_WRITE_HDR_OPT_CB_FLAG))) {

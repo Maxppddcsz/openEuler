@@ -128,7 +128,7 @@ enum {
 #define TCP_CM_INQ		TCP_INQ
 
 #define TCP_TX_DELAY		37	/* delay outgoing packets by XX usec */
-
+#define TCP_COMP			38  /* controls whether tcp compression is enabled, sunshouxun */
 
 #define TCP_REPAIR_ON		1
 #define TCP_REPAIR_OFF		0
