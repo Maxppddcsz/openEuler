@@ -240,7 +240,7 @@ static void f2fs_handle_step_decompress(struct bio_post_read_ctx *ctx,
 		/* PG_error was set if decryption failed. */
 		if (f2fs_is_compressed_page(page))
 			f2fs_end_read_compressed_page(page, PageError(page),
-						blkaddr);
+						blkaddr, in_task);
 		else
 			all_compressed = false;
 
