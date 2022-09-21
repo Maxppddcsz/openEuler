@@ -855,7 +855,7 @@ void f2fs_end_read_compressed_page(struct page *page, bool failed,
 
 	if (failed)
 		WRITE_ONCE(dic->failed, true);
-	else if (blkaddr)
+	else if (blkaddr && in_task)
 		f2fs_cache_compressed_page(sbi, page,
 					dic->inode->i_ino, blkaddr);
 
@@ -900,6 +900,32 @@ bool f2fs_all_cluster_page_loaded(struct compress_ctx *cc, struct pagevec *pvec,
 
 	for (i = 1; i < cc->cluster_size; i++) {
 		if (pvec->pages[index + i]->index != pgidx + i)
+			return false;
+	}
+
+	return true;
+}
+
+bool f2fs_all_cluster_page_ready(struct compress_ctx *cc, struct page **pages,
+				int index, int nr_pages, bool uptodate)
+{
+	unsigned long pgidx = pages[index]->index;
+	int i = uptodate ? 0 : 1;
+
+	/*
+	 * when uptodate set to true, try to check all pages in cluster is
+	 * uptodate or not.
+	 */
+	if (uptodate && (pgidx % cc->cluster_size))
+		return false;
+
+	if (nr_pages - index < cc->cluster_size)
+		return false;
+
+	for (; i < cc->cluster_size; i++) {
+		if (pages[index + i]->index != pgidx + i)
+			return false;
+		if (uptodate && !PageUptodate(pages[index + i]))
 			return false;
 	}
 
