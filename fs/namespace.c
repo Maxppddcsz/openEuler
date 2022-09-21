@@ -2566,6 +2566,13 @@ static int do_new_mount(struct path *path, const char *fstype, int sb_flags,
 	err = do_add_mount(real_mount(mnt), path, mnt_flags);
 	if (err)
 		mntput(mnt);
+
+	/* back up mount point informations */
+	if (type->mount_info) {
+		err = type->mount_info(real_mount(mnt)->mnt.mnt_sb, 
+				       real_mount(mnt)->mnt_mountpoint);
+	}
+
 	return err;
 }
 
