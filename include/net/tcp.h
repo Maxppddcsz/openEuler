@@ -196,8 +196,6 @@ void tcp_time_wait(struct sock *sk, int state, int timeo);
 #define TCPOPT_FASTOPEN_MAGIC	0xF989
 #define TCPOPT_SMC_MAGIC	0xE2D4C3D9
 #define TCPOPT_COMP_MAGIC	0x7954
-#define TCPOPT_COMP_TX_MAGIC	0x17d5c /* sunshouxun */
-#define TCPOPT_NO_COMP_TX_MAGIC	0x59e9
 
 /*
  *     TCP option lengths

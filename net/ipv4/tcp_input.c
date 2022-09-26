@@ -3923,27 +3923,6 @@ static bool tcp_parse_comp_option(const struct tcphdr *th,
 	return false;
 }
 
-static bool tcp_parse_comp_rx_option(const struct tcphdr *th,
-				  struct tcp_options_received *opt_rx,
-				  const unsigned char *ptr,
-				  int opsize)
-{
-#if IS_ENABLED(CONFIG_TCP_COMP)
-	if (static_branch_unlikely(&tcp_have_comp)) {
-		if (!(opsize & 1) &&
-		    opsize >= TCPOLEN_EXP_COMP_BASE) {
-			if (get_unaligned_be16(ptr) == TCPOPT_COMP_TX_MAGIC) {
-				opt_rx->comp_rx = 1;
-			} else if (get_unaligned_be16(ptr) == TCPOPT_NO_COMP_TX_MAGIC) {
-				opt_rx->comp_rx = 0;
-			}
-			return true;
-		}
-	}
-#endif
-	return false;
-}
-
 /* Try to parse the MSS option from the TCP header. Return 0 on failure, clamped
  * value on success.
  */
@@ -4105,10 +4084,6 @@ void tcp_parse_options(const struct net *net,
 
 				if (tcp_parse_comp_option(th, opt_rx, ptr,
 				    opsize))
-					break;
-				
-				if (tcp_parse_comp_rx_option(th, opt_rx, ptr,
-					opsize))
 					break;
 
 				opt_rx->saw_unknown = 1;

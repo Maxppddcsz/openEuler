@@ -94,8 +94,7 @@ struct tcp_options_received {
 		rcv_wscale : 4;	/* Window scaling to send to receiver	*/
 	u8	saw_unknown:1,	/* Received unknown option		*/
 		comp_ok:1,	/* COMP seen on SYN packet		*/
-		comp_rx:1,
-		unused:5;
+		unused:6;
 	u8	num_sacks;	/* Number of SACK blocks		*/
 	u16	user_mss;	/* mss requested by user in ioctl	*/
 	u16	mss_clamp;	/* Maximal mss, negotiated at connection setup */
@@ -403,7 +402,8 @@ struct tcp_sock {
 #endif
 
 #if IS_ENABLED(CONFIG_TCP_COMP)
-	bool comp_tx; /* tcp comp_status sunshouxun*/
+	bool comp_tx; /* tcp comp tx status sunshouxun*/
+	bool comp_rx; /* tcp comp rx status */
 #endif
 
 #ifdef CONFIG_TCP_MD5SIG

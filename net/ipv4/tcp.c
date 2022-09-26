@@ -3433,11 +3433,16 @@ static int do_tcp_setsockopt(struct sock *sk, int level, int optname,
 		tp->tcp_tx_delay = val;
 		break;
 #if IS_ENABLED(CONFIG_TCP_COMP)
-	case TCP_COMP: /* sunshouxun */
+	case TCP_COMP_TX: /* sunshouxun */
 		if (val > 1 || val < 0)
 			err = -EINVAL;
 		else
 			tp->comp_tx = val;
+	case TCP_COMP_RX: /* sunshouxun */
+		if (val > 1 || val < 0)
+			err = -EINVAL;
+		else
+			tp->comp_rx = val;
 #endif
 	default:
 		err = -ENOPROTOOPT;

@@ -8,15 +8,15 @@
 #include <linux/skmsg.h>
 #include <linux/zstd.h>
 
-#define TCP_COMP_MAX_PADDING	64
-#define TCP_COMP_SCRATCH_SIZE	65535
-#define TCP_COMP_MAX_CSIZE	(TCP_COMP_SCRATCH_SIZE + TCP_COMP_MAX_PADDING)
-#define TCP_COMP_ALLOC_ORDER   get_order(65536)
+#define TCP_COMP_MAX_PADDING 64
+#define TCP_COMP_SCRATCH_SIZE 65535
+#define TCP_COMP_MAX_CSIZE (TCP_COMP_SCRATCH_SIZE + TCP_COMP_MAX_PADDING)
+#define TCP_COMP_ALLOC_ORDER get_order(65536)
 #define TCP_COMP_MAX_WINDOWLOG 17
 #define TCP_COMP_MAX_INPUT (1 << TCP_COMP_MAX_WINDOWLOG)
 
-#define TCP_COMP_SEND_PENDING	1
-#define ZSTD_COMP_DEFAULT_LEVEL	1
+#define TCP_COMP_SEND_PENDING 1
+#define ZSTD_COMP_DEFAULT_LEVEL 1
 
 static unsigned long tcp_compression_ports[65536 / 8];
 
@@ -118,8 +118,8 @@ static int tcp_comp_tx_context_init(struct tcp_comp_context *ctx)
 	if (!ctx->tx.cworkspace)
 		return -ENOMEM;
 
-	ctx->tx.cstream = ZSTD_initCStream(params, 0, ctx->tx.cworkspace,
-					   csize);
+	ctx->tx.cstream =
+		ZSTD_initCStream(params, 0, ctx->tx.cworkspace, csize);
 	if (!ctx->tx.cstream)
 		goto err_cstream;
 
@@ -267,7 +267,7 @@ static int tcp_comp_push_msg(struct sock *sk, struct sk_msg *msg, int flags)
 		offset = sg->offset;
 		size = sg->length;
 		p = sg_page(sg);
-retry:
+	retry:
 		ret = do_tcp_sendpages(sk, p, offset, size, flags);
 		if (ret != size) {
 			if (ret > 0) {
@@ -383,7 +383,7 @@ static int tcp_comp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 		int res = tcp_prot.sendmsg(sk, msg, size);
 		release_sock(sk);
 		return res;
-	}	
+	}
 	timeo = sock_sndtimeo(sk, msg->msg_flags & MSG_DONTWAIT);
 
 	err = tcp_comp_complete_pending_work(sk, msg->msg_flags, &timeo);
@@ -404,7 +404,7 @@ static int tcp_comp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 		if (!sk_stream_memory_free(sk))
 			goto wait_for_sndbuf;
 
-alloc_compressed:
+	alloc_compressed:
 		err = alloc_compressed_msg(sk, required_size);
 		if (err) {
 			if (err != -ENOSPC)
@@ -428,9 +428,9 @@ alloc_compressed:
 		}
 
 		continue;
-wait_for_sndbuf:
+	wait_for_sndbuf:
 		set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
-wait_for_memory:
+	wait_for_memory:
 		err = sk_stream_wait_memory(sk, &timeo);
 		if (err)
 			goto out_err;
@@ -446,8 +446,8 @@ out_err:
 	return copied ? copied : err;
 }
 
-static struct sk_buff *comp_wait_data(struct sock *sk, int flags,
-				      long timeo, int *err)
+static struct sk_buff *comp_wait_data(struct sock *sk, int flags, long timeo,
+				      int *err)
 {
 	struct tcp_comp_context *ctx = comp_get_ctx(sk);
 	struct sk_buff *skb;
@@ -542,8 +542,8 @@ static int tcp_comp_rx_context_init(struct tcp_comp_context *ctx)
 	if (!ctx->rx.dworkspace)
 		return -ENOMEM;
 
-	ctx->rx.dstream = ZSTD_initDStream(TCP_COMP_MAX_INPUT,
-					   ctx->rx.dworkspace, dsize);
+	ctx->rx.dstream =
+		ZSTD_initDStream(TCP_COMP_MAX_INPUT, ctx->rx.dworkspace, dsize);
 	if (!ctx->rx.dstream)
 		goto err_dstream;
 
@@ -635,7 +635,8 @@ static int tcp_comp_decompress(struct sock *sk, struct sk_buff *skb, int flags)
 
 			frag = skb_shinfo(nskb)->frags +
 			       skb_shinfo(nskb)->nr_frags;
-			pages = alloc_pages(__GFP_NOWARN | GFP_KERNEL | __GFP_COMP,
+			pages = alloc_pages(__GFP_NOWARN | GFP_KERNEL |
+						    __GFP_COMP,
 					    TCP_COMP_ALLOC_ORDER);
 			if (!pages) {
 				kfree_skb(nskb);
@@ -690,8 +691,9 @@ static int tcp_comp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len,
 
 	lock_sock(sk);
 
-	if (tp->rx_opt.comp_rx == 0) {
-		int res = tcp_prot.recvmsg(sk, msg, len, nonblock, flags, addr_len);
+	if (!tp->comp_rx) {
+		int res = tcp_prot.recvmsg(sk, msg, len, nonblock, flags,
+					   addr_len);
 		release_sock(sk);
 		return res;
 	}
@@ -716,8 +718,7 @@ static int tcp_comp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len,
 		skb = ctx->rx.dpkt;
 		rxm = strp_msg(skb);
 		chunk = min_t(unsigned int, rxm->full_len, len);
-		err = skb_copy_datagram_msg(skb, rxm->offset, msg,
-					    chunk);
+		err = skb_copy_datagram_msg(skb, rxm->offset, msg, chunk);
 		if (err < 0)
 			goto recv_end;
 
@@ -734,7 +735,7 @@ static int tcp_comp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len,
 
 recv_end:
 	release_sock(sk);
-	return copied ? : err;
+	return copied ?: err;
 }
 
 bool comp_stream_read(const struct sock *sk)
