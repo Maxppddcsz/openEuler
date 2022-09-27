@@ -611,7 +611,8 @@ struct mm_struct {
 #endif /* CONFIG_LRU_GEN */
 
 #ifdef CONFIG_MEMORY_RELIABLE
-		atomic_long_t reserve_0;
+		/* total used reliable pages */
+		KABI_RENAME(atomic_long_t reserve_0, atomic_long_t reliable_nr_page);
 #endif
 	} __randomize_layout;
 

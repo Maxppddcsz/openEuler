@@ -25,6 +25,7 @@ files can be found in mm/swap.c.
 Currently, these files are in /proc/sys/vm:
 
 - admin_reserve_kbytes
+- clear_freelist_pages
 - compact_memory
 - compaction_proactiveness
 - compact_unevictable_allowed
@@ -74,6 +75,10 @@ Currently, these files are in /proc/sys/vm:
 - watermark_boost_factor
 - watermark_scale_factor
 - zone_reclaim_mode
+- cache_reclaim_s
+- cache_reclaim_weight
+- cache_reclaim_enable
+- cache_limit_mbytes
 
 
 admin_reserve_kbytes
@@ -103,6 +108,18 @@ and add the sum of their RSS.
 On x86_64 this is about 128MB.
 
 Changing this takes effect whenever an application requests memory.
+
+
+clear_freelist_pages
+====================
+
+Available only when CONFIG_CLEAR_FREELIST_PAGE is set. When 1 is written to the
+file, all pages in free lists will be written with 0.
+
+Zone lock is held during clear_freelist_pages, if the execution time is too
+long, RCU CPU Stall warnings will be print. For each NUMA node,
+clear_freelist_pages is performed on a "random" CPU of the NUMA node.
+The time consuming is related to the hardware.
 
 
 compact_memory
@@ -1026,3 +1043,39 @@ of other processes running on other nodes will not be affected.
 Allowing regular swap effectively restricts allocations to the local
 node unless explicitly overridden by memory policies or cpuset
 configurations.
+
+cache_reclaim_s
+===============
+
+Cache_reclaim_s is used to set reclaim interval in periodical memory
+reclaim. when periodical memory reclaim is enabled, it will relcaim
+memory in every cache_reclaim_s second.
+
+
+cache_reclaim_weight
+====================
+
+This is reclaim factor in every periodical reclaim. when periodical
+memory reclaim is enabled, the reclaim amount in every reclaim can
+calculate from:
+    reclaim_amount = cache_reclaim_weigh * SWAP_CLUSTER_MAX * nr_cpus_node(nid)
+
+SWAP_CLUSTER_MAX is defined in include/linux/swap.h.
+nr_cpus_node is used to obtain the number of CPUs on node nid.
+
+Memory reclaim use workqueue mechanism, it will block the execution of
+subsequent work, if memory reclaim tasks a lot of time, time sensitive
+work may be affected.
+
+
+cache_reclaim_enable
+====================
+
+This is used to switch on/off periodical memory reclaim feature.
+
+
+cache_limit_mbytes
+==================
+
+This is used to set the upper limit of page cache in megabytes.
+Page cache will be reclaimed periodically if page cache is over limit.

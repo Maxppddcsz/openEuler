@@ -42,7 +42,6 @@
 #include <linux/psi.h>
 #include <linux/ramfs.h>
 #include <linux/page_idle.h>
-#include <linux/page_cache_limit.h>
 #include "internal.h"
 
 #define CREATE_TRACE_POINTS
@@ -193,6 +192,7 @@ static void unaccount_page_cache_page(struct address_space *mapping,
 	__mod_lruvec_page_state(page, NR_FILE_PAGES, -nr);
 	if (PageSwapBacked(page)) {
 		__mod_lruvec_page_state(page, NR_SHMEM, -nr);
+		shmem_reliable_page_counter(page, -nr);
 		if (PageTransHuge(page))
 			__dec_node_page_state(page, NR_SHMEM_THPS);
 	} else if (PageTransHuge(page)) {
@@ -801,10 +801,14 @@ int replace_page_cache_page(struct page *old, struct page *new, gfp_t gfp_mask)
 		__dec_lruvec_page_state(old, NR_FILE_PAGES);
 	if (!PageHuge(new))
 		__inc_lruvec_page_state(new, NR_FILE_PAGES);
-	if (PageSwapBacked(old))
+	if (PageSwapBacked(old)) {
 		__dec_lruvec_page_state(old, NR_SHMEM);
-	if (PageSwapBacked(new))
+		shmem_reliable_page_counter(old, -1);
+	}
+	if (PageSwapBacked(new)) {
 		__inc_lruvec_page_state(new, NR_SHMEM);
+		shmem_reliable_page_counter(new, 1);
+	}
 	xas_unlock_irqrestore(&xas, flags);
 	if (freepage)
 		freepage(old);
@@ -924,7 +928,6 @@ int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 	void *shadow = NULL;
 	int ret;
 
-	wakeup_all_kpagecache_limitd();
 	__SetPageLocked(page);
 	ret = __add_to_page_cache_locked(page, mapping, offset,
 					 gfp_mask, &shadow);
@@ -3518,10 +3521,6 @@ again:
 		 * Otherwise there's a nasty deadlock on copying from the
 		 * same page as we're writing to, without it being marked
 		 * up-to-date.
-		 *
-		 * Not only is this an optimisation, but it is also required
-		 * to check that the address is actually valid, when atomic
-		 * usercopies are used, below.
 		 */
 		if (unlikely(iov_iter_fault_in_readable(i, bytes))) {
 			status = -EFAULT;
@@ -3548,24 +3547,22 @@ again:
 						page, fsdata);
 		if (unlikely(status < 0))
 			break;
-		copied = status;
 
 		cond_resched();
 
-		iov_iter_advance(i, copied);
-		if (unlikely(copied == 0)) {
+		if (unlikely(status == 0)) {
 			/*
-			 * If we were unable to copy any data at all, we must
-			 * fall back to a single segment length write.
-			 *
-			 * If we didn't fallback here, we could livelock
-			 * because not all segments in the iov can be copied at
-			 * once without a pagefault.
+			 * A short copy made ->write_end() reject the
+			 * thing entirely.  Might be memory poisoning
+			 * halfway through, might be a race with munmap,
+			 * might be severe memory pressure.
 			 */
-			bytes = min_t(unsigned long, PAGE_SIZE - offset,
-						iov_iter_single_seg_count(i));
+			if (copied)
+				bytes = copied;
 			goto again;
 		}
+		copied = status;
+		iov_iter_advance(i, copied);
 		pos += copied;
 		written += copied;
 

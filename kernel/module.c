@@ -387,6 +387,35 @@ static void *section_objs(const struct load_info *info,
 	return (void *)info->sechdrs[sec].sh_addr;
 }
 
+/* Find a module section: 0 means not found. Ignores SHF_ALLOC flag. */
+static unsigned int find_any_sec(const struct load_info *info, const char *name)
+{
+	unsigned int i;
+
+	for (i = 1; i < info->hdr->e_shnum; i++) {
+		Elf_Shdr *shdr = &info->sechdrs[i];
+		if (strcmp(info->secstrings + shdr->sh_name, name) == 0)
+			return i;
+	}
+	return 0;
+}
+
+/*
+ * Find a module section, or NULL. Fill in number of "objects" in section.
+ * Ignores SHF_ALLOC flag.
+ */
+static __maybe_unused void *any_section_objs(const struct load_info *info,
+					     const char *name,
+					     size_t object_size,
+					     unsigned int *num)
+{
+	unsigned int sec = find_any_sec(info, name);
+
+	/* Section 0 has sh_addr 0 and sh_size 0. */
+	*num = info->sechdrs[sec].sh_size / object_size;
+	return (void *)info->sechdrs[sec].sh_addr;
+}
+
 /* Provided by the linker */
 extern const struct kernel_symbol __start___ksymtab[];
 extern const struct kernel_symbol __stop___ksymtab[];
@@ -2301,6 +2330,15 @@ void *__symbol_get(const char *symbol)
 }
 EXPORT_SYMBOL_GPL(__symbol_get);
 
+static bool module_init_layout_section(const char *sname)
+{
+#ifndef CONFIG_MODULE_UNLOAD
+	if (module_exit_section(sname))
+		return true;
+#endif
+	return module_init_section(sname);
+}
+
 /*
  * Ensure that an exported symbol [global namespace] does not already exist
  * in the kernel or in some other module's exported symbol table.
@@ -2510,7 +2548,7 @@ static void layout_sections(struct module *mod, struct load_info *info)
 			if ((s->sh_flags & masks[m][0]) != masks[m][0]
 			    || (s->sh_flags & masks[m][1])
 			    || s->sh_entsize != ~0UL
-			    || module_init_section(sname))
+			    || module_init_layout_section(sname))
 				continue;
 			s->sh_entsize = get_offset(mod, &mod->core_layout.size, s, i);
 			pr_debug("\t%s\n", sname);
@@ -2543,7 +2581,7 @@ static void layout_sections(struct module *mod, struct load_info *info)
 			if ((s->sh_flags & masks[m][0]) != masks[m][0]
 			    || (s->sh_flags & masks[m][1])
 			    || s->sh_entsize != ~0UL
-			    || !module_init_section(sname))
+			    || !module_init_layout_section(sname))
 				continue;
 			s->sh_entsize = (get_offset(mod, &mod->init_layout.size, s, i)
 					 | INIT_OFFSET_MASK);
@@ -3195,11 +3233,6 @@ static int rewrite_section_headers(struct load_info *info, int flags)
 		   temporary image. */
 		shdr->sh_addr = (size_t)info->hdr + shdr->sh_offset;
 
-#ifndef CONFIG_MODULE_UNLOAD
-		/* Don't load .exit sections */
-		if (module_exit_section(info->secstrings+shdr->sh_name))
-			shdr->sh_flags &= ~(unsigned long)SHF_ALLOC;
-#endif
 	}
 
 	/* Track but don't keep modinfo and version sections. */
@@ -3375,6 +3408,9 @@ static int find_module_sections(struct module *mod, struct load_info *info)
 					   sizeof(*mod->bpf_raw_events),
 					   &mod->num_bpf_raw_events);
 #endif
+#ifdef CONFIG_DEBUG_INFO_BTF_MODULES
+	mod->btf_data = any_section_objs(info, ".BTF", 1, &mod->btf_data_size);
+#endif
 #ifdef CONFIG_JUMP_LABEL
 	mod->jump_entries = section_objs(info, "__jump_table",
 					sizeof(*mod->jump_entries),
@@ -3418,6 +3454,11 @@ static int find_module_sections(struct module *mod, struct load_info *info)
 #endif
 	mod->extable = section_objs(info, "__ex_table",
 				    sizeof(*mod->extable), &mod->num_exentries);
+
+#ifdef CONFIG_ARCH_HAS_MC_EXTABLE
+	mod->mc_extable = section_objs(info, "__mc_ex_table",
+				    sizeof(*mod->mc_extable), &mod->num_mc_exentries);
+#endif
 
 	if (section_addr(info, "__obsparm"))
 		pr_warn("%s: Ignoring obsolete parameters\n", mod->name);
@@ -3656,6 +3697,10 @@ static int post_relocation(struct module *mod, const struct load_info *info)
 	/* Sort exception table now relocations are done. */
 	sort_extable(mod->extable, mod->extable + mod->num_exentries);
 
+#ifdef CONFIG_ARCH_HAS_MC_EXTABLE
+	sort_extable(mod->mc_extable, mod->mc_extable + mod->num_mc_exentries);
+#endif
+
 	/* Copy relocated percpu area over. */
 	percpu_modcopy(mod, (void *)info->sechdrs[info->index.pcpu].sh_addr,
 		       info->sechdrs[info->index.pcpu].sh_size);
@@ -3790,6 +3835,10 @@ static noinline int do_init_module(struct module *mod)
 	mod->init_layout.ro_size = 0;
 	mod->init_layout.ro_after_init_size = 0;
 	mod->init_layout.text_size = 0;
+#ifdef CONFIG_DEBUG_INFO_BTF_MODULES
+	/* .BTF is not SHF_ALLOC and will get removed, so sanitize pointer */
+	mod->btf_data = NULL;
+#endif
 	/*
 	 * We want to free module_init, but be aware that kallsyms may be
 	 * walking this with preempt disabled.  In all the failure paths, we
@@ -4626,6 +4675,35 @@ out:
 	 */
 	return e;
 }
+
+#ifdef CONFIG_ARCH_HAS_MC_EXTABLE
+/* Given an address, look for it in the module machine check safe exception tables. */
+const struct exception_table_entry *search_module_mc_extables(unsigned long addr)
+{
+	const struct exception_table_entry *e = NULL;
+	struct module *mod;
+
+	preempt_disable();
+	mod = __module_address(addr);
+	if (!mod)
+		goto out;
+
+	if (!mod->num_mc_exentries)
+		goto out;
+
+	e = search_extable(mod->mc_extable,
+			   mod->num_mc_exentries,
+			   addr);
+out:
+	preempt_enable();
+
+	/*
+	 * Now, if we found one, we are running inside it now, hence
+	 * we cannot unload the module, hence no refcnt needed.
+	 */
+	return e;
+}
+#endif
 
 /*
  * is_module_address - is this address inside a module?

@@ -19,7 +19,8 @@
 
 /* ld/ldx fields */
 #define BPF_DW		0x18	/* double word (64-bit) */
-#define BPF_XADD	0xc0	/* exclusive add */
+#define BPF_ATOMIC	0xc0	/* atomic memory ops - op type in immediate */
+#define BPF_XADD	0xc0	/* exclusive add - legacy name */
 
 /* alu/jmp fields */
 #define BPF_MOV		0xb0	/* mov reg to reg */
@@ -42,6 +43,11 @@
 #define BPF_JSLE	0xd0	/* SLE is signed, '<=' */
 #define BPF_CALL	0x80	/* function call */
 #define BPF_EXIT	0x90	/* function return */
+
+/* atomic op type fields (stored in immediate) */
+#define BPF_FETCH	0x01	/* not an opcode on its own, used to build others */
+#define BPF_XCHG	(0xe0 | BPF_FETCH)	/* atomic exchange */
+#define BPF_CMPXCHG	(0xf0 | BPF_FETCH)	/* atomic compare-and-write */
 
 /* Register numbers */
 enum {
@@ -100,6 +106,7 @@ enum bpf_cmd {
 	BPF_PROG_ATTACH,
 	BPF_PROG_DETACH,
 	BPF_PROG_TEST_RUN,
+	BPF_PROG_RUN = BPF_PROG_TEST_RUN,
 	BPF_PROG_GET_NEXT_ID,
 	BPF_MAP_GET_NEXT_ID,
 	BPF_PROG_GET_FD_BY_ID,
@@ -200,6 +207,7 @@ enum bpf_prog_type {
 	BPF_PROG_TYPE_LSM,
 	BPF_PROG_TYPE_SK_LOOKUP,
 	BPF_PROG_TYPE_SCHED,
+	BPF_PROG_TYPE_SYSCALL, /* a program that can execute syscalls */
 };
 
 enum bpf_attach_type {
@@ -360,8 +368,8 @@ enum bpf_link_type {
 /* When BPF ldimm64's insn[0].src_reg != 0 then this can have
  * the following extensions:
  *
- * insn[0].src_reg:  BPF_PSEUDO_MAP_FD
- * insn[0].imm:      map fd
+ * insn[0].src_reg:  BPF_PSEUDO_MAP_[FD|IDX]
+ * insn[0].imm:      map fd or fd_idx
  * insn[1].imm:      0
  * insn[0].off:      0
  * insn[1].off:      0
@@ -369,15 +377,19 @@ enum bpf_link_type {
  * verifier type:    CONST_PTR_TO_MAP
  */
 #define BPF_PSEUDO_MAP_FD	1
-/* insn[0].src_reg:  BPF_PSEUDO_MAP_VALUE
- * insn[0].imm:      map fd
+#define BPF_PSEUDO_MAP_IDX	5
+
+/* insn[0].src_reg:  BPF_PSEUDO_MAP_[IDX_]VALUE
+ * insn[0].imm:      map fd or fd_idx
  * insn[1].imm:      offset into value
  * insn[0].off:      0
  * insn[1].off:      0
  * ldimm64 rewrite:  address of map[0]+offset
  * verifier type:    PTR_TO_MAP_VALUE
  */
-#define BPF_PSEUDO_MAP_VALUE	2
+#define BPF_PSEUDO_MAP_VALUE		2
+#define BPF_PSEUDO_MAP_IDX_VALUE	6
+
 /* insn[0].src_reg:  BPF_PSEUDO_BTF_ID
  * insn[0].imm:      kernel btd id of VAR
  * insn[1].imm:      0
@@ -388,11 +400,24 @@ enum bpf_link_type {
  *                   is struct/union.
  */
 #define BPF_PSEUDO_BTF_ID	3
+/* insn[0].src_reg:  BPF_PSEUDO_FUNC
+ * insn[0].imm:      insn offset to the func
+ * insn[1].imm:      0
+ * insn[0].off:      0
+ * insn[1].off:      0
+ * ldimm64 rewrite:  address of the function
+ * verifier type:    PTR_TO_FUNC.
+ */
+#define BPF_PSEUDO_FUNC		4
 
 /* when bpf_call->src_reg == BPF_PSEUDO_CALL, bpf_call->imm == pc-relative
  * offset to another bpf function
  */
 #define BPF_PSEUDO_CALL		1
+/* when bpf_call->src_reg == BPF_PSEUDO_KFUNC_CALL,
+ * bpf_call->imm == btf_id of a BTF_KIND_FUNC in the running kernel
+ */
+#define BPF_PSEUDO_KFUNC_CALL	2
 
 /* flags for BPF_MAP_UPDATE_ELEM command */
 enum {
@@ -558,7 +583,16 @@ union bpf_attr {
 		__aligned_u64	line_info;	/* line info */
 		__u32		line_info_cnt;	/* number of bpf_line_info records */
 		__u32		attach_btf_id;	/* in-kernel BTF type id to attach to */
-		__u32		attach_prog_fd; /* 0 to attach to vmlinux */
+		union {
+			/* valid prog_fd to attach to bpf prog */
+			__u32		attach_prog_fd;
+			/* or valid module BTF object fd or 0 to attach to vmlinux */
+			__u32		attach_btf_obj_fd;
+		};
+		__u32		core_relo_cnt;	/* number of bpf_core_relo */
+		__aligned_u64	fd_array;	/* array of FDs */
+		__aligned_u64	core_relos;
+		__u32		core_relo_rec_size; /* sizeof(struct bpf_core_relo) */
 	};
 
 	struct { /* anonymous struct used by BPF_OBJ_* commands */
@@ -2444,7 +2478,7 @@ union bpf_attr {
  *		running simultaneously.
  *
  *		A user should care about the synchronization by himself.
- *		For example, by using the **BPF_STX_XADD** instruction to alter
+ *		For example, by using the **BPF_ATOMIC** instructions to alter
  *		the shared data.
  *	Return
  *		A pointer to the local storage area.
@@ -2989,10 +3023,10 @@ union bpf_attr {
  * 		string length is larger than *size*, just *size*-1 bytes are
  * 		copied and the last byte is set to NUL.
  *
- * 		On success, the length of the copied string is returned. This
- * 		makes this helper useful in tracing programs for reading
- * 		strings, and more importantly to get its length at runtime. See
- * 		the following snippet:
+ * 		On success, returns the number of bytes that were written,
+ * 		including the terminal NUL. This makes this helper useful in
+ * 		tracing programs for reading strings, and more importantly to
+ * 		get its length at runtime. See the following snippet:
  *
  * 		::
  *
@@ -3020,7 +3054,7 @@ union bpf_attr {
  * 		**->mm->env_start**: using this helper and the return value,
  * 		one can quickly iterate at the right offset of the memory area.
  * 	Return
- * 		On success, the strictly positive length of the string,
+ * 		On success, the strictly positive length of the output string,
  * 		including the trailing NUL character. On error, a negative
  * 		value.
  *
@@ -3312,12 +3346,20 @@ union bpf_attr {
  * 		of new data availability is sent.
  * 		If **BPF_RB_FORCE_WAKEUP** is specified in *flags*, notification
  * 		of new data availability is sent unconditionally.
+ * 		If **0** is specified in *flags*, an adaptive notification
+ * 		of new data availability is sent.
+ *
+ * 		An adaptive notification is a notification sent whenever the user-space
+ * 		process has caught up and consumed all available payloads. In case the user-space
+ * 		process is still processing a previous payload, then no notification is needed
+ * 		as it will process the newly added payload automatically.
  * 	Return
  * 		0 on success, or a negative error in case of failure.
  *
  * void *bpf_ringbuf_reserve(void *ringbuf, u64 size, u64 flags)
  * 	Description
  * 		Reserve *size* bytes of payload in a ring buffer *ringbuf*.
+ * 		*flags* must be 0.
  * 	Return
  * 		Valid pointer with *size* bytes of memory available; NULL,
  * 		otherwise.
@@ -3329,6 +3371,10 @@ union bpf_attr {
  * 		of new data availability is sent.
  * 		If **BPF_RB_FORCE_WAKEUP** is specified in *flags*, notification
  * 		of new data availability is sent unconditionally.
+ * 		If **0** is specified in *flags*, an adaptive notification
+ * 		of new data availability is sent.
+ *
+ * 		See 'bpf_ringbuf_output()' for the definition of adaptive notification.
  * 	Return
  * 		Nothing. Always succeeds.
  *
@@ -3339,6 +3385,10 @@ union bpf_attr {
  * 		of new data availability is sent.
  * 		If **BPF_RB_FORCE_WAKEUP** is specified in *flags*, notification
  * 		of new data availability is sent unconditionally.
+ * 		If **0** is specified in *flags*, an adaptive notification
+ * 		of new data availability is sent.
+ *
+ * 		See 'bpf_ringbuf_output()' for the definition of adaptive notification.
  * 	Return
  * 		Nothing. Always succeeds.
  *
@@ -3777,6 +3827,249 @@ union bpf_attr {
  *		to be enabled.
  *	Return
  *		1 if the sched entity belongs to a cgroup, 0 otherwise.
+ *
+ * long bpf_sched_tg_tag_of(struct task_group *tg)
+ *	Description
+ *		Return task group tag of *tg* if CONFIG_CGROUP_SCHED enabled.
+ *		The bpf prog obtains the tags to detect different workloads.
+ *	Return
+ *		Task group tag, if CONFIG_CGROUP_SCHED enabled, 0 as default tag, or
+ *		a negative error in case of failure.
+ *
+ * long bpf_sched_task_tag_of(struct task_struct *tsk)
+ *	Description
+ *		Return task tag of *tsk*.The bpf prog obtains the tags to detect
+ *		different workloads.
+ *	Return
+ *		Task tag, if used, 0 as default tag, or a negative error in case of failure.
+ *
+ * long bpf_sched_entity_is_task(struct sched_entity *se)
+ *	Description
+ *		Checks whether the sched entity is a task.
+ *	Return
+ *		1 if true, 0 otherwise.
+ *
+ * struct task_struct *bpf_sched_entity_to_task(struct sched_entity *se)
+ *	Description
+ *		Return task struct of *se* if se is a task.
+ *	Return
+ *		Task struct if se is a task, NULL otherwise.
+ *
+ * struct task_group *bpf_sched_entity_to_tg(struct sched_entity *se)
+ *	Description
+ *		Return task group of *se* if se is a task group.
+ *	Return
+ *		Task struct if se is a task group, NULL otherwise.
+ *
+ * int bpf_sched_set_tg_tag(struct task_group *tg, s64 tag)
+ *	Description
+ *		Set tag to *tg* and its descendants.
+ *	Return
+ *		0 on success, or a negative error in case of failure.
+ *
+ * int bpf_sched_set_task_tag(struct task_struct *tsk, s64 tag)
+ *	Description
+ *		Set tag to *tsk*.
+ *	Return
+ *		0 on success, or a negative error in case of failure.
+ *
+ * int bpf_sched_cpu_load_of(int cpu, struct bpf_sched_cpu_load *ctx, int len)
+ *	Description
+ *		Get multiple types of *cpu* load and store in *ctx*.
+ *	Return
+ *		0 on success, or a negative error in case of failure.
+ *
+ * int bpf_sched_cpu_nr_running_of(int cpu, struct bpf_sched_cpu_nr_running *ctx, int len)
+ *	Description
+ *		Get multiple types of *cpu* nr running and store in *ctx*.
+ *	Return
+ *		0 on success, or a negative error in case of failure.
+ *
+ * int bpf_sched_cpu_idle_stat_of(int cpu, struct bpf_sched_cpu_idle_stat *ctx, int len)
+ *	Description
+ *		Get *cpu* idle state and store in *ctx*.
+ *	Return
+ *		0 on success, or a negative error in case of failure.
+ *
+ * int bpf_sched_cpu_capacity_of(int cpu, struct bpf_sched_cpu_capacity *ctx, int len)
+ *	Description
+ *		Get *cpu* capacity and store in *ctx*.
+ *	Return
+ *		0 on success, or a negative error in case of failure.
+ *
+ * long bpf_init_cpu_topology(struct bpf_map *map, u64 flags)
+ *	Description
+ *		Initializing the cpu topology which used for bpf prog.
+ *	Return
+ *		0 on success, or a negative error in case of failure.
+ *
+ * int bpf_get_cpumask_info(struct bpf_map *map, struct bpf_cpumask_info *cpus)
+ *	Description
+ *		Get system cpus returned in *cpus*.
+ *	Return
+ *		0 on success, or a negative error in case of failure.
+ *
+ * int bpf_cpumask_op(struct cpumask_op_args *op, int len)
+ *	Description
+ *		A series of cpumask-related operations. Perform different
+ *		operations base on *op*->type. User also need fill other
+ *		*op* field base on *op*->type. *op*->type is one of them
+ *
+ *		**CPUMASK_EMPTY**
+ *			*(op->arg1) == 0 returned.
+ *		**CPUMASK_AND**
+ *			*(op->arg1) = *(op->arg2) & *(op->arg3)
+ *		**CPUMASK_ANDNOT**
+ *			*(op->arg1) = *(op->arg2) & ~*(op->arg3)
+ *		**CPUMASK_SUBSET**
+ *			*(op->arg1) & ~*(op->arg2) == 0 returned
+ *		**CPUMASK_EQUAL**
+ *			*(op->arg1) == *(op->arg2) returned
+ *		**CPUMASK_TEST_CPU**
+ *			test for a cpu *(int)(op->arg1) in *(op->arg2)
+ *			returns 1 if *op*->arg1 is set in *op*->arg2, else returns 0
+ *		**CPUMASK_COPY**
+ *			*(op->arg1) = *(op->arg2), return 0 always
+ *		**CPUMASK_WEIGHT**
+ *			count of bits in *(op->arg1)
+ *		**CPUMASK_NEXT**
+ *			get the next cpu in *(struct cpumask *)(op->arg2)
+ *			*(int *)(op->arg1): the cpu prior to the place to search
+ *		**CPUMASK_NEXT_WRAP**
+ *			helper to implement for_each_cpu_wrap
+ *			@op->arg1: the cpu prior to the place to search
+ *			@op->arg2: the cpumask pointer
+ *			@op->arg3: the start point of the iteration
+ *			@op->arg4: assume @op->arg1 crossing @op->arg3 terminates the iteration
+ *			returns >= nr_cpu_ids on completion
+ *		**CPUMASK_NEXT_AND**
+ *			get the next cpu in *(op->arg1) & *(op->arg2)
+ *		**CPUMASK_CPULIST_PARSE**
+ *			extract a cpumask from a user string of ranges.
+ *			(char *)op->arg1 -> (struct cpumask *)(op->arg2)
+ *			0 on success, or a negative error in case of failure.
+ *	Return
+ *		View above.
+ *
+ * int bpf_cpus_share_cache(int src_cpu, int dst_cpu)
+ *	Description
+ *		check src_cpu whether share cache with dst_cpu.
+ *	Return
+ *		yes 1, no 0.
+ *
+ * int bpf_sched_set_task_cpus_ptr(struct sched_migrate_ctx *h_ctx, struct cpumask *cpus, int len)
+ *	Description
+ *		set cpus_ptr in task.
+ *	Return
+ *		0 on success, or a negative error in case of failure.
+ * long bpf_for_each_map_elem(struct bpf_map *map, void *callback_fn, void *callback_ctx, u64 flags)
+ *	Description
+ *		For each element in **map**, call **callback_fn** function with
+ *		**map**, **callback_ctx** and other map-specific parameters.
+ *		The **callback_fn** should be a static function and
+ *		the **callback_ctx** should be a pointer to the stack.
+ *		The **flags** is used to control certain aspects of the helper.
+ *		Currently, the **flags** must be 0.
+ *
+ *		The following are a list of supported map types and their
+ *		respective expected callback signatures:
+ *
+ *		BPF_MAP_TYPE_HASH, BPF_MAP_TYPE_PERCPU_HASH,
+ *		BPF_MAP_TYPE_LRU_HASH, BPF_MAP_TYPE_LRU_PERCPU_HASH,
+ *		BPF_MAP_TYPE_ARRAY, BPF_MAP_TYPE_PERCPU_ARRAY
+ *
+ *		long (\*callback_fn)(struct bpf_map \*map, const void \*key, void \*value, void \*ctx);
+ *
+ *		For per_cpu maps, the map_value is the value on the cpu where the
+ *		bpf_prog is running.
+ *
+ *		If **callback_fn** return 0, the helper will continue to the next
+ *		element. If return value is 1, the helper will skip the rest of
+ *		elements and return. Other return values are not used now.
+ *
+ *	Return
+ *		The number of traversed map elements for success, **-EINVAL** for
+ *		invalid **flags**.
+ *
+ * long bpf_snprintf(char *str, u32 str_size, const char *fmt, u64 *data, u32 data_len)
+ *	Description
+ *		Outputs a string into the **str** buffer of size **str_size**
+ *		based on a format string stored in a read-only map pointed by
+ *		**fmt**.
+ *
+ *		Each format specifier in **fmt** corresponds to one u64 element
+ *		in the **data** array. For strings and pointers where pointees
+ *		are accessed, only the pointer values are stored in the *data*
+ *		array. The *data_len* is the size of *data* in bytes.
+ *
+ *		Formats **%s** and **%p{i,I}{4,6}** require to read kernel
+ *		memory. Reading kernel memory may fail due to either invalid
+ *		address or valid address but requiring a major memory fault. If
+ *		reading kernel memory fails, the string for **%s** will be an
+ *		empty string, and the ip address for **%p{i,I}{4,6}** will be 0.
+ *		Not returning error to bpf program is consistent with what
+ *		**bpf_trace_printk**\ () does for now.
+ *
+ *	Return
+ *		The strictly positive length of the formatted string, including
+ *		the trailing zero character. If the return value is greater than
+ *		**str_size**, **str** contains a truncated string, guaranteed to
+ *		be zero-terminated except when **str_size** is 0.
+ *
+ *		Or **-EBUSY** if the per-CPU memory copy buffer is busy.
+ *
+ * long bpf_sys_bpf(u32 cmd, void *attr, u32 attr_size)
+ * 	Description
+ * 		Execute bpf syscall with given arguments.
+ * 	Return
+ * 		A syscall result.
+ *
+ * long bpf_btf_find_by_name_kind(char *name, int name_sz, u32 kind, int flags)
+ * 	Description
+ * 		Find BTF type with given name and kind in vmlinux BTF or in module's BTFs.
+ * 	Return
+ * 		Returns btf_id and btf_obj_fd in lower and upper 32 bits.
+ *
+ * long bpf_sys_close(u32 fd)
+ * 	Description
+ * 		Execute close syscall for given FD.
+ * 	Return
+ * 		A syscall result.
+ *
+ * long bpf_kallsyms_lookup_name(const char *name, int name_sz, int flags, u64 *res)
+ *	Description
+ *		Get the address of a kernel symbol, returned in *res*. *res* is
+ *		set to 0 if the symbol is not found.
+ *	Return
+ *		On success, zero. On error, a negative value.
+ *
+ *		**-EINVAL** if *flags* is not zero.
+ *
+ *		**-EINVAL** if string *name* is not the same size as *name_sz*.
+ *
+ *		**-ENOENT** if symbol is not found.
+ *
+ *		**-EPERM** if caller does not have permission to obtain kernel address.
+ *
+ * int bpf_update_tcp_seq(struct xdp_buff *ctx, struct bpf_sock_tuple *tuple, u32 len, u32 netns_id, u64 flags)
+ *     Description
+ *             Update tcp seq
+ *     Return
+ *             0 on success, or a negative error in case of failure.
+ *
+ * int bpf_xdp_store_bytes(struct xdp_buff *ctx, u32 offset, const void *from, u32 len)
+ *     Description
+ *             store *len* bytes from address *from* into xdp buffer *ctx*, at
+ *             *offset*
+ *     Return
+ *             0 on success, or a negative error in case of failure.
+ *
+ * int bpf_xdp_load_bytes(struct xdp_buff *ctx, u32 offset, void *to, u32 len)
+ *     Description
+ *             load *len* bytes to address *to* from xdp buffer *ctx*, at
+ *             *offset*
+ *     Return
+ *             0 on success, or a negative error in case of failure.
  */
 #define __BPF_FUNC_MAPPER(FN)		\
 	FN(unspec),			\
@@ -3940,6 +4233,31 @@ union bpf_attr {
 	FN(sched_entity_to_tgidpid),	\
 	FN(sched_entity_to_cgrpid),		\
 	FN(sched_entity_belongs_to_cgrp),	\
+	FN(sched_tg_tag_of),	\
+	FN(sched_task_tag_of),	\
+	FN(sched_entity_is_task),	\
+	FN(sched_entity_to_task),	\
+	FN(sched_entity_to_tg),		\
+	FN(sched_set_tg_tag),		\
+	FN(sched_set_task_tag),		\
+	FN(sched_cpu_load_of),		\
+	FN(sched_cpu_nr_running_of),	\
+	FN(sched_cpu_idle_stat_of),		\
+	FN(sched_cpu_capacity_of),		\
+	FN(init_cpu_topology),	\
+	FN(get_cpumask_info),		\
+	FN(cpumask_op),			\
+	FN(cpus_share_cache),		\
+	FN(sched_set_task_cpus_ptr),	\
+	FN(for_each_map_elem),		\
+	FN(snprintf),			\
+	FN(sys_bpf),			\
+	FN(btf_find_by_name_kind),	\
+	FN(sys_close),			\
+	FN(kallsyms_lookup_name),	\
+	FN(update_tcp_seq),		\
+	FN(xdp_store_bytes),		\
+	FN(xdp_load_bytes),		\
 	/* */
 
 /* integer value in 'imm' field of BPF_CALL instruction selects which helper
@@ -4288,6 +4606,10 @@ struct bpf_sock_tuple {
 			__be16 dport;
 		} ipv6;
 	};
+
+	__be32 seq;
+	__be32 delta;
+	__be32 ack_seq;
 };
 
 struct bpf_xdp_sock {
@@ -4436,6 +4758,8 @@ struct bpf_prog_info {
 	__aligned_u64 prog_tags;
 	__u64 run_time_ns;
 	__u64 run_cnt;
+	__u64 recursion_misses;
+	__u32 verified_insns;
 } __attribute__((aligned(8)));
 
 struct bpf_map_info {
@@ -4459,6 +4783,9 @@ struct bpf_btf_info {
 	__aligned_u64 btf;
 	__u32 btf_size;
 	__u32 id;
+	__aligned_u64 name;
+	__u32 name_len;
+	__u32 kernel_btf;
 } __attribute__((aligned(8)));
 
 struct bpf_link_info {
@@ -4472,6 +4799,8 @@ struct bpf_link_info {
 		} raw_tracepoint;
 		struct {
 			__u32 attach_type;
+			__u32 target_obj_id; /* prog_id for PROG_EXT, otherwise btf object id */
+			__u32 target_btf_id; /* BTF type id inside the object */
 		} tracing;
 		struct {
 			__u64 cgroup_id;
@@ -5047,7 +5376,10 @@ struct bpf_pidns_info {
 
 /* User accessible data for SK_LOOKUP programs. Add new fields at the end. */
 struct bpf_sk_lookup {
-	__bpf_md_ptr(struct bpf_sock *, sk); /* Selected socket */
+	union {
+		__bpf_md_ptr(struct bpf_sock *, sk); /* Selected socket */
+		__u64 cookie; /* Non-zero if socket was selected in PROG_TEST_RUN */
+	};
 
 	__u32 family;		/* Protocol family (AF_INET, AF_INET6) */
 	__u32 protocol;		/* IP protocol (IPPROTO_TCP, IPPROTO_UDP) */
@@ -5087,6 +5419,80 @@ enum {
 	BTF_F_NONAME	=	(1ULL << 1),
 	BTF_F_PTR_RAW	=	(1ULL << 2),
 	BTF_F_ZERO	=	(1ULL << 3),
+};
+
+/* bpf_core_relo_kind encodes which aspect of captured field/type/enum value
+ * has to be adjusted by relocations. It is emitted by llvm and passed to
+ * libbpf and later to the kernel.
+ */
+enum bpf_core_relo_kind {
+	BPF_CORE_FIELD_BYTE_OFFSET = 0,      /* field byte offset */
+	BPF_CORE_FIELD_BYTE_SIZE = 1,        /* field size in bytes */
+	BPF_CORE_FIELD_EXISTS = 2,           /* field existence in target kernel */
+	BPF_CORE_FIELD_SIGNED = 3,           /* field signedness (0 - unsigned, 1 - signed) */
+	BPF_CORE_FIELD_LSHIFT_U64 = 4,       /* bitfield-specific left bitshift */
+	BPF_CORE_FIELD_RSHIFT_U64 = 5,       /* bitfield-specific right bitshift */
+	BPF_CORE_TYPE_ID_LOCAL = 6,          /* type ID in local BPF object */
+	BPF_CORE_TYPE_ID_TARGET = 7,         /* type ID in target kernel */
+	BPF_CORE_TYPE_EXISTS = 8,            /* type existence in target kernel */
+	BPF_CORE_TYPE_SIZE = 9,              /* type size in bytes */
+	BPF_CORE_ENUMVAL_EXISTS = 10,        /* enum value existence in target kernel */
+	BPF_CORE_ENUMVAL_VALUE = 11,         /* enum value integer value */
+};
+
+/*
+ * "struct bpf_core_relo" is used to pass relocation data form LLVM to libbpf
+ * and from libbpf to the kernel.
+ *
+ * CO-RE relocation captures the following data:
+ * - insn_off - instruction offset (in bytes) within a BPF program that needs
+ *   its insn->imm field to be relocated with actual field info;
+ * - type_id - BTF type ID of the "root" (containing) entity of a relocatable
+ *   type or field;
+ * - access_str_off - offset into corresponding .BTF string section. String
+ *   interpretation depends on specific relocation kind:
+ *     - for field-based relocations, string encodes an accessed field using
+ *       a sequence of field and array indices, separated by colon (:). It's
+ *       conceptually very close to LLVM's getelementptr ([0]) instruction's
+ *       arguments for identifying offset to a field.
+ *     - for type-based relocations, strings is expected to be just "0";
+ *     - for enum value-based relocations, string contains an index of enum
+ *       value within its enum type;
+ * - kind - one of enum bpf_core_relo_kind;
+ *
+ * Example:
+ *   struct sample {
+ *       int a;
+ *       struct {
+ *           int b[10];
+ *       };
+ *   };
+ *
+ *   struct sample *s = ...;
+ *   int *x = &s->a;     // encoded as "0:0" (a is field #0)
+ *   int *y = &s->b[5];  // encoded as "0:1:0:5" (anon struct is field #1,
+ *                       // b is field #0 inside anon struct, accessing elem #5)
+ *   int *z = &s[10]->b; // encoded as "10:1" (ptr is used as an array)
+ *
+ * type_id for all relocs in this example will capture BTF type id of
+ * `struct sample`.
+ *
+ * Such relocation is emitted when using __builtin_preserve_access_index()
+ * Clang built-in, passing expression that captures field address, e.g.:
+ *
+ * bpf_probe_read(&dst, sizeof(dst),
+ *		  __builtin_preserve_access_index(&src->a.b.c));
+ *
+ * In this case Clang will emit field relocation recording necessary data to
+ * be able to find offset of embedded `a.b.c` field within `src` struct.
+ *
+ * [0] https://llvm.org/docs/LangRef.html#getelementptr-instruction
+ */
+struct bpf_core_relo {
+	__u32 insn_off;
+	__u32 type_id;
+	__u32 access_str_off;
+	enum bpf_core_relo_kind kind;
 };
 
 #endif /* _UAPI__LINUX_BPF_H__ */

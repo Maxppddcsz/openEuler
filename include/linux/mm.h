@@ -6,7 +6,6 @@
 
 #ifdef __KERNEL__
 
-#include <linux/kabi.h>
 #include <linux/mmdebug.h>
 #include <linux/gfp.h>
 #include <linux/bug.h>
@@ -33,9 +32,6 @@
 #include <linux/sched.h>
 #include <linux/pgtable.h>
 #include <linux/kabi.h>
-
-/* added to mm.h to avoid every caller adding new header file */
-#include <linux/mem_reliable.h>
 
 struct mempolicy;
 struct anon_vma;
@@ -3116,6 +3112,8 @@ int vmemmap_remap_alloc(unsigned long start, unsigned long end,
 void *sparse_buffer_alloc(unsigned long size);
 struct page * __populate_section_memmap(unsigned long pfn,
 		unsigned long nr_pages, int nid, struct vmem_altmap *altmap);
+void pmd_init(void *addr);
+void pud_init(void *addr);
 pgd_t *vmemmap_pgd_populate(unsigned long addr, int node);
 p4d_t *vmemmap_p4d_populate(pgd_t *pgd, unsigned long addr, int node);
 pud_t *vmemmap_pud_populate(p4d_t *p4d, unsigned long addr, int node);
@@ -3309,6 +3307,9 @@ static inline int seal_check_future_write(int seals, struct vm_area_struct *vma)
 
 	return 0;
 }
+
+/* added to mm.h to avoid every caller adding new header file */
+#include <linux/mem_reliable.h>
 
 #endif /* __KERNEL__ */
 #endif /* _LINUX_MM_H */

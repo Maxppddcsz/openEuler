@@ -7,6 +7,7 @@ KASAN_SANITIZE_slab_common.o := n
 KASAN_SANITIZE_slab.o := n
 KASAN_SANITIZE_slub.o := n
 KCSAN_SANITIZE_kmemleak.o := n
+KASAN_SANITIZE_clear_freelist_page.o := n
 
 # These produce frequent data race reports: most of them are due to races on
 # the same word but accesses to different bits of that word. Re-enable KCSAN
@@ -110,6 +111,7 @@ obj-$(CONFIG_GENERIC_EARLY_IOREMAP) += early_ioremap.o
 obj-$(CONFIG_CMA)	+= cma.o
 obj-$(CONFIG_MEMORY_BALLOON) += balloon_compaction.o
 obj-$(CONFIG_PAGE_EXTENSION) += page_ext.o
+obj-$(CONFIG_PAGE_TABLE_CHECK) += page_table_check.o
 obj-$(CONFIG_CMA_DEBUGFS) += cma_debug.o
 obj-$(CONFIG_USERFAULTFD) += userfaultfd.o
 obj-$(CONFIG_IDLE_PAGE_TRACKING) += page_idle.o
@@ -126,7 +128,8 @@ obj-$(CONFIG_PTDUMP_CORE) += ptdump.o
 obj-$(CONFIG_PAGE_REPORTING) += page_reporting.o
 obj-$(CONFIG_HAVE_BOOTMEM_INFO_NODE) += bootmem_info.o
 obj-$(CONFIG_PIN_MEMORY) += pin_mem.o
-obj-$(CONFIG_SHRINK_PAGECACHE) += page_cache_limit.o
 obj-$(CONFIG_ASCEND_SHARE_POOL) += share_pool.o
 obj-$(CONFIG_MEMORY_RELIABLE) += mem_reliable.o
 obj-$(CONFIG_MEMCG_MEMFS_INFO) += memcg_memfs_info.o
+obj-$(CONFIG_CLEAR_FREELIST_PAGE) += clear_freelist_page.o
+obj-$(CONFIG_PAGE_CACHE_LIMIT) += page_cache_limit.o

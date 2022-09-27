@@ -4,6 +4,7 @@
 
 #include <linux/huge_mm.h>
 #include <linux/swap.h>
+#include <linux/mem_reliable.h>
 
 /**
  * page_is_file_lru - should the page be on a file LRU or anon LRU?
@@ -310,6 +311,7 @@ static __always_inline void add_page_to_lru_list(struct page *page,
 
 	update_lru_size(lruvec, lru, page_zonenum(page), thp_nr_pages(page));
 	list_add(&page->lru, &lruvec->lists[lru]);
+	reliable_lru_add(lru, page, thp_nr_pages(page));
 }
 
 static __always_inline void add_page_to_lru_list_tail(struct page *page,
@@ -320,6 +322,7 @@ static __always_inline void add_page_to_lru_list_tail(struct page *page,
 
 	update_lru_size(lruvec, lru, page_zonenum(page), thp_nr_pages(page));
 	list_add_tail(&page->lru, &lruvec->lists[lru]);
+	reliable_lru_add(lru, page, thp_nr_pages(page));
 }
 
 static __always_inline void del_page_from_lru_list(struct page *page,
@@ -330,6 +333,8 @@ static __always_inline void del_page_from_lru_list(struct page *page,
 
 	list_del(&page->lru);
 	update_lru_size(lruvec, lru, page_zonenum(page), -thp_nr_pages(page));
+	reliable_lru_add(lru, page, -thp_nr_pages(page));
 }
 
 #endif
+

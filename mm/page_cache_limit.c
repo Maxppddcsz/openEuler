@@ -1,282 +1,217 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Support for periodic memory reclaim and page cache limit
+ */
+
 #include <linux/mm.h>
-#include <linux/sysctl.h>
-#include <linux/freezer.h>
-#include <linux/kthread.h>
-#include <linux/module.h>
-#include <linux/err.h>
-#include <linux/swap.h>
-#include <linux/fs.h>
 #include <linux/page_cache_limit.h>
+#include <linux/swap.h>
+#include <linux/sysctl.h>
+#include <linux/workqueue.h>
+#include "internal.h"
 
-int pagecache_reclaim_enable;
-int pagecache_limit_ratio;
-int pagecache_reclaim_ratio;
-int node_to_shrink;
+static int vm_cache_reclaim_s __read_mostly;
+static int vm_cache_reclaim_s_max = 43200;
+static int vm_cache_reclaim_weight __read_mostly = 1;
+static int vm_cache_reclaim_weight_max = 100;
+static int vm_cache_reclaim_enable = 1;
+static unsigned long vm_cache_limit_mbytes __read_mostly;
 
-static unsigned long pagecache_limit_pages;
-static unsigned long node_pagecache_limit_pages[MAX_NUMNODES];
-static wait_queue_head_t *pagecache_limitd_wait_queue[MAX_NUMNODES];
-static struct task_struct *pagecache_limitd_tasks[MAX_NUMNODES];
+static void shrink_shepherd(struct work_struct *w);
+static DECLARE_DEFERRABLE_WORK(shepherd, shrink_shepherd);
+static struct work_struct vmscan_works[MAX_NUMNODES];
 
-static unsigned long get_node_total_pages(int nid)
+static bool should_periodical_reclaim(void)
 {
-	int zone_type;
-	unsigned long managed_pages = 0;
-	pg_data_t *pgdat = NODE_DATA(nid);
-
-	if (!pgdat)
-		return 0;
-
-	for (zone_type = 0; zone_type < MAX_NR_ZONES; zone_type++)
-		managed_pages += zone_managed_pages(&pgdat->node_zones[zone_type]);
-
-	return managed_pages;
+	return vm_cache_reclaim_s && vm_cache_reclaim_enable;
 }
 
-static void setup_node_pagecache_limit(int nid)
+static unsigned long node_reclaim_num(void)
 {
-	unsigned long node_total_pages;
+	int nid = numa_node_id();
 
-	node_total_pages = get_node_total_pages(nid);
-	node_pagecache_limit_pages[nid] = node_total_pages * pagecache_limit_ratio / 100;
+	return SWAP_CLUSTER_MAX * nr_cpus_node(nid) * vm_cache_reclaim_weight;
 }
 
-#define ALL_NODE (-1)
-static void setup_pagecache_limit(int nid)
+static bool page_cache_over_limit(void)
 {
-	int i;
+	unsigned long lru_file;
+	unsigned long limit;
 
-	pagecache_limit_pages = pagecache_limit_ratio * totalram_pages() / 100;
+	limit = vm_cache_limit_mbytes * ((1024 * 1024UL) / PAGE_SIZE);
+	lru_file = global_node_page_state(NR_ACTIVE_FILE) +
+			global_node_page_state(NR_INACTIVE_FILE);
+	if (lru_file > limit)
+		return true;
 
-	if (nid != ALL_NODE)
-		setup_node_pagecache_limit(nid);
-
-	else
-		for (i = 0; i < MAX_NUMNODES; i++)
-			setup_node_pagecache_limit(i);
+	return false;
 }
 
-int proc_page_cache_limit(struct ctl_table *table, int write,
-		   void __user *buffer, size_t *lenp, loff_t *ppos)
+static bool should_reclaim_page_cache(void)
+{
+	if (!should_periodical_reclaim())
+		return false;
+
+	if (!vm_cache_limit_mbytes)
+		return false;
+
+	return true;
+}
+
+static int cache_reclaim_enable_handler(struct ctl_table *table, int write,
+			void __user *buffer, size_t *length, loff_t *ppos)
 {
 	int ret;
 
-	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
-
-	if (write && !ret)
-		setup_pagecache_limit(ALL_NODE);
-
-	return ret;
-}
-
-void kpagecache_limitd_stop(int nid)
-{
-	if (nid < 0 || nid >= MAX_NUMNODES)
-		return;
-
-	if (pagecache_limitd_tasks[nid]) {
-		kthread_stop(pagecache_limitd_tasks[nid]);
-		pagecache_limitd_tasks[nid] = NULL;
-	}
-
-	if (pagecache_limitd_wait_queue[nid]) {
-		kvfree(pagecache_limitd_wait_queue[nid]);
-		pagecache_limitd_wait_queue[nid] = NULL;
-	}
-
-	setup_pagecache_limit(nid);
-}
-
-static void wakeup_kpagecache_limitd(int nid)
-{
-	if (!pagecache_limitd_wait_queue[nid])
-		return;
-
-	if (!waitqueue_active(pagecache_limitd_wait_queue[nid]))
-		return;
-
-	wake_up_interruptible(pagecache_limitd_wait_queue[nid]);
-}
-
-static bool pagecache_overlimit(void)
-{
-	unsigned long total_pagecache;
-
-	total_pagecache = global_node_page_state(NR_FILE_PAGES);
-	total_pagecache -= global_node_page_state(NR_SHMEM);
-
-	return total_pagecache > pagecache_limit_pages;
-}
-
-void wakeup_all_kpagecache_limitd(void)
-{
-	int nid;
-
-	if (!pagecache_reclaim_enable || !pagecache_overlimit())
-		return;
-
-	for_each_node_state(nid, N_MEMORY)
-		wakeup_kpagecache_limitd(nid);
-}
-
-static unsigned long node_nr_page_cache(int nid)
-{
-	struct pglist_data *pgdat;
-	unsigned long num = 0;
-
-	pgdat = NODE_DATA(nid);
-	if (!pgdat)
-		return 0;
-
-	num = node_page_state(pgdat, NR_FILE_PAGES);
-	num -= node_page_state(pgdat, NR_SHMEM);
-
-	return num;
-}
-
-static unsigned long node_nr_page_reclaim(int nid)
-{
-	unsigned long nr_page_cache;
-	unsigned long nr_to_reclaim;
-	unsigned long total_pages;
-
-	if (!node_pagecache_limit_pages[nid])
-		return 0;
-
-	nr_page_cache = node_nr_page_cache(nid);
-	if (!nr_page_cache)
-		return 0;
-
-	if (nr_page_cache < node_pagecache_limit_pages[nid])
-		return 0;
-
-	total_pages = get_node_total_pages(nid);
-	nr_to_reclaim = nr_page_cache - node_pagecache_limit_pages[nid];
-	nr_to_reclaim += total_pages * pagecache_reclaim_ratio / 100;
-
-	return nr_to_reclaim;
-}
-
-static void shrink_node_page_cache(int nid, gfp_t mask)
-{
-	int i;
-	unsigned long nr_to_reclaim;
-	unsigned long nr_reclaimed;
-	enum page_cache_reclaim_flag flag;
-
-	nr_to_reclaim = node_nr_page_reclaim(nid);
-	if (nr_to_reclaim <= 0)
-		return;
-
-	flag = 0;
-	for (i = PAGE_CACHE_RECLAIM_NO_UNMAP;
-			i < PAGE_CACHE_RECLAIM_NR_FLAGS; i++) {
-		nr_reclaimed = __shrink_node_page_cache(nid, mask, nr_to_reclaim, flag);
-		nr_to_reclaim -= nr_reclaimed;
-
-		if (nr_to_reclaim <= 0)
-			break;
-
-		flag |= i;
-	}
-}
-
-static void shrink_page_cache(gfp_t mask)
-{
-	int nid;
-
-	if (!pagecache_reclaim_enable || !pagecache_overlimit())
-		return;
-
-	for_each_node_state(nid, N_MEMORY)
-		shrink_node_page_cache(nid, mask);
-}
-
-static DECLARE_COMPLETION(setup_done);
-static int pagecache_limitd(void *arg)
-{
-	DEFINE_WAIT(wait);
-	int nid = *(int *)arg;
-
-	if (nid < 0 || nid >= MAX_NUMNODES)
-		nid = numa_node_id();
-
-	complete(&setup_done);
-	set_freezable();
-	for (;;) {
-		try_to_freeze();
-		shrink_page_cache(GFP_KERNEL | __GFP_HIGHMEM);
-
-		prepare_to_wait(pagecache_limitd_wait_queue[nid], &wait,
-				TASK_INTERRUPTIBLE);
-		if (kthread_should_stop())
-			break;
-		schedule();
-		finish_wait(pagecache_limitd_wait_queue[nid], &wait);
-	}
-
-	finish_wait(pagecache_limitd_wait_queue[nid], &wait);
-
-	return 0;
-}
-
-static int __kpagecache_limitd_run(int nid)
-{
-	int ret = 0;
-	wait_queue_head_t *queue_head = NULL;
-
-	if (pagecache_limitd_tasks[nid] && pagecache_limitd_wait_queue[nid])
-		return 0;
-
-	queue_head = kvmalloc(sizeof(wait_queue_head_t), GFP_KERNEL);
-	if (!queue_head)
-		return -ENOMEM;
-
-	init_waitqueue_head(queue_head);
-	pagecache_limitd_wait_queue[nid] = queue_head;
-	pagecache_limitd_tasks[nid] = kthread_run(pagecache_limitd,
-			(void *)&nid, "kpagecache_limitd%d", nid);
-
-	if (IS_ERR(pagecache_limitd_tasks[nid])) {
-		BUG_ON(system_state < SYSTEM_RUNNING);
-		ret = PTR_ERR(pagecache_limitd_tasks[nid]);
-		pr_err("Failed to start pagecache_limitd on node %d\n", nid);
-		pagecache_limitd_tasks[nid] = NULL;
-		kvfree(queue_head);
-	} else
-		wait_for_completion(&setup_done);
-
-	return ret;
-}
-
-int kpagecache_limitd_run(int nid)
-{
-	int ret;
-
-	if (nid < 0 || nid >= MAX_NUMNODES)
-		return -EINVAL;
-
-	ret = __kpagecache_limitd_run(nid);
-	if (ret)
+	ret = proc_dointvec_minmax(table, write, buffer, length, ppos);
+	if (ret || !write)
 		return ret;
 
-	setup_pagecache_limit(nid);
+	if (should_periodical_reclaim())
+		schedule_delayed_work(&shepherd, round_jiffies_relative(
+			(unsigned long)vm_cache_reclaim_s * HZ));
 
 	return 0;
 }
 
-static int __init kpagecache_limitd_init(void)
+static int cache_reclaim_sysctl_handler(struct ctl_table *table, int write,
+		void __user *buffer, size_t *length, loff_t *ppos)
 {
-	int nid;
 	int ret;
 
-	for_each_node_state(nid, N_MEMORY) {
-		ret = kpagecache_limitd_run(nid);
-		if (ret == -ENOMEM)
-			break;
+	ret = proc_dointvec_minmax(table, write, buffer, length, ppos);
+	if (ret || !write)
+		return ret;
+
+	if (should_periodical_reclaim())
+		mod_delayed_work(system_unbound_wq, &shepherd,
+				round_jiffies_relative(
+				(unsigned long)vm_cache_reclaim_s * HZ));
+
+	return ret;
+}
+
+static int cache_limit_mbytes_sysctl_handler(struct ctl_table *table, int write,
+		void __user *buffer, size_t *length, loff_t *ppos)
+{
+	int ret;
+	unsigned long vm_cache_limit_mbytes_max;
+	unsigned long origin_mbytes = vm_cache_limit_mbytes;
+	int nr_retries = MAX_RECLAIM_RETRIES;
+
+	vm_cache_limit_mbytes_max = totalram_pages() >> (20 - PAGE_SHIFT);
+	ret = proc_doulongvec_minmax(table, write, buffer, length, ppos);
+	if (ret || !write)
+		return ret;
+
+	if (vm_cache_limit_mbytes > vm_cache_limit_mbytes_max) {
+		vm_cache_limit_mbytes = origin_mbytes;
+		return -EINVAL;
+	}
+
+	if (write) {
+		while (should_reclaim_page_cache() && page_cache_over_limit() &&
+				nr_retries--) {
+			if (signal_pending(current))
+				return -EINTR;
+
+			page_cache_shrink_memory(node_reclaim_num(), false);
+		}
 	}
 
 	return 0;
 }
 
-module_init(kpagecache_limitd_init);
+static struct ctl_table ctl_table[] = {
+	{
+		.procname       = "cache_reclaim_s",
+		.data           = &vm_cache_reclaim_s,
+		.maxlen         = sizeof(vm_cache_reclaim_s),
+		.mode           = 0644,
+		.proc_handler   = cache_reclaim_sysctl_handler,
+		.extra1         = SYSCTL_ZERO,
+		.extra2         = &vm_cache_reclaim_s_max,
+	},
+	{
+		.procname       = "cache_reclaim_weight",
+		.data           = &vm_cache_reclaim_weight,
+		.maxlen         = sizeof(vm_cache_reclaim_weight),
+		.mode           = 0644,
+		.proc_handler   = proc_dointvec_minmax,
+		.extra1         = SYSCTL_ONE,
+		.extra2         = &vm_cache_reclaim_weight_max,
+	},
+	{
+		.procname	= "cache_reclaim_enable",
+		.data		= &vm_cache_reclaim_enable,
+		.maxlen		= sizeof(vm_cache_reclaim_enable),
+		.mode		= 0644,
+		.proc_handler	= cache_reclaim_enable_handler,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_ONE,
+	},
+	{
+		.procname	= "cache_limit_mbytes",
+		.data		= &vm_cache_limit_mbytes,
+		.maxlen		= sizeof(vm_cache_limit_mbytes),
+		.mode		= 0644,
+		.proc_handler	= cache_limit_mbytes_sysctl_handler,
+	},
+	{}
+};
+
+static struct ctl_table limit_dir_table[] = {
+	{
+		.procname = "vm",
+		.maxlen = 0,
+		.mode = 0555,
+		.child = ctl_table,
+	},
+	{}
+};
+
+static void shrink_shepherd(struct work_struct *w)
+{
+	int node;
+
+	if (!should_periodical_reclaim())
+		return;
+
+	for_each_online_node(node) {
+		if (!work_pending(&vmscan_works[node]))
+			queue_work_node(node, system_unbound_wq, &vmscan_works[node]);
+	}
+
+	queue_delayed_work(system_unbound_wq, &shepherd,
+		round_jiffies_relative((unsigned long)vm_cache_reclaim_s * HZ));
+}
+
+static void shrink_page_work(struct work_struct *w)
+{
+	if (should_reclaim_page_cache()) {
+		if (page_cache_over_limit())
+			page_cache_shrink_memory(node_reclaim_num(), false);
+	} else if (should_periodical_reclaim())
+		page_cache_shrink_memory(node_reclaim_num(), true);
+}
+
+static void shrink_shepherd_timer(void)
+{
+	int i;
+
+	for (i = 0; i < MAX_NUMNODES; i++)
+		INIT_WORK(&vmscan_works[i], shrink_page_work);
+}
+
+static int __init shrink_page_init(void)
+{
+	if (!register_sysctl_table(limit_dir_table)) {
+		pr_err("register page cache limit sysctl failed.");
+		return -ENOMEM;
+	}
+
+	shrink_shepherd_timer();
+
+	return 0;
+}
+late_initcall(shrink_page_init)

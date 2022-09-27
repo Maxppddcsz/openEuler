@@ -500,18 +500,6 @@ config FRONTSWAP
 
 	  If unsure, say Y to enable frontswap.
 
-config SHRINK_PAGECACHE
-        bool "Enable shrinking the page cache"
-        depends on MMU
-        default n
-        help
-          SHRINK_PAGECACHE means that we do not want to keep the large number
-          of page cache in the system, even though page cache can greatly improve
-	  the performance of the machine. Large number of page cache may result
-	  in short of memory, which will result OOM at the same time, so in order
-	  to keep page cache in a reasonable range, the number of page cache
-	  should be limited, and that is what SHRINK_PAGECACHE does.
-
 config MEMCG_QOS
 	bool "Enable Memory Cgroup Priority"
 	depends on MEMCG
@@ -547,6 +535,19 @@ config USERSWAP
 	help
 	  Support for User Swap. This is based on userfaultfd. We can implement
 	  our own swapout and swapin functions in usersapce.
+
+config PAGE_CACHE_LIMIT
+       bool "Support page cache limit"
+       depends on MMU && SYSCTL
+       default n
+       help
+	 Keeping a number of page cache can improve the performance of system,
+	 but if there is a lot fo page cache in system, that will result in
+	 short of memory, subsequent memory reclamation operations may lead
+	 to performance degradation, so add periodical memory relciam to
+	 avoid too many page cache.
+
+	 if unsure, say N to disable the PAGE_CACHE_LIMIT.
 
 config CMA
 	bool "Contiguous Memory Allocator"
@@ -968,6 +969,19 @@ config MEMORY_RELIABLE
 
 	  To enable this function, mirrored memory is needed and
 	  "kernelcore=reliable" need to be added in kernel parameters.
+
+config CLEAR_FREELIST_PAGE
+	bool "Support for clear free list pages"
+	depends on MMU && SYSCTL
+	default n
+	help
+	  Say y here to enable the clear free list pages feature. When
+	  writing to clear_freelist, trigger to clean up the free memory
+	  of the buddy system.
+
+	  To enable this feature, kernel parameter "clear_freelist" also
+	  needs to be added.
+
 
 source "mm/damon/Kconfig"
 

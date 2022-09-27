@@ -104,9 +104,6 @@
 #ifdef CONFIG_LOCKUP_DETECTOR
 #include <linux/nmi.h>
 #endif
-#ifdef CONFIG_SHRINK_PAGECACHE
-#include <linux/page_cache_limit.h>
-#endif
 
 #if defined(CONFIG_SYSCTL)
 
@@ -2730,6 +2727,17 @@ static struct ctl_table kern_table[] = {
 		.extra2		= SYSCTL_ONE,
 	},
 #endif
+#if defined(CONFIG_ARM64) && defined(CONFIG_ARCH_HAS_COPY_MC)
+	{
+		.procname       = "machine_check_safe",
+		.data           = &sysctl_machine_check_safe,
+		.maxlen         = sizeof(sysctl_machine_check_safe),
+		.mode           = 0644,
+		.proc_handler   = proc_dointvec_minmax,
+		.extra1         = SYSCTL_ZERO,
+		.extra2         = SYSCTL_ONE,
+	},
+#endif
 	{ }
 };
 
@@ -3210,43 +3218,6 @@ static struct ctl_table vm_table[] = {
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= SYSCTL_ZERO,
 		.extra2		= SYSCTL_ONE,
-	},
-#endif
-#ifdef CONFIG_SHRINK_PAGECACHE
-	{
-		.procname	= "cache_reclaim_enable",
-		.data		= &pagecache_reclaim_enable,
-		.maxlen		= sizeof(pagecache_reclaim_enable),
-		.mode		= 0600,
-		.proc_handler	= proc_dointvec_minmax,
-		.extra1		= SYSCTL_ZERO,
-		.extra2		= SYSCTL_ONE,
-	},
-	{
-		.procname	= "cache_limit_ratio",
-		.data		= &pagecache_limit_ratio,
-		.maxlen		= sizeof(pagecache_limit_ratio),
-		.mode		= 0600,
-		.proc_handler	= proc_page_cache_limit,
-		.extra1		= SYSCTL_ZERO,
-		.extra2		= (void *)&one_hundred,
-	},
-	{
-		.procname	= "cache_reclaim_ratio",
-		.data		= &pagecache_reclaim_ratio,
-		.maxlen		= sizeof(pagecache_reclaim_ratio),
-		.mode		= 0600,
-		.proc_handler	= proc_dointvec_minmax,
-		.extra1		= SYSCTL_ZERO,
-		.extra2		= (void *)&one_hundred,
-	},
-	{
-		.procname	= "node_drop_caches",
-		.data		= &node_to_shrink,
-		.maxlen		= sizeof(node_to_shrink),
-		.mode		= 0600,
-		.proc_handler	= proc_shrink_node_caches,
-		.extra1		= SYSCTL_ZERO,
 	},
 #endif
 #ifdef CONFIG_ASCEND_SHARE_POOL

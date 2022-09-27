@@ -63,14 +63,11 @@
 #include <linux/swapops.h>
 #include <linux/balloon_compaction.h>
 
+#include <linux/page_cache_limit.h>
 #include "internal.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/vmscan.h>
-
-#ifdef CONFIG_SHRINK_PAGECACHE
-#include <linux/page_cache_limit.h>
-#endif
 
 struct scan_control {
 	/* How many pages shrink_list() should reclaim */
@@ -1837,6 +1834,7 @@ static __always_inline void update_lru_sizes(struct lruvec *lruvec,
 			continue;
 
 		update_lru_size(lruvec, lru, zid, -nr_zone_taken[zid]);
+		reliable_lru_add_batch(zid, lru, -nr_zone_taken[zid]);
 	}
 
 }
@@ -2106,6 +2104,7 @@ static unsigned noinline_for_stack move_pages_to_lru(struct lruvec *lruvec,
 
 		update_lru_size(lruvec, lru, page_zonenum(page), nr_pages);
 		list_add(&page->lru, &lruvec->lists[lru]);
+		reliable_lru_add(lru, page, nr_pages);
 		nr_moved += nr_pages;
 		if (PageActive(page))
 			workingset_age_nonresident(lruvec, nr_pages);
@@ -5631,9 +5630,8 @@ static void shrink_node_memcgs(pg_data_t *pgdat, struct scan_control *sc)
 
 		shrink_lruvec(lruvec, sc);
 
-		if (!sc->no_shrink_slab)
-			shrink_slab(sc->gfp_mask, pgdat->node_id, memcg,
-				    sc->priority);
+		shrink_slab(sc->gfp_mask, pgdat->node_id, memcg,
+			    sc->priority);
 
 		/* Record the group's reclaim efficiency */
 		vmpressure(sc->gfp_mask, memcg, false,
@@ -7273,42 +7271,38 @@ struct page *get_page_from_vaddr(struct mm_struct *mm, unsigned long vaddr)
 }
 EXPORT_SYMBOL_GPL(get_page_from_vaddr);
 
-#ifdef CONFIG_SHRINK_PAGECACHE
-/*
- * return the number of reclaimed pages
- */
-unsigned long __shrink_node_page_cache(int nid, gfp_t mask, unsigned long nr_to_reclaim,
-			     enum page_cache_reclaim_flag reclaim_flag)
+#ifdef CONFIG_PAGE_CACHE_LIMIT
+unsigned long page_cache_shrink_memory(unsigned long nr_to_reclaim,
+					bool may_swap)
 {
-	struct scan_control sc = {
-		.nr_to_reclaim = nr_to_reclaim,
-		.gfp_mask = mask,
-		.may_swap = 0,
-		.may_unmap = reclaim_flag | PAGE_CACHE_RECLAIM_UNMAP,
-		.may_writepage = reclaim_flag | PAGE_CACHE_RECLAIM_WRITEPAGE,
-		.target_mem_cgroup = NULL,
-		.priority = DEF_PRIORITY,
-		.reclaim_idx = MAX_NR_ZONES,
-		.no_shrink_slab = 1,
-	};
-
-	struct zonelist *zonelist = node_zonelist(nid, __GFP_THISNODE);
-	struct reclaim_state *old_rs = current->reclaim_state;
 	unsigned long nr_reclaimed;
 	unsigned int noreclaim_flag;
+	int nid = numa_node_id();
+	struct scan_control sc = {
+		.gfp_mask = GFP_HIGHUSER_MOVABLE,
+		.reclaim_idx = ZONE_MOVABLE,
+		.may_writepage = !laptop_mode,
+		.nr_to_reclaim = nr_to_reclaim / 2,
+		.may_unmap = 1,
+		.may_swap = may_swap,
+		.priority = DEF_PRIORITY,
+	};
 
-	if (!(mask & __GFP_RECLAIM))
-		return 0;
+	struct zonelist *zonelist = node_zonelist(nid, sc.gfp_mask);
+	struct scan_control orig_sc = sc;
 
-	noreclaim_flag = memalloc_noreclaim_save();
 	fs_reclaim_acquire(sc.gfp_mask);
-	current->reclaim_state = NULL;
+	noreclaim_flag = memalloc_noreclaim_save();
+	set_task_reclaim_state(current, &sc.reclaim_state);
 
 	nr_reclaimed = do_try_to_free_pages(zonelist, &sc);
+	sc = orig_sc;
+	sc.reclaim_idx--;
+	nr_reclaimed += do_try_to_free_pages(zonelist, &sc);
 
-	current->reclaim_state = old_rs;
-	fs_reclaim_release(sc.gfp_mask);
+	set_task_reclaim_state(current, NULL);
 	memalloc_noreclaim_restore(noreclaim_flag);
+	fs_reclaim_release(sc.gfp_mask);
 
 	return nr_reclaimed;
 }

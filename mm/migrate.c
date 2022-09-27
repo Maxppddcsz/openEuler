@@ -259,20 +259,20 @@ static bool remove_migration_pte(struct page *page, struct vm_area_struct *vma,
 		if (PageHuge(new)) {
 			pte = pte_mkhuge(pte);
 			pte = arch_make_huge_pte(pte, vma, new, 0);
-			set_huge_pte_at(vma->vm_mm, pvmw.address, pvmw.pte, pte);
 			if (PageAnon(new))
 				hugepage_add_anon_rmap(new, vma, pvmw.address);
 			else
 				page_dup_rmap(new, true);
+			set_huge_pte_at(vma->vm_mm, pvmw.address, pvmw.pte, pte);
 		} else
 #endif
 		{
-			set_pte_at(vma->vm_mm, pvmw.address, pvmw.pte, pte);
-
+			reliable_page_counter(new, vma->vm_mm, 1);
 			if (PageAnon(new))
 				page_add_anon_rmap(new, vma, pvmw.address, false);
 			else
 				page_add_file_rmap(new, false);
+			set_pte_at(vma->vm_mm, pvmw.address, pvmw.pte, pte);
 		}
 		if (vma->vm_flags & VM_LOCKED && !PageTransCompound(new))
 			mlock_vma_page(new);
@@ -480,6 +480,11 @@ int migrate_page_move_mapping(struct address_space *mapping,
 
 	xas_unlock(&xas);
 	/* Leave irq disabled to prevent preemption while updating stats */
+
+	if (PageSwapBacked(page) && !PageSwapCache(page)) {
+		shmem_reliable_page_counter(page, -nr);
+		shmem_reliable_page_counter(newpage, nr);
+	}
 
 	/*
 	 * If moved to a different zone then also account
@@ -2200,6 +2205,7 @@ int migrate_misplaced_transhuge_page(struct mm_struct *mm,
 	 * new page and page_add_new_anon_rmap guarantee the copy is
 	 * visible before the pagetable update.
 	 */
+	reliable_page_counter(new_page, vma->vm_mm, HPAGE_PMD_NR);
 	page_add_anon_rmap(new_page, vma, start, true);
 	/*
 	 * At this point the pmd is numa/protnone (i.e. non present) and the TLB
@@ -2217,6 +2223,7 @@ int migrate_misplaced_transhuge_page(struct mm_struct *mm,
 
 	page_ref_unfreeze(page, 2);
 	mlock_migrate_page(new_page, page);
+	reliable_page_counter(page, vma->vm_mm, -HPAGE_PMD_NR);
 	page_remove_rmap(page, true);
 	set_page_owner_migrate_reason(new_page, MR_NUMA_MISPLACED);
 
@@ -2461,6 +2468,7 @@ again:
 			 * drop page refcount. Page won't be freed, as we took
 			 * a reference just above.
 			 */
+			reliable_page_counter(page, mm, -1);
 			page_remove_rmap(page, false);
 			put_page(page);
 
@@ -2953,6 +2961,7 @@ static void migrate_vma_insert_page(struct migrate_vma *migrate,
 		goto unlock_abort;
 
 	inc_mm_counter(mm, MM_ANONPAGES);
+	reliable_page_counter(page, mm, 1);
 	page_add_new_anon_rmap(page, vma, addr, false);
 	if (!is_zone_device_page(page))
 		lru_cache_add_inactive_or_unevictable(page, vma);
