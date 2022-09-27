@@ -81,6 +81,12 @@
 #include "shuffle.h"
 #include "page_reporting.h"
 
+EXPORT_TRACEPOINT_SYMBOL_GPL(mm_page_alloc_enter);
+EXPORT_TRACEPOINT_SYMBOL_GPL(mm_page_alloc);
+EXPORT_TRACEPOINT_SYMBOL_GPL(mm_page_alloc_zone_locked);
+EXPORT_TRACEPOINT_SYMBOL_GPL(mm_page_free);
+EXPORT_TRACEPOINT_SYMBOL_GPL(mm_page_free_batched);
+
 /* Free Page Internal flags: for internal, non-pcp variants of free_pages(). */
 typedef int __bitwise fpi_t;
 
@@ -5157,6 +5163,8 @@ static inline void prepare_before_alloc(gfp_t *gfp_mask)
 struct page *__alloc_pages(gfp_t gfp, unsigned int order, int preferred_nid,
 							nodemask_t *nodemask)
 {
+	trace_mm_page_alloc_enter(order, gfp);
+	
 	struct page *page;
 	unsigned int alloc_flags = ALLOC_WMARK_LOW;
 	gfp_t alloc_gfp; /* The gfp_t that was actually used for allocation */
