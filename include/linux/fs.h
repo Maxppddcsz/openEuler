@@ -1899,11 +1899,10 @@ struct file_operations {
 				   loff_t len, unsigned int remap_flags);
 	int (*fadvise)(struct file *, loff_t, loff_t, int);
 
-	KABI_RESERVE(1)
+	KABI_USE(1, bool may_pollfree)
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
-	bool may_pollfree;
 } __randomize_layout;
 
 struct inode_operations {
