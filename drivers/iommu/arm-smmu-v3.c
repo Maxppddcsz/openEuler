@@ -3067,9 +3067,16 @@ static void arm_smmu_put_resv_regions(struct device *dev,
 		kfree(entry);
 }
 
+/*
+ * HiSilicon PCIe tune and trace device can be used to trace TLP headers on the
+ * PCIe link and save the data to memory by DMA. The hardware is restricted to
+ * use identity mapping only.
+ */
+#define IS_HISI_PTT_DEVICE(pdev)   ((pdev)->vendor == PCI_VENDOR_ID_HUAWEI && \
+				     (pdev)->device == 0xa12e)
+
 static int arm_smmu_device_domain_type(struct device *dev, unsigned int *type)
 {
-#ifdef CONFIG_SMMU_BYPASS_DEV
 	int i;
 	struct pci_dev *pdev;
 
@@ -3077,6 +3084,13 @@ static int arm_smmu_device_domain_type(struct device *dev, unsigned int *type)
 		return -ERANGE;
 
 	pdev = to_pci_dev(dev);
+
+	if (IS_HISI_PTT_DEVICE(pdev)) {
+		*type = IOMMU_DOMAIN_IDENTITY;
+		return 0;
+	}
+
+#ifdef CONFIG_SMMU_BYPASS_DEV
 	for (i = 0; i < smmu_bypass_devices_num; i++) {
 		if ((smmu_bypass_devices[i].vendor == pdev->vendor)
 			&& (smmu_bypass_devices[i].device == pdev->device)) {
