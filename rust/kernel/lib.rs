@@ -77,6 +77,7 @@ mod build_assert;
 pub mod prelude;
 pub mod print;
 pub mod random;
+pub mod scatterlist;
 mod static_assert;
 #[doc(hidden)]
 pub mod std_vendor;
@@ -97,6 +98,9 @@ pub mod user_ptr;
 
 #[cfg(CONFIG_KUNIT)]
 pub mod kunit;
+
+#[cfg(CONFIG_VIRTIO)]
+pub mod virtio;
 
 #[doc(hidden)]
 pub use build_error::build_error;
