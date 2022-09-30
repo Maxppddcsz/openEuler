@@ -147,6 +147,7 @@ static const struct bpf_func_proto bpf_override_return_proto = {
 
 BPF_CALL_3(bpf_override_regs, struct pt_regs *, regs, unsigned int, offset, unsigned long, rc)
 {
+	regs_set_value(regs, offset, rc);
 	return 0;
 }
 
