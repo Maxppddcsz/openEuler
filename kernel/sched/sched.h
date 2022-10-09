@@ -1390,11 +1390,29 @@ DECLARE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 #define raw_rq()		raw_cpu_ptr(&runqueues)
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
+#ifdef CONFIG_DTS
+static inline struct task_struct *task_of_dts_shared_se(struct sched_entity *dts_shared_se)
+{
+	SCHED_WARN_ON(!entity_is_task(dts_shared_se));
+	return container_of(dts_shared_se, struct task_struct, dts_shared_se);
+}
+#endif
+
 static inline struct task_struct *task_of(struct sched_entity *se)
 {
 	SCHED_WARN_ON(!entity_is_task(se));
+#ifdef CONFIG_DTS
+	if (se->by_pass != NONE_BY_PASS)
+		return task_of_dts_shared_se(se);
+	else
+#endif
 	return container_of(se, struct task_struct, se);
 }
+
+/* Walk up scheduling entities hierarchy */
+#define for_each_sched_entity(se) \
+		for (; se; se = se->parent)
+
 
 static inline struct cfs_rq *task_cfs_rq(struct task_struct *p)
 {
@@ -1415,22 +1433,56 @@ static inline struct cfs_rq *group_cfs_rq(struct sched_entity *grp)
 
 #else
 
+#ifdef CONFIG_DTS
+static inline struct task_struct *task_of_dts_shared_se(struct sched_entity *dts_shared_se)
+{
+	return container_of(dts_shared_se, struct task_struct, dts_shared_se);
+}
+
+static inline struct cfs_rq *cfs_rq_of_dts_shared_se(struct sched_entity *se)
+{
+	struct task_struct *p = task_of_dts_shared_se(se);
+	struct rq *rq = task_rq(p);
+
+	return &rq->cfs;
+}
+#endif
+
 static inline struct task_struct *task_of(struct sched_entity *se)
 {
+#ifdef CONFIG_DTS
+	if (se->by_pass != NONE_BY_PASS)
+		return task_of_dts_shared_se(se);
+	else
+#endif
 	return container_of(se, struct task_struct, se);
 }
+
+#define for_each_sched_entity(se) \
+		for (; se; se = NULL)
 
 static inline struct cfs_rq *task_cfs_rq(struct task_struct *p)
 {
 	return &task_rq(p)->cfs;
 }
 
-static inline struct cfs_rq *cfs_rq_of(struct sched_entity *se)
+static inline struct cfs_rq *cfs_rq_of_se(struct sched_entity *se)
 {
 	struct task_struct *p = task_of(se);
 	struct rq *rq = task_rq(p);
 
 	return &rq->cfs;
+}
+
+static inline struct cfs_rq *cfs_rq_of(struct sched_entity *se)
+{
+#ifdef CONFIG_DTS
+	if (se->by_pass != NONE_BY_PASS)
+		return cfs_rq_of_dts_shared_se(se);
+	else
+#endif
+	return cfs_rq_of_se(se);
+
 }
 
 /* runqueue "owned" by this group */
