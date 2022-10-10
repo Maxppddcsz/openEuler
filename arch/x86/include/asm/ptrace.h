@@ -263,6 +263,25 @@ static inline unsigned long regs_get_register(struct pt_regs *regs,
 	return *(unsigned long *)((unsigned long)regs + offset);
 }
 
+static inline void regs_set_register(struct pt_regs *regs, 
+									 unsigned int offset, unsigned long rc)
+{
+	if (unlikely(offset > MAX_REG_OFFSET))
+		return;
+#ifdef CONFIG_X86_32
+	/* The selector fields are 16-bit. */
+	if (offset == offsetof(struct pt_regs, cs) ||
+		offset == offsetof(struct pt_regs, ss) ||
+		offset == offsetof(struct pt_regs, ds) ||
+		offset == offsetof(struct pt_regs, es) ||
+		offset == offsetof(struct pt_regs, fs) ||
+		offset == offsetof(struct pt_regs, gs)) {
+		*((u16 *)((unsigned long*)regs + offset)) = rc;
+	}
+#endif
+	*((unsigned long *)((unsigned long*)regs + offset)) = rc;
+}
+
 /**
  * regs_within_kernel_stack() - check the address in the stack
  * @regs:	pt_regs which contains kernel stack pointer.
