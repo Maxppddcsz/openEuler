@@ -1076,12 +1076,16 @@ static void hclge_update_fec_support(struct hclge_mac *mac)
 {
 	linkmode_clear_bit(ETHTOOL_LINK_MODE_FEC_BASER_BIT, mac->supported);
 	linkmode_clear_bit(ETHTOOL_LINK_MODE_FEC_RS_BIT, mac->supported);
+	linkmode_clear_bit(ETHTOOL_LINK_MODE_FEC_LLRS_BIT, mac->supported);
 
 	if (mac->fec_ability & BIT(HNAE3_FEC_BASER))
 		linkmode_set_bit(ETHTOOL_LINK_MODE_FEC_BASER_BIT,
 				 mac->supported);
 	if (mac->fec_ability & BIT(HNAE3_FEC_RS))
 		linkmode_set_bit(ETHTOOL_LINK_MODE_FEC_RS_BIT,
+				 mac->supported);
+	if (mac->fec_ability & BIT(HNAE3_FEC_LLRS))
+		linkmode_set_bit(ETHTOOL_LINK_MODE_FEC_LLRS_BIT,
 				 mac->supported);
 }
 
@@ -1200,8 +1204,11 @@ static void hclge_convert_setting_fec(struct hclge_mac *mac)
 			BIT(HNAE3_FEC_AUTO);
 		break;
 	case HCLGE_MAC_SPEED_100G:
-	case HCLGE_MAC_SPEED_200G:
 		mac->fec_ability = BIT(HNAE3_FEC_RS) | BIT(HNAE3_FEC_AUTO);
+		break;
+	case HCLGE_MAC_SPEED_200G:
+		mac->fec_ability = BIT(HNAE3_FEC_RS) | BIT(HNAE3_FEC_AUTO) |
+				   BIT(HNAE3_FEC_LLRS);
 		break;
 	default:
 		mac->fec_ability = 0;
@@ -2795,6 +2802,9 @@ static int hclge_set_fec_hw(struct hclge_dev *hdev, u32 fec_mode)
 	if (fec_mode & BIT(HNAE3_FEC_RS))
 		hnae3_set_field(req->fec_mode, HCLGE_MAC_CFG_FEC_MODE_M,
 				HCLGE_MAC_CFG_FEC_MODE_S, HCLGE_MAC_FEC_RS);
+	if (fec_mode & BIT(HNAE3_FEC_LLRS))
+		hnae3_set_field(req->fec_mode, HCLGE_MAC_CFG_FEC_MODE_M,
+				HCLGE_MAC_CFG_FEC_MODE_S, HCLGE_MAC_FEC_LLRS);
 	if (fec_mode & BIT(HNAE3_FEC_BASER))
 		hnae3_set_field(req->fec_mode, HCLGE_MAC_CFG_FEC_MODE_M,
 				HCLGE_MAC_CFG_FEC_MODE_S, HCLGE_MAC_FEC_BASER);
@@ -3039,6 +3049,9 @@ static void hclge_update_fec_advertising(struct hclge_mac *mac)
 {
 	if (mac->fec_mode & BIT(HNAE3_FEC_RS))
 		linkmode_set_bit(ETHTOOL_LINK_MODE_FEC_RS_BIT,
+				 mac->advertising);
+	else if (mac->fec_mode & BIT(HNAE3_FEC_LLRS))
+		linkmode_set_bit(ETHTOOL_LINK_MODE_FEC_LLRS_BIT,
 				 mac->advertising);
 	else if (mac->fec_mode & BIT(HNAE3_FEC_BASER))
 		linkmode_set_bit(ETHTOOL_LINK_MODE_FEC_BASER_BIT,
