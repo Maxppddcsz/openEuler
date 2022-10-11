@@ -343,6 +343,11 @@ enum hnae3_dbg_cmd {
 	HNAE3_DBG_CMD_UNKNOWN,
 };
 
+enum hnae3_tc_map_mode {
+	HNAE3_TC_MAP_MODE_PRIO,
+	HNAE3_TC_MAP_MODE_DSCP,
+};
+
 struct hnae3_vector_info {
 	u8 __iomem *io_addr;
 	int vector;
@@ -848,6 +853,8 @@ struct hnae3_dcb_ops {
 	int (*ieee_setets)(struct hnae3_handle *, struct ieee_ets *);
 	int (*ieee_getpfc)(struct hnae3_handle *, struct ieee_pfc *);
 	int (*ieee_setpfc)(struct hnae3_handle *, struct ieee_pfc *);
+	int (*ieee_setapp)(struct hnae3_handle *h, struct dcb_app *app);
+	int (*ieee_delapp)(struct hnae3_handle *h, struct dcb_app *app);
 
 	/* DCBX configuration */
 	u8   (*getdcbx)(struct hnae3_handle *);
@@ -903,6 +910,7 @@ struct hnae3_knic_private_info {
 #endif
 
 	struct hnae3_tc_info tc_info;
+	u8 tc_map_mode;
 
 	u16 num_tqps;		  /* total number of TQPs in this handle */
 	struct hnae3_queue **tqp;  /* array base of all TQPs in this instance */
