@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .58.0
-%global pkg_release         .86
+%global maintenance_release .59.0
+%global pkg_release         .87
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -883,6 +883,19 @@ fi
 %endif
 
 %changelog
+* Thu Oct 13 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.59.0.87
+- netfilter: nf_conntrack_irc: Fix forged IP logic
+- ext4: fix dir corruption when ext4_dx_add_entry() fails
+- ext4: fix check for block being out of directory size
+- ext4: make sure ext4_append() always allocates new block
+- ext4: check if directory block is within i_size
+- ext4: make variable "count" signed
+- iommu: Fix compliation failure caused by iommu_device_register
+- ALSA: pcm: oss: Fix race at SNDCTL_DSP_SYNC
+- blk-iocost: don't ignore vrate_min on QD contention
+- !157 Enable NVMe over TCP for arm64
+- arm64: openeuler_defconfig: enable nvmf tcp
+
 * Tue Sep 27 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.58.0.86
 - KVM: arm64: Try stage2 block mapping for host device MMIO
 - KVM: arm64: Remove the creation time's mapping of MMIO regions
