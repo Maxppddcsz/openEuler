@@ -244,15 +244,22 @@ static void ovl_free_fs(struct ovl_fs *ofs)
 	kfree(ofs->config.lowerdir);
 	kfree(ofs->config.upperdir);
 	kfree(ofs->config.workdir);
+	kfree(ofs->config.mergedir);
 	kfree(ofs->config.redirect_mode);
 	if (ofs->creator_cred)
 		put_cred(ofs->creator_cred);
+
+	kobject_put(&ofs->kobj);
+	wait_for_completion(&ofs->kobj_unregister);
+
 	kfree(ofs);
 }
 
 static void ovl_put_super(struct super_block *sb)
 {
 	struct ovl_fs *ofs = sb->s_fs_info;
+
+	ovl_unregister_sysfs(sb);
 
 	ovl_free_fs(ofs);
 }
@@ -1784,7 +1791,7 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 	mntput(upperpath.mnt);
 
 	sb->s_root = root_dentry;
-
+	
 	return 0;
 
 out_free_oe:
@@ -1803,11 +1810,32 @@ static struct dentry *ovl_mount(struct file_system_type *fs_type, int flags,
 	return mount_nodev(fs_type, flags, raw_data, ovl_fill_super);
 }
 
+static int ovl_mount_info(struct super_block *sb, struct dentry *mp)
+{
+	char buffer[PATH_MAX];
+	char *tmp;
+	int err;
+
+	err = ovl_register_sysfs(sb);
+	if (err) 
+		return err;
+
+	tmp = dentry_path_raw(mp, buffer, PATH_MAX);
+	if (IS_ERR(tmp) && (PTR_ERR(tmp) == -ENAMETOOLONG))
+		tmp = "error: name too long";
+	err = ovl_mergedir_backup(sb, tmp);
+	if (err)
+		return err;
+
+	return err;
+}
+
 static struct file_system_type ovl_fs_type = {
 	.owner		= THIS_MODULE,
 	.name		= "overlay",
 	.mount		= ovl_mount,
 	.kill_sb	= kill_anon_super,
+	.mount_info    	= ovl_mount_info,
 };
 MODULE_ALIAS_FS("overlay");
 
@@ -1830,6 +1858,11 @@ static int __init ovl_init(void)
 	if (ovl_inode_cachep == NULL)
 		return -ENOMEM;
 
+	err = ovl_init_sysfs();
+	if (err) {
+		return err;
+	}
+
 	err = register_filesystem(&ovl_fs_type);
 	if (err)
 		kmem_cache_destroy(ovl_inode_cachep);
@@ -1848,6 +1881,7 @@ static void __exit ovl_exit(void)
 	rcu_barrier();
 	kmem_cache_destroy(ovl_inode_cachep);
 
+	ovl_exit_sysfs();
 }
 
 module_init(ovl_init);

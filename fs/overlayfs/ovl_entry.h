@@ -7,11 +7,13 @@
  * under the terms of the GNU General Public License version 2 as published by
  * the Free Software Foundation.
  */
+#include <linux/kobject.h>
 
 struct ovl_config {
 	char *lowerdir;
 	char *upperdir;
 	char *workdir;
+	char *mergedir;
 	bool default_permissions;
 	bool redirect_dir;
 	bool redirect_follow;
@@ -80,6 +82,8 @@ struct ovl_fs {
 	int xino_mode;
 	/* For allocation of non-persistent inode numbers */
 	atomic_long_t last_ino;
+	struct kobject kobj;
+	struct completion kobj_unregister;
 };
 
 static inline struct ovl_fs *OVL_FS(struct super_block *sb)
