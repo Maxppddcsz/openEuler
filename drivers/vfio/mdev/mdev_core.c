@@ -266,13 +266,14 @@ EXPORT_SYMBOL(mdev_unregister_device);
 static void mdev_device_release(struct device *dev)
 {
 	struct mdev_device *mdev = to_mdev_device(dev);
+	struct mdev_device_wapper *mdw = container_of(mdev, struct mdev_device_wapper, mdev);
 
 	mutex_lock(&mdev_list_lock);
 	list_del(&mdev->next);
 	mutex_unlock(&mdev_list_lock);
 
 	dev_dbg(&mdev->dev, "MDEV: destroying\n");
-	kfree(mdev);
+	kfree(mdw);
 }
 
 int mdev_device_create(struct kobject *kobj, struct device *dev, uuid_le uuid)
@@ -281,6 +282,7 @@ int mdev_device_create(struct kobject *kobj, struct device *dev, uuid_le uuid)
 	struct mdev_device *mdev, *tmp;
 	struct mdev_parent *parent;
 	struct mdev_type *type = to_mdev_type(kobj);
+	struct mdev_device_wapper *mdw;
 
 	parent = mdev_get_parent(type->parent);
 	if (!parent)
@@ -297,12 +299,13 @@ int mdev_device_create(struct kobject *kobj, struct device *dev, uuid_le uuid)
 		}
 	}
 
-	mdev = kzalloc(sizeof(*mdev), GFP_KERNEL);
-	if (!mdev) {
+	mdw = kzalloc(sizeof(*mdw), GFP_KERNEL);
+	if (!mdw) {
 		mutex_unlock(&mdev_list_lock);
 		ret = -ENOMEM;
 		goto mdev_fail;
 	}
+	mdev = &mdw->mdev;
 
 	memcpy(&mdev->uuid, &uuid, sizeof(uuid_le));
 	list_add(&mdev->next, &mdev_list);
@@ -392,8 +395,9 @@ int mdev_device_remove(struct device *dev, bool force_remove)
 int mdev_set_iommu_device(struct device *dev, struct device *iommu_device)
 {
 	struct mdev_device *mdev = to_mdev_device(dev);
+	struct mdev_device_wapper *mdw = container_of(mdev, struct mdev_device_wapper, mdev);
 
-	mdev->iommu_device = iommu_device;
+	mdw->iommu_device = iommu_device;
 
 	return 0;
 }
@@ -402,8 +406,9 @@ EXPORT_SYMBOL(mdev_set_iommu_device);
 struct device *mdev_get_iommu_device(struct device *dev)
 {
 	struct mdev_device *mdev = to_mdev_device(dev);
+	struct mdev_device_wapper *mdw = container_of(mdev, struct mdev_device_wapper, mdev);
 
-	return mdev->iommu_device;
+	return mdw->iommu_device;
 }
 EXPORT_SYMBOL(mdev_get_iommu_device);
 

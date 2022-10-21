@@ -33,8 +33,12 @@ struct mdev_device {
 	struct kref ref;
 	struct list_head next;
 	struct kobject *type_kobj;
-	struct device *iommu_device;
 	bool active;
+};
+
+struct mdev_device_wapper {
+	struct mdev_device mdev;
+	struct device *iommu_device;
 };
 
 #define to_mdev_device(dev)	container_of(dev, struct mdev_device, dev)
