@@ -366,6 +366,7 @@ struct iommu_ops {
 		struct device *dev, struct tlb_invalidate_info *inv_info);
 	int (*page_response)(struct device *dev, struct page_response_msg *msg);
 
+#ifndef __GENKSYMS__
 	/* Per device IOMMU features */
 	bool (*dev_has_feat)(struct device *dev, enum iommu_dev_features f);
 	bool (*dev_feat_enabled)(struct device *dev, enum iommu_dev_features f);
@@ -376,6 +377,7 @@ struct iommu_ops {
 	int (*aux_attach_dev)(struct iommu_domain *domain, struct device *dev);
 	void (*aux_detach_dev)(struct iommu_domain *domain, struct device *dev);
 	int (*aux_get_pasid)(struct iommu_domain *domain, struct device *dev);
+#endif
 
 	unsigned long pgsize_bitmap;
 
