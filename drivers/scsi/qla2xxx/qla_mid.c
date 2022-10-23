@@ -1,7 +1,8 @@
-// SPDX-License-Identifier: GPL-2.0-only
 /*
  * QLogic Fibre Channel HBA Driver
  * Copyright (c)  2003-2014 QLogic Corporation
+ *
+ * See LICENSE.qla2xxx for copyright and licensing details.
  */
 #include "qla_def.h"
 #include "qla_gbl.h"
@@ -15,6 +16,8 @@
 #include <scsi/scsi_tcq.h>
 #include <scsi/scsicam.h>
 #include <linux/delay.h>
+
+extern void qla24xx_process_purex_list(struct purex_list *);
 
 void
 qla2x00_vp_stop_timer(scsi_qla_host_t *vha)
@@ -52,7 +55,7 @@ qla24xx_allocate_vp_id(scsi_qla_host_t *vha)
 	spin_unlock_irqrestore(&ha->vport_slock, flags);
 
 	spin_lock_irqsave(&ha->hardware_lock, flags);
-	qlt_update_vp_map(vha, SET_VP_IDX);
+	qla_update_vp_map(vha, SET_VP_IDX);
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
 	mutex_unlock(&ha->vport_lock);
@@ -65,7 +68,7 @@ qla24xx_deallocate_vp_id(scsi_qla_host_t *vha)
 	uint16_t vp_id;
 	struct qla_hw_data *ha = vha->hw;
 	unsigned long flags = 0;
-	u8 i;
+	u32 i, bailout;
 
 	mutex_lock(&ha->vport_lock);
 	/*
@@ -75,21 +78,29 @@ qla24xx_deallocate_vp_id(scsi_qla_host_t *vha)
 	 * ensures no active vp_list traversal while the vport is removed
 	 * from the queue)
 	 */
-	for (i = 0; i < 10; i++) {
-		if (wait_event_timeout(vha->vref_waitq,
-		    !atomic_read(&vha->vref_count), HZ) > 0)
-			break;
-	}
+	bailout = 0;
+	for (i = 0; i < 500; i++) {
+		spin_lock_irqsave(&ha->vport_slock, flags);
+		if (atomic_read(&vha->vref_count) == 0) {
+			list_del(&vha->list);
+			qla_update_vp_map(vha, RESET_VP_IDX);
+			bailout = 1;
+		}
+		spin_unlock_irqrestore(&ha->vport_slock, flags);
 
-	spin_lock_irqsave(&ha->vport_slock, flags);
-	if (atomic_read(&vha->vref_count)) {
-		ql_dbg(ql_dbg_vport, vha, 0xfffa,
-		    "vha->vref_count=%u timeout\n", vha->vref_count.counter);
-		vha->vref_count = (atomic_t)ATOMIC_INIT(0);
+		if (bailout)
+			break;
+		else
+			msleep(20);
 	}
-	list_del(&vha->list);
-	qlt_update_vp_map(vha, RESET_VP_IDX);
-	spin_unlock_irqrestore(&ha->vport_slock, flags);
+	if (!bailout) {
+		ql_log(ql_log_info, vha, 0xfffa,
+			"vha->vref_count=%u timeout\n", vha->vref_count.counter);
+		spin_lock_irqsave(&ha->vport_slock, flags);
+		list_del(&vha->list);
+		qla_update_vp_map(vha, RESET_VP_IDX);
+		spin_unlock_irqrestore(&ha->vport_slock, flags);
+	}
 
 	vp_id = vha->vp_idx;
 	ha->num_vhosts--;
@@ -158,6 +169,14 @@ qla24xx_disable_vp(scsi_qla_host_t *vha)
 	int ret = QLA_SUCCESS;
 	fc_port_t *fcport;
 
+	if (vha->hw->flags.edif_enabled) {
+		if (DBELL_ACTIVE(vha))
+			qla2x00_post_aen_work(vha, FCH_EVT_VENDOR_UNIQUE,
+			    FCH_EVT_VENDOR_UNIQUE_VPORT_DOWN);
+		/* delete sessions and flush sa_indexes */
+		qla2x00_wait_for_sess_deletion(vha);
+	}
+
 	if (vha->hw->flags.fw_started)
 		ret = qla24xx_control_vp(vha, VCE_COMMAND_DISABLE_VPS_LOGO_ALL);
 
@@ -166,11 +185,12 @@ qla24xx_disable_vp(scsi_qla_host_t *vha)
 	list_for_each_entry(fcport, &vha->vp_fcports, list)
 		fcport->logout_on_delete = 0;
 
-	qla2x00_mark_all_devices_lost(vha);
+	if (!vha->hw->flags.edif_enabled)
+		qla2x00_wait_for_sess_deletion(vha);
 
 	/* Remove port id from vp target map */
 	spin_lock_irqsave(&vha->hw->hardware_lock, flags);
-	qlt_update_vp_map(vha, RESET_AL_PA);
+	qla_update_vp_map(vha, RESET_AL_PA);
 	spin_unlock_irqrestore(&vha->hw->hardware_lock, flags);
 
 	qla2x00_mark_vp_devices_dead(vha);
@@ -257,13 +277,13 @@ qla24xx_configure_vp(scsi_qla_host_t *vha)
 void
 qla2x00_alert_all_vps(struct rsp_que *rsp, uint16_t *mb)
 {
-	scsi_qla_host_t *vha;
+	scsi_qla_host_t *vha, *tvp;
 	struct qla_hw_data *ha = rsp->hw;
 	int i = 0;
 	unsigned long flags;
 
 	spin_lock_irqsave(&ha->vport_slock, flags);
-	list_for_each_entry(vha, &ha->vp_list, list) {
+	list_for_each_entry_safe(vha, tvp, &ha->vp_list, list) {
 		if (vha->vp_idx) {
 			if (test_bit(VPORT_DELETE, &vha->dpc_flags))
 				continue;
@@ -279,7 +299,7 @@ qla2x00_alert_all_vps(struct rsp_que *rsp, uint16_t *mb)
 			case MBA_POINT_TO_POINT:
 			case MBA_CHG_IN_CONNECTION:
 				ql_dbg(ql_dbg_async, vha, 0x5024,
-				    "Async_event for VP[%d], mb=0x%x vha=%p.\n",
+				    "Async_event for VP[%d], mb=0x%x vha=%px.\n",
 				    i, *mb, vha);
 				qla2x00_async_event(vha, rsp, mb);
 				break;
@@ -287,7 +307,7 @@ qla2x00_alert_all_vps(struct rsp_que *rsp, uint16_t *mb)
 			case MBA_RSCN_UPDATE:
 				if ((mb[3] & 0xff) == vha->vp_idx) {
 					ql_dbg(ql_dbg_async, vha, 0x5024,
-					    "Async_event for VP[%d], mb=0x%x vha=%p\n",
+					    "Async_event for VP[%d], mb=0x%x vha=%px\n",
 					    i, *mb, vha);
 					qla2x00_async_event(vha, rsp, mb);
 				}
@@ -367,13 +387,31 @@ qla2x00_do_dpc_vp(scsi_qla_host_t *vha)
 		}
 	}
 
-	if (test_bit(FCPORT_UPDATE_NEEDED, &vha->dpc_flags)) {
+	if (test_and_clear_bit(SCM_SEND_EDC, &vha->dpc_flags)) {
+		if (QLA_DRV_SEND_ELS(ha)) {
+			ql_dbg(ql_dbg_dpc, vha, 0x4018,
+				"SCM ELS EDC scheduled.\n");
+			qla2xxx_scm_send_edc_els(vha);
+			ql_dbg(ql_dbg_dpc, vha, 0x4019,
+				"SCM ELS EDC Sent\n");
+		}
+	}
+	if (test_and_clear_bit(SCM_SEND_RDF, &vha->dpc_flags)) {
+		if (QLA_DRV_SEND_ELS(ha)) {
+			ql_dbg(ql_dbg_dpc, vha, 0x4018,
+				"SCM ELS RDF scheduled.\n");
+			qla2xxx_scm_send_rdf_els(vha);
+			ql_dbg(ql_dbg_dpc, vha, 0x4019,
+				"SCM ELS RDF Sent\n");
+		}
+	}
+	if (test_bit(SCM_NOTIFY_FW, &vha->dpc_flags)) {
 		ql_dbg(ql_dbg_dpc, vha, 0x4016,
-		    "FCPort update scheduled.\n");
-		qla2x00_update_fcports(vha);
-		clear_bit(FCPORT_UPDATE_NEEDED, &vha->dpc_flags);
+		    "SCM update scheduled.\n");
+		qla2xxx_update_scm_fcport(vha);
+		clear_bit(SCM_NOTIFY_FW, &vha->dpc_flags);
 		ql_dbg(ql_dbg_dpc, vha, 0x4017,
-		    "FCPort update end.\n");
+		    "SCM update end.\n");
 	}
 
 	if (test_bit(RELOGIN_NEEDED, &vha->dpc_flags) &&
@@ -416,7 +454,7 @@ void
 qla2x00_do_dpc_all_vps(scsi_qla_host_t *vha)
 {
 	struct qla_hw_data *ha = vha->hw;
-	scsi_qla_host_t *vp;
+	scsi_qla_host_t *vp, *tvp;
 	unsigned long flags = 0;
 
 	if (vha->vp_idx)
@@ -430,7 +468,7 @@ qla2x00_do_dpc_all_vps(scsi_qla_host_t *vha)
 		return;
 
 	spin_lock_irqsave(&ha->vport_slock, flags);
-	list_for_each_entry(vp, &ha->vp_list, list) {
+	list_for_each_entry_safe(vp, tvp, &ha->vp_list, list) {
 		if (vp->vp_idx) {
 			atomic_inc(&vp->vref_count);
 			spin_unlock_irqrestore(&ha->vport_slock, flags);
@@ -544,7 +582,7 @@ qla24xx_create_vhost(struct fc_vport *fc_vport)
 	host->transportt = qla2xxx_transport_vport_template;
 
 	ql_dbg(ql_dbg_vport, vha, 0xa007,
-	    "Detect vport hba %ld at address = %p.\n",
+	    "Detect vport hba %ld at address = %px.\n",
 	    vha->host_no, vha);
 
 	vha->flags.init_done = 1;
@@ -769,15 +807,15 @@ qla25xx_create_req_que(struct qla_hw_data *ha, uint16_t options,
 	req->req_q_in = &reg->isp25mq.req_q_in;
 	req->req_q_out = &reg->isp25mq.req_q_out;
 	req->max_q_depth = ha->req_q_map[0]->max_q_depth;
-	req->out_ptr = (uint16_t *)(req->ring + req->length);
+	req->out_ptr = (void *)(req->ring + req->length);
 	mutex_unlock(&ha->mq_lock);
 	ql_dbg(ql_dbg_multiq, base_vha, 0xc004,
-	    "ring_ptr=%p ring_index=%d, "
+	    "ring_ptr=%px ring_index=%d, "
 	    "cnt=%d id=%d max_q_depth=%d.\n",
 	    req->ring_ptr, req->ring_index,
 	    req->cnt, req->id, req->max_q_depth);
 	ql_dbg(ql_dbg_init, base_vha, 0x00de,
-	    "ring_ptr=%p ring_index=%d, "
+	    "ring_ptr=%px ring_index=%d, "
 	    "cnt=%d id=%d max_q_depth=%d.\n",
 	    req->ring_ptr, req->ring_index, req->cnt,
 	    req->id, req->max_q_depth);
@@ -810,6 +848,7 @@ static void qla_do_work(struct work_struct *work)
 	struct scsi_qla_host *vha = qpair->vha;
 
 	spin_lock_irqsave(&qpair->qp_lock, flags);
+//	vha = pci_get_drvdata(ha->pdev);
 	qla24xx_process_response_queue(vha, qpair->rsp);
 	spin_unlock_irqrestore(&qpair->qp_lock, flags);
 
@@ -861,7 +900,7 @@ qla25xx_create_rsp_que(struct qla_hw_data *ha, uint16_t options,
 	rsp->vp_idx = vp_idx;
 	rsp->hw = ha;
 	ql_dbg(ql_dbg_init, base_vha, 0x00e4,
-	    "rsp queue_id=%d rid=%d vp_idx=%d hw=%p.\n",
+	    "rsp queue_id=%d rid=%d vp_idx=%d hw=%px.\n",
 	    que_id, rsp->rid, rsp->vp_idx, rsp->hw);
 	/* Use alternate PCI bus number */
 	if (MSB(rsp->rid))
@@ -881,20 +920,21 @@ qla25xx_create_rsp_que(struct qla_hw_data *ha, uint16_t options,
 	reg = ISP_QUE_REG(ha, que_id);
 	rsp->rsp_q_in = &reg->isp25mq.rsp_q_in;
 	rsp->rsp_q_out = &reg->isp25mq.rsp_q_out;
-	rsp->in_ptr = (uint16_t *)(rsp->ring + rsp->length);
+	rsp->in_ptr = (void *)(rsp->ring + rsp->length);
 	mutex_unlock(&ha->mq_lock);
 	ql_dbg(ql_dbg_multiq, base_vha, 0xc00b,
-	    "options=%x id=%d rsp_q_in=%p rsp_q_out=%p\n",
+	    "options=%x id=%d rsp_q_in=%px rsp_q_out=%px\n",
 	    rsp->options, rsp->id, rsp->rsp_q_in,
 	    rsp->rsp_q_out);
 	ql_dbg(ql_dbg_init, base_vha, 0x00e5,
-	    "options=%x id=%d rsp_q_in=%p rsp_q_out=%p\n",
+	    "options=%x id=%d rsp_q_in=%px rsp_q_out=%px\n",
 	    rsp->options, rsp->id, rsp->rsp_q_in,
 	    rsp->rsp_q_out);
 
 	ret = qla25xx_request_irq(ha, qpair, qpair->msix,
 		ha->flags.disable_msix_handshake ?
-		QLA_MSIX_QPAIR_MULTIQ_RSP_Q : QLA_MSIX_QPAIR_MULTIQ_RSP_Q_HS);
+			QLA_MSIX_QPAIR_MULTIQ_RSP_Q:
+			QLA_MSIX_QPAIR_MULTIQ_RSP_Q_HS);
 	if (ret)
 		goto que_failed;
 
@@ -952,6 +992,7 @@ int qla24xx_control_vp(scsi_qla_host_t *vha, int cmd)
 	if (vp_index == 0 || vp_index >= ha->max_npiv_vports)
 		return QLA_PARAMETER_ERROR;
 
+	/* ref: INIT */
 	sp = qla2x00_get_sp(base_vha, NULL, GFP_KERNEL);
 	if (!sp)
 		return rval;
@@ -959,9 +1000,8 @@ int qla24xx_control_vp(scsi_qla_host_t *vha, int cmd)
 	sp->type = SRB_CTRL_VP;
 	sp->name = "ctrl_vp";
 	sp->comp = &comp;
-	sp->done = qla_ctrlvp_sp_done;
-	sp->u.iocb_cmd.timeout = qla2x00_async_iocb_timeout;
-	qla2x00_init_timer(sp, qla2x00_get_async_timeout(vha) + 2);
+	qla2x00_init_async_sp(sp, qla2x00_get_async_timeout(vha) + 2,
+			      qla_ctrlvp_sp_done);
 	sp->u.iocb_cmd.u.ctrlvp.cmd = cmd;
 	sp->u.iocb_cmd.u.ctrlvp.vp_index = vp_index;
 
@@ -995,6 +1035,198 @@ int qla24xx_control_vp(scsi_qla_host_t *vha, int cmd)
 		break;
 	}
 done:
-	sp->free(sp);
+	/* ref: INIT */
+	kref_put(&sp->cmd_kref, qla2x00_sp_release);
 	return rval;
+}
+
+struct scsi_qla_host *qla_find_host_by_vp_idx(struct scsi_qla_host *vha, uint16_t vp_idx)
+{
+	struct qla_hw_data *ha = vha->hw;
+
+	if (vha->vp_idx == vp_idx)
+		return vha;
+
+	BUG_ON(ha->vp_map == NULL);
+	if (likely(test_bit(vp_idx, ha->vp_idx_map)))
+		return ha->vp_map[vp_idx].vha;
+
+	return NULL;
+}
+
+/* vport_slock to be held by the caller */
+void
+qla_update_vp_map(struct scsi_qla_host *vha, int cmd)
+{
+	void *slot;
+	u32 key;
+	int rc;
+
+	if (!vha->hw->vp_map)
+		return;
+
+	key = vha->d_id.b24;
+
+	switch (cmd) {
+	case SET_VP_IDX:
+		vha->hw->vp_map[vha->vp_idx].vha = vha;
+		break;
+	case SET_AL_PA:
+		slot = btree_lookup32(&vha->hw->host_map, key);
+		if (!slot) {
+			ql_dbg(ql_dbg_disc, vha, 0xf018,
+			    "Save vha in host_map %px %06x\n", vha, key);
+			rc = btree_insert32(&vha->hw->host_map,
+			    key, vha, GFP_ATOMIC);
+			if (rc)
+				ql_log(ql_log_info, vha, 0xd03e,
+				    "Unable to insert s_id into host_map: %06x\n",
+				    key);
+			return;
+		}
+		ql_dbg(ql_dbg_disc, vha, 0xf019,
+		    "replace existing vha in host_map %px %06x\n", vha, key);
+		btree_update32(&vha->hw->host_map, key, vha);
+		break;
+	case RESET_VP_IDX:
+		vha->hw->vp_map[vha->vp_idx].vha = NULL;
+		break;
+	case RESET_AL_PA:
+		ql_dbg(ql_dbg_disc, vha, 0xf01a,
+		    "clear vha in host_map %px %06x\n", vha, key);
+		slot = btree_lookup32(&vha->hw->host_map, key);
+		if (slot)
+			btree_remove32(&vha->hw->host_map, key);
+		vha->d_id.b24 = 0;
+		break;
+	}
+}
+
+void qla_update_host_map(struct scsi_qla_host *vha, port_id_t id)
+{
+
+	if (!vha->d_id.b24) {
+		vha->d_id = id;
+		qla_update_vp_map(vha, SET_AL_PA);
+	} else if (vha->d_id.b24 != id.b24) {
+		qla_update_vp_map(vha, RESET_AL_PA);
+		vha->d_id = id;
+		qla_update_vp_map(vha, SET_AL_PA);
+	}
+}
+
+int qla_create_buf_pool(struct scsi_qla_host *vha, struct qla_qpair *qp)
+{
+	int sz ;
+	qp->buf_pool.num_bufs = qp->req->length;
+
+	sz = BITS_TO_LONGS(qp->req->length);
+	qp->buf_pool.buf_map   = kcalloc(sz, sizeof(long), GFP_KERNEL);
+	if (!qp->buf_pool.buf_map) {
+		ql_log(ql_log_warn, vha, 0x0186,
+		    "Failed to allocate buf_map(%ld).\n", sz * sizeof(unsigned long));
+		return -ENOMEM;
+	}
+	sz = qp->req->length * sizeof(void*);
+	qp->buf_pool.buf_array = kcalloc(qp->req->length, sizeof(void*), GFP_KERNEL);
+	if (!qp->buf_pool.buf_array) {
+		ql_log(ql_log_warn, vha, 0x0186,
+		    "Failed to allocate buf_array(%d).\n", sz);
+		kfree(qp->buf_pool.buf_map);
+		return -ENOMEM;
+	}
+	sz = qp->req->length * sizeof(dma_addr_t);
+	qp->buf_pool.dma_array = kcalloc(qp->req->length, sizeof(dma_addr_t), GFP_KERNEL);
+	if (!qp->buf_pool.dma_array) {
+		ql_log(ql_log_warn, vha, 0x0186,
+		    "Failed to allocate dma_array(%d).\n", sz);
+		kfree(qp->buf_pool.buf_map);
+		kfree(qp->buf_pool.buf_array);
+		return -ENOMEM;
+	}
+	set_bit(0, qp->buf_pool.buf_map);
+	return 0;
+}
+
+void qla_free_buf_pool(struct qla_qpair *qp)
+{
+	int i;
+	struct qla_hw_data *ha = qp->vha->hw;
+
+	for (i = 0; i < qp->buf_pool.num_bufs; i++) {
+		if (qp->buf_pool.buf_array[i] && qp->buf_pool.dma_array[i])
+			dma_pool_free(ha->fcp_cmnd_dma_pool, qp->buf_pool.buf_array[i],
+			    qp->buf_pool.dma_array[i]);
+		qp->buf_pool.buf_array[i] = NULL;
+		qp->buf_pool.dma_array[i] = 0;
+	}
+
+	kfree(qp->buf_pool.dma_array);
+	kfree(qp->buf_pool.buf_array);
+	kfree(qp->buf_pool.buf_map);
+}
+
+
+/* it is assume qp->qp_lock is held at this point */
+int qla_get_buf(struct scsi_qla_host *vha, struct qla_qpair *qp, struct qla_buf_dsc *dsc)
+{
+	u16 tag, i = 0;
+	void *buf;
+	dma_addr_t buf_dma;
+	struct qla_hw_data *ha = vha->hw;
+
+	dsc->tag = TAG_FREED;
+again:
+	tag = find_first_zero_bit(qp->buf_pool.buf_map, qp->buf_pool.num_bufs);
+	if (tag >= qp->buf_pool.num_bufs) {
+		ql_dbg(ql_dbg_io, vha, 0x00e2,
+		    "qp(%d) ran out of buf resource.\n", qp->id);
+		return  -EIO;
+	}
+	if (tag == 0) {
+		set_bit(0, qp->buf_pool.buf_map);
+		i++;
+		if (i == 5) {
+			ql_dbg(ql_dbg_io, vha, 0x00e3,
+			    "qp(%d) unable to get tag.\n", qp->id);
+			return -EIO;
+		}
+		goto again;
+	}
+
+	if (!qp->buf_pool.buf_array[tag] ) {
+		buf = dma_pool_zalloc(ha->fcp_cmnd_dma_pool, GFP_ATOMIC, &buf_dma);
+		if (!buf) {
+			ql_log(ql_log_fatal, vha, 0x13b1,
+			    "Failed to allocate buf.\n");
+			return -ENOMEM;
+		}
+
+		dsc->buf = qp->buf_pool.buf_array[tag] = buf;
+		dsc->buf_dma = qp->buf_pool.dma_array[tag] = buf_dma;
+	} else {
+		dsc->buf = qp->buf_pool.buf_array[tag] ;
+		dsc->buf_dma = qp->buf_pool.dma_array[tag];
+		memset(dsc->buf, 0, FCP_CMND_DMA_POOL_SIZE);
+	}
+
+	qp->buf_pool.num_active++;
+	if (qp->buf_pool.num_active > qp->buf_pool.max_used)
+		qp->buf_pool.max_used = qp->buf_pool.num_active;
+
+	dsc->tag = tag;
+	set_bit(tag, qp->buf_pool.buf_map);
+	return 0;
+}
+
+
+/* it is assume qp->qp_lock is held at this point */
+void qla_put_buf(struct qla_qpair *qp, struct qla_buf_dsc *dsc)
+{
+	if (dsc->tag == TAG_FREED)
+		return;
+
+	clear_bit(dsc->tag, qp->buf_pool.buf_map);
+	qp->buf_pool.num_active--;
+	dsc->tag = TAG_FREED;
 }

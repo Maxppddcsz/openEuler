@@ -1,7 +1,8 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * QLogic Fibre Channel HBA Driver
  * Copyright (c)  2003-2014 QLogic Corporation
+ *
+ * See LICENSE.qla2xxx for copyright and licensing details.
  */
 #ifndef __QLA_BSG_H
 #define __QLA_BSG_H
@@ -31,6 +32,20 @@
 #define QL_VND_DPORT_DIAGNOSTICS	0x19
 #define QL_VND_GET_PRIV_STATS_EX	0x1A
 #define QL_VND_SS_GET_FLASH_IMAGE_STATUS	0x1E
+#define QL_VND_EDIF_MGMT                0X1F
+#define QL_VND_GET_PORT_SCM		0x20
+#define QL_VND_GET_TARGET_SCM		0x21
+#define QL_VND_GET_DRV_ATTR		0x22
+#define QL_VND_MANAGE_HOST_STATS	0x23
+#define QL_VND_GET_HOST_STATS		0x24
+#define QL_VND_GET_TGT_STATS		0x25
+#define QL_VND_MANAGE_HOST_PORT		0x26
+#define QL_VND_SYSTEM_LOCKDOWN_INFO	0x27
+#define QL_VND_BIDI_SCM_MGMT		0x28
+#define QL_VND_GET_PORT_SCM_V2		0x29
+#define QL_VND_GET_TARGET_SCM_V2	0x2A
+#define QL_VND_MBX_PASSTHRU 		0x2B
+#define QL_VND_DPORT_DIAGNOSTICS_V2	0x2C
 
 /* BSG Vendor specific subcode returns */
 #define EXT_STATUS_OK			0
@@ -40,6 +55,7 @@
 #define EXT_STATUS_DATA_OVERRUN		7
 #define EXT_STATUS_DATA_UNDERRUN	8
 #define EXT_STATUS_MAILBOX		11
+#define EXT_STATUS_BUFFER_TOO_SMALL	16
 #define EXT_STATUS_NO_MEMORY		17
 #define EXT_STATUS_DEVICE_OFFLINE	22
 
@@ -53,6 +69,13 @@
 #define EXT_STATUS_TIMEOUT		30
 #define EXT_STATUS_THREAD_FAILED	31
 #define EXT_STATUS_DATA_CMP_FAILED	32
+#define EXT_STATUS_ADAPTER_IN_LOCKDOWN_MODE     39
+
+#define EXT_STATUS_DPORT_DIAG_ERR		40
+#define EXT_STATUS_DPORT_DIAG_IN_PROCESS	41
+#define EXT_STATUS_DPORT_DIAG_NOT_RUNNING	42
+
+#define EXT_STATUS_UNSUPPORTED_FW        43
 
 /* BSG definations for interpreting CommandSent field */
 #define INT_DEF_LB_LOOPBACK_CMD         0
@@ -275,6 +298,17 @@ struct qla_dport_diag {
 	uint8_t  unused[62];
 } __packed;
 
+#define QLA_GET_DPORT_RESULT_V2		0  /* Get Result */
+#define QLA_RESTART_DPORT_TEST_V2	1  /* Restart test */
+#define QLA_START_DPORT_TEST_V2		2  /* Start test */
+struct qla_dport_diag_v2 {
+	uint16_t options;
+	uint16_t mbx1;
+        uint16_t mbx2;
+	uint8_t  unused[58];
+	uint8_t buf[1024]; /* Test Result */
+} __packed;
+
 /* D_Port options */
 #define QLA_DPORT_RESULT	0x0
 #define QLA_DPORT_START		0x2
@@ -286,7 +320,334 @@ struct qla_active_regions {
 	uint8_t vpd_nvram;
 	uint8_t npiv_config_0_1;
 	uint8_t npiv_config_2_3;
-	uint8_t reserved[32];
+	uint8_t nvme_params;
+	uint8_t reserved[31];
 } __packed;
+
+enum ql_fpin_li_event_types {
+	QL_FPIN_LI_UNKNOWN =		0x0,
+	QL_FPIN_LI_LINK_FAILURE =	0x1,
+	QL_FPIN_LI_LOSS_OF_SYNC =	0x2,
+	QL_FPIN_LI_LOSS_OF_SIG =	0x3,
+	QL_FPIN_LI_PRIM_SEQ_ERR =	0x4,
+	QL_FPIN_LI_INVALID_TX_WD =	0x5,
+	QL_FPIN_LI_INVALID_CRC =	0x6,
+	QL_FPIN_LI_DEVICE_SPEC =	0xF,
+};
+
+/*
+ * Initializer useful for decoding table.
+ * Please keep this in sync with the above definitions.
+ */
+#define QL_FPIN_LI_EVT_TYPES_INIT {					\
+	{ QL_FPIN_LI_UNKNOWN,		"Unknown" },			\
+	{ QL_FPIN_LI_LINK_FAILURE,	"Link Failure" },		\
+	{ QL_FPIN_LI_LOSS_OF_SYNC,	"Loss of Synchronization" },	\
+	{ QL_FPIN_LI_LOSS_OF_SIG,	"Loss of Signal" },		\
+	{ QL_FPIN_LI_PRIM_SEQ_ERR,	"Primitive Sequence Protocol Error" }, \
+	{ QL_FPIN_LI_INVALID_TX_WD,	"Invalid Transmission Word" },	\
+	{ QL_FPIN_LI_INVALID_CRC,	"Invalid CRC" },		\
+	{ QL_FPIN_LI_DEVICE_SPEC,	"Device Specific" },		\
+}
+
+#define SCM_LINK_EVENT_V1_SIZE			20
+struct qla_scm_link_event {
+	uint64_t	timestamp;
+	uint16_t	event_type;
+	uint16_t	event_modifier;
+	uint32_t	event_threshold;
+	uint32_t	event_count;
+	uint8_t		reserved[12];
+} __packed;
+
+#define QL_FPIN_DELI_EVT_TYPES_INIT {					\
+	{ FPIN_DELI_UNKNOWN,		"Unknown" },			\
+	{ FPIN_DELI_TIMEOUT,		"Timeout" },			\
+	{ FPIN_DELI_UNABLE_TO_ROUTE,	"Unable to Route" },		\
+	{ FPIN_DELI_DEVICE_SPEC,	"Device Specific" },		\
+}
+
+struct qla_scm_delivery_event {
+	uint64_t	timestamp;
+	uint32_t	delivery_reason;
+	uint8_t		deliver_frame_hdr[24];
+	uint8_t		reserved[28];
+
+} __packed;
+
+struct qla_scm_peer_congestion_event {
+	uint64_t	timestamp;
+	uint16_t	event_type;
+	uint16_t	event_modifier;
+	uint32_t	event_period;
+	uint8_t		reserved[16];
+} __packed;
+
+#define SCM_CONGESTION_SEVERITY_WARNING	0xF1
+#define SCM_CONGESTION_SEVERITY_ERROR	0xF7
+struct qla_scm_congestion_event {
+	uint64_t	timestamp;
+	uint16_t	event_type;
+	uint16_t	event_modifier;
+	uint32_t	event_period;
+	uint8_t		severity;
+	uint8_t		reserved[15];
+} __packed;
+
+#define SCM_FLAG_RDF_REJECT		0x00
+#define SCM_FLAG_RDF_COMPLETED		0x01
+#define SCM_FLAG_BROCADE_CONNECTED	0x02
+#define SCM_FLAG_CISCO_CONNECTED	0x04
+
+enum ql_fpin_event_types {
+	SCM_EVENT_NONE =		0x0,
+	SCM_EVENT_CONGESTION =		0x1,
+	SCM_EVENT_DELIVERY =		0x2,
+	SCM_EVENT_LINK_INTEGRITY =	0x4,
+	SCM_EVENT_PEER_CONGESTION =	0x8,
+};
+
+#define QL_FPIN_EVENT_TYPES_INIT {					\
+	{ SCM_EVENT_NONE,		"None" },			\
+	{ SCM_EVENT_CONGESTION,		"Congestion" },			\
+	{ SCM_EVENT_DELIVERY,		"Delivery" },			\
+	{ SCM_EVENT_LINK_INTEGRITY,	"Link Integrity" },		\
+	{ SCM_EVENT_PEER_CONGESTION,	"Peer Congestion" },		\
+}
+
+#define SCM_STATE_HEALTHY		0x0
+#define SCM_STATE_CONGESTED		0x1
+
+#define QLA_CON_PRIMITIVE_RECEIVED	0x1
+#define QLA_CONGESTION_ARB_WARNING	0x1
+#define QLA_CONGESTION_ARB_ALARM	0x2
+
+/* Virtual Lane Support */
+#define QLA_VL_MODE_DISABLED 		0x0 /* Administratively disabled */
+#define QLA_VL_MODE_OPERATIONAL		0x1 /* Negotiated with switch and operational */
+#define QLA_VL_MODE_NON_OPERATIONAL	0x2 /* Administratively enabled, switch negotiation failed */
+
+/* Virtual Lane States */
+#define QLA_VL_STATE_DISABLED		0x0
+#define QLA_VL_STATE_SLOW		0x1
+#define QLA_VL_STATE_NORMAL		0x2
+#define QLA_VL_STATE_FAST		0x3
+/*
+ * Fabric Performance Impact Notification Statistics
+ */
+struct qla_scm_stats {
+	/* Delivery */
+	u64 dn_unknown;
+	u64 dn_timeout;
+	u64 dn_unable_to_route;
+	u64 dn_device_specific;
+
+	/* Link Integrity */
+	u64 li_failure_unknown;
+	u64 li_link_failure_count;
+	u64 li_loss_of_sync_count;
+	u64 li_loss_of_signals_count;
+	u64 li_prim_seq_err_count;
+	u64 li_invalid_tx_word_count;
+	u64 li_invalid_crc_count;
+	u64 li_device_specific;
+
+	/* Congestion/Peer Congestion */
+	u64 cn_clear;
+	u64 cn_lost_credit;
+	u64 cn_credit_stall;
+	u64 cn_oversubscription;
+	u64 cn_device_specific;
+
+	/* PUN Stats */
+	u64 pun_count;
+	u64 pun_clear_count;
+} __packed;
+
+struct qla_scmr_stats {
+	uint64_t	throttle_cleared;
+	uint64_t	throttle_down_count;
+	uint64_t	throttle_up_count;
+	uint64_t	busy_status_count;
+	uint64_t	throttle_hit_low_wm;
+} __packed;
+
+struct qla_fpin_severity {
+	uint64_t	cn_alarm;
+	uint64_t	cn_warning;
+} __packed;
+
+enum ql_scm_profile_type {
+	QL_SCM_MONITOR 		= 0,
+	QL_SCM_CONSERVATIVE 	= 1,
+	QL_SCM_MODERATE 	= 2,
+	QL_SCM_AGGRESSIVE 	= 3
+};
+
+#define MAX_SCM_PROFILE 4
+
+#define QL_SCM_PROFILE_TYPES_INIT {			\
+	{ QL_SCM_MONITOR,	"Monitor" },		\
+	{ QL_SCM_CONSERVATIVE,	"Conservative" },	\
+	{ QL_SCM_MODERATE,	"Moderate" },		\
+	{ QL_SCM_AGGRESSIVE,	"Aggressive" },		\
+}
+
+struct qla_scmr_port_profile {
+#define QLA_USE_NVRAM_CONFIG		BIT(0)
+#define QLA_USE_FW_SLOW_QUEUE		BIT(1)
+#define QLA_APPLY_SCMR_THROTTLING	BIT(2)
+	uint8_t scmr_control_flags;
+	uint8_t scmr_profile;
+	uint8_t rsvd[6];
+} __packed;
+
+struct qla_scm_host_config {
+#define QLA_RESET_SCM_STATS		BIT(0)
+#define QLA_RESET_SCMR_STATS		BIT(1)
+#define QLA_APPLY_SCMR_PROFILE		BIT(2)
+#define QLA_GET_SCMR_PROFILE		BIT(3)
+	uint8_t		controls;
+	struct qla_scmr_port_profile profile;
+	uint8_t		reserved[15];
+} __packed;
+
+/* Driver's internal data structure */
+struct qla_scm_port_combined {
+	struct qla_scm_link_event	link_integrity;
+	struct qla_scm_delivery_event	delivery;
+	struct qla_scm_congestion_event	congestion;
+	struct qla_scm_stats		stats;
+	struct qla_fpin_severity	sev;
+	struct qla_scmr_stats		rstats;
+
+	uint32_t			last_event_timestamp;
+	uint8_t			current_events;
+#define QLA_DISP_MODE_COMPACT		0x0
+#define QLA_DISP_MODE_DETAILED		0x1
+	uint8_t				display_mode;
+	uint8_t				scm_fabric_connection_flags;
+	uint8_t				current_state;
+} __packed;
+
+struct qla_scm_port_v2 {
+	struct qla_scm_stats		stats;
+	struct qla_fpin_severity	sev;
+	struct qla_scmr_stats		rstats;
+	uint8_t				scm_fabric_connection_flags;
+	uint8_t				current_state;
+	uint32_t			secs_since_last_event;
+	uint8_t				scm_events;
+	uint8_t				vl_mode;
+	uint8_t				io_throttling;
+	uint8_t				reserved[63];
+} __packed;
+
+struct qla_scm_port {
+	uint32_t			current_events;
+
+	struct qla_scm_link_event	link_integrity;
+	struct qla_scm_delivery_event	delivery;
+	struct qla_scm_congestion_event	congestion;
+	uint64_t			scm_congestion_alarm;
+	uint64_t			scm_congestion_warning;
+	uint8_t				scm_fabric_connection_flags;
+	uint8_t				reserved[43];
+} __packed;
+
+/* Driver's internal data structure */
+struct qla_scm_target_combined {
+	uint8_t				wwpn[8];
+
+	struct qla_scm_link_event	link_integrity;
+	struct qla_scm_delivery_event	delivery;
+	struct qla_scm_peer_congestion_event	peer_congestion;
+
+	struct qla_scm_stats		stats;
+	struct qla_scmr_stats		rstats;
+	uint32_t			last_event_timestamp;
+	uint8_t				current_events;
+	uint8_t				current_state;
+};
+
+struct qla_scm_target_v2 {
+	uint8_t				wwpn[8];
+	struct qla_scm_stats		stats;
+	struct qla_scmr_stats		rstats;
+	uint8_t				current_state;
+	uint32_t			secs_since_last_event;
+	uint8_t				scm_events;
+	uint8_t				vl_state;
+	uint8_t				io_throttling;
+	uint8_t				reserved[64];
+} __packed;
+
+struct qla_scm_target {
+	uint8_t		wwpn[8];
+	uint32_t	current_events;
+
+	struct qla_scm_link_event		link_integrity;
+	struct qla_scm_delivery_event		delivery;
+	struct qla_scm_peer_congestion_event	peer_congestion;
+
+	uint32_t	link_failure_count;
+	uint32_t	loss_of_sync_count;
+	uint32_t        loss_of_signals_count;
+	uint32_t        primitive_seq_protocol_err_count;
+	uint32_t        invalid_transmission_word_count;
+	uint32_t        invalid_crc_count;
+
+	uint32_t        delivery_failure_unknown;
+	uint32_t        delivery_timeout;
+	uint32_t        delivery_unable_to_route;
+	uint32_t        delivery_failure_device_specific;
+
+	uint32_t        peer_congestion_clear;
+	uint32_t        peer_congestion_lost_credit;
+	uint32_t        peer_congestion_credit_stall;
+	uint32_t        peer_congestion_oversubscription;
+	uint32_t        peer_congestion_device_specific;
+	uint32_t	link_unknown_event;
+	uint32_t	link_device_specific_event;
+	uint8_t		reserved[48];
+} __packed;
+
+#define QLA_DRV_ATTR_SCM_SUPPORTED		0x00800000
+#define QLA_DRV_ATTR_LOCKDOWN_SUPPORT		0x02000000
+#define QLA_DRV_ATTR_SCM_2_SUPPORTED		0x04000000	/* Bit 26 */
+#define QLA_DRV_ATTR_SCM_UPSTREAM_SUPPORT	0x08000000	/* Bit 27 */
+#define QLA_DRV_ATTR_SCMR_PROFILE_SUPPORT	0x10000000	/* Bit 28 */
+#define QLA_DRV_ATTR_DPORT_V2_SUPPORT		0x20000000	/* Bit 29 */
+#define QLA_DRV_ATTR_VIRTUAL_LANE_SUPPORT	0x40000000	/* Bit 30 */
+#define QLA_DRV_ATTR_IO_THROTTLING_SUPPORT	0x80000000	/* Bit 31 */
+
+struct qla_drv_attr {
+	uint32_t	attributes;
+	uint8_t		reserved[28];
+} __packed;
+
+struct qla_mpi_lockdown_info {
+	uint32_t  config_disable_flags;       //mbx3
+	uint32_t  fw_update_disable_flags;    //mbx4
+	uint32_t  mpi_disable_flags;          //mbx5
+	uint32_t  lockdown_support;           //mbx2
+} __attribute__ ((packed));
+
+struct qla_lockdown_info {
+	uint8_t   signature[4];
+	struct qla_mpi_lockdown_info mpi_fw_lockdown;
+	uint32_t   isp_fw_lockdown;
+	uint8_t   reserved[40];
+} __attribute__ ((packed));
+
+
+struct qla_mbx_passthru {
+	uint16_t reserved1[2];
+	uint16_t mbx_in[32];
+	uint16_t mbx_out[32];
+	uint32_t reserved2[16];
+} __attribute__ ((packed));
+
+#include "qla_edif_bsg.h"
 
 #endif

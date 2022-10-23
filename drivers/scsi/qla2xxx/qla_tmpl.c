@@ -1,7 +1,8 @@
-// SPDX-License-Identifier: GPL-2.0-only
 /*
  * QLogic Fibre Channel HBA Driver
  * Copyright (c)  2003-2014 QLogic Corporation
+ *
+ * See LICENSE.qla2xxx for copyright and licensing details.
  */
 #include "qla_def.h"
 #include "qla_tmpl.h"
@@ -47,7 +48,7 @@ qla27xx_read8(void __iomem *window, void *buf, ulong *len)
 	uint8_t value = ~0;
 
 	if (buf) {
-		value = rd_reg_byte(window);
+		value = RD_REG_BYTE(window);
 	}
 	qla27xx_insert32(value, buf, len);
 }
@@ -58,7 +59,7 @@ qla27xx_read16(void __iomem *window, void *buf, ulong *len)
 	uint16_t value = ~0;
 
 	if (buf) {
-		value = rd_reg_word(window);
+		value = RD_REG_WORD(window);
 	}
 	qla27xx_insert32(value, buf, len);
 }
@@ -69,7 +70,7 @@ qla27xx_read32(void __iomem *window, void *buf, ulong *len)
 	uint32_t value = ~0;
 
 	if (buf) {
-		value = rd_reg_dword(window);
+		value = RD_REG_DWORD(window);
 	}
 	qla27xx_insert32(value, buf, len);
 }
@@ -98,7 +99,7 @@ qla27xx_write_reg(__iomem struct device_reg_24xx *reg,
 	if (buf) {
 		void __iomem *window = (void __iomem *)reg + offset;
 
-		wrt_reg_dword(window, data);
+		WRT_REG_DWORD(window, data);
 	}
 }
 
@@ -435,8 +436,13 @@ qla27xx_fwdt_entry_t266(struct scsi_qla_host *vha,
 {
 	ql_dbg(ql_dbg_misc, vha, 0xd20a,
 	    "%s: reset risc [%lx]\n", __func__, *len);
-	if (buf)
-		WARN_ON_ONCE(qla24xx_soft_reset(vha->hw) != QLA_SUCCESS);
+	if (buf) {
+		if (qla24xx_soft_reset(vha->hw) != QLA_SUCCESS) {
+			ql_dbg(ql_dbg_async, vha, 0x5001,
+			    "%s: unable to soft reset\n", __func__);
+			return INVALID_ENTRY;
+		}
+	}
 
 	return qla27xx_next_entry(ent);
 }
@@ -879,7 +885,7 @@ qla27xx_driver_info(struct qla27xx_fwdt_template *tmp)
 
 	WARN_ON_ONCE(sscanf(qla2x00_version_str,
 			    "%hhu.%hhu.%hhu.%hhu",
-			    v + 0, v + 1, v + 2, v + 3) != 4);
+			    v+0, v+1, v+2, v+3) != 4);
 
 	tmp->driver_info[0] = cpu_to_le32(
 		v[3] << 24 | v[2] << 16 | v[1] << 8 | v[0]);
@@ -891,12 +897,12 @@ static void
 qla27xx_firmware_info(struct scsi_qla_host *vha,
     struct qla27xx_fwdt_template *tmp)
 {
-	tmp->firmware_version[0] = cpu_to_le32(vha->hw->fw_major_version);
-	tmp->firmware_version[1] = cpu_to_le32(vha->hw->fw_minor_version);
-	tmp->firmware_version[2] = cpu_to_le32(vha->hw->fw_subminor_version);
+	tmp->firmware_version[0] = vha->hw->fw_major_version;
+	tmp->firmware_version[1] = vha->hw->fw_minor_version;
+	tmp->firmware_version[2] = vha->hw->fw_subminor_version;
 	tmp->firmware_version[3] = cpu_to_le32(
 		vha->hw->fw_attributes_h << 16 | vha->hw->fw_attributes);
-	tmp->firmware_version[4] = cpu_to_le32(
+	tmp->firmware_version[4] =cpu_to_le32(
 	  vha->hw->fw_attributes_ext[1] << 16 | vha->hw->fw_attributes_ext[0]);
 }
 
@@ -1002,8 +1008,10 @@ qla27xx_mpi_fwdump(scsi_qla_host_t *vha, int hardware_locked)
 {
 	ulong flags = 0;
 
+#ifndef __CHECKER__
 	if (!hardware_locked)
 		spin_lock_irqsave(&vha->hw->hardware_lock, flags);
+#endif
 	if (!vha->hw->mpi_fw_dump) {
 		ql_log(ql_log_warn, vha, 0x02f3, "-> mpi_fwdump no buffer\n");
 	} else {
@@ -1017,14 +1025,13 @@ qla27xx_mpi_fwdump(scsi_qla_host_t *vha, int hardware_locked)
 			buf += fwdt->dump_size;
 			walk_template_only = true;
 			ql_log(ql_log_warn, vha, 0x02f4,
-			       "-> MPI firmware already dumped -- dump saving to temporary buffer %p.\n",
-			       buf);
+			    "-> MPI firmware already dumped -- dump saving to temporary buffer %px.\n",
+			    buf);
 		}
-
 		ql_log(ql_log_warn, vha, 0x02f5, "-> fwdt1 running...\n");
 		if (!fwdt->template) {
 			ql_log(ql_log_warn, vha, 0x02f6,
-			       "-> fwdt1 no template\n");
+			    "-> fwdt1 no template\n");
 			goto bailout;
 		}
 		len = qla27xx_execute_fwdt_template(vha, fwdt->template, buf);
@@ -1032,8 +1039,8 @@ qla27xx_mpi_fwdump(scsi_qla_host_t *vha, int hardware_locked)
 			goto bailout;
 		} else if (len != fwdt->dump_size) {
 			ql_log(ql_log_warn, vha, 0x02f7,
-			       "-> fwdt1 fwdump residual=%+ld\n",
-			       fwdt->dump_size - len);
+			    "-> fwdt1 fwdump residual=%+ld\n",
+			    fwdt->dump_size - len);
 		}
 		vha->hw->stat.num_mpi_reset++;
 		if (walk_template_only)
@@ -1043,26 +1050,34 @@ qla27xx_mpi_fwdump(scsi_qla_host_t *vha, int hardware_locked)
 		vha->hw->mpi_fw_dumped = 1;
 
 		ql_log(ql_log_warn, vha, 0x02f8,
-		       "-> MPI firmware dump saved to buffer (%lu/%p)\n",
-		       vha->host_no, vha->hw->mpi_fw_dump);
+		    "-> MPI firmware dump saved to buffer (%lu/%px)\n",
+		    vha->host_no, vha->hw->mpi_fw_dump);
 		qla2x00_post_uevent_work(vha, QLA_UEVENT_CODE_FW_DUMP);
 	}
 
 bailout:
+#ifndef __CHECKER__
 	if (!hardware_locked)
 		spin_unlock_irqrestore(&vha->hw->hardware_lock, flags);
+#endif
 }
 
+
 void
-qla27xx_fwdump(scsi_qla_host_t *vha)
+qla27xx_fwdump(scsi_qla_host_t *vha, int hardware_locked)
 {
-	lockdep_assert_held(&vha->hw->hardware_lock);
+	ulong flags = 0;
+
+#ifndef __CHECKER__
+	if (!hardware_locked)
+		spin_lock_irqsave(&vha->hw->hardware_lock, flags);
+#endif
 
 	if (!vha->hw->fw_dump) {
 		ql_log(ql_log_warn, vha, 0xd01e, "-> fwdump no buffer\n");
 	} else if (vha->hw->fw_dumped) {
 		ql_log(ql_log_warn, vha, 0xd01f,
-		    "-> Firmware already dumped (%p) -- ignoring request\n",
+		    "-> Firmware already dumped (%px) -- ignoring request\n",
 		    vha->hw->fw_dump);
 	} else {
 		struct fwdt *fwdt = vha->hw->fwdt;
@@ -1072,24 +1087,30 @@ qla27xx_fwdump(scsi_qla_host_t *vha)
 		ql_log(ql_log_warn, vha, 0xd011, "-> fwdt0 running...\n");
 		if (!fwdt->template) {
 			ql_log(ql_log_warn, vha, 0xd012,
-			       "-> fwdt0 no template\n");
-			return;
+				"-> fwdt0 no template\n");
+			goto bailout;
 		}
 		len = qla27xx_execute_fwdt_template(vha, fwdt->template, buf);
 		if (len == 0) {
-			return;
+			goto bailout;
 		} else if (len != fwdt->dump_size) {
 			ql_log(ql_log_warn, vha, 0xd013,
-			       "-> fwdt0 fwdump residual=%+ld\n",
-				fwdt->dump_size - len);
+			    "-> fwdt0 fwdump residual=%+ld\n",
+		    	    fwdt->dump_size - len);
 		}
 
 		vha->hw->fw_dump_len = len;
-		vha->hw->fw_dumped = true;
+		vha->hw->fw_dumped = 1;
 
 		ql_log(ql_log_warn, vha, 0xd015,
-		    "-> Firmware dump saved to buffer (%lu/%p) <%lx>\n",
+		    "-> Firmware dump saved to buffer (%lu/%px) <%lx>\n",
 		    vha->host_no, vha->hw->fw_dump, vha->hw->fw_dump_cap_flags);
 		qla2x00_post_uevent_work(vha, QLA_UEVENT_CODE_FW_DUMP);
 	}
+
+bailout:
+#ifndef __CHECKER__
+	if (!hardware_locked)
+		spin_unlock_irqrestore(&vha->hw->hardware_lock, flags);
+#endif
 }
