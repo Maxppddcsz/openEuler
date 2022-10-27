@@ -926,6 +926,7 @@ int perf_event__process_auxtrace_info(struct perf_tool *tool __maybe_unused,
 		return cs_etm__process_auxtrace_info(event, session);
 	case PERF_AUXTRACE_S390_CPUMSF:
 		return s390_cpumsf_process_auxtrace_info(event, session);
+	case PERF_AUXTRACE_HISI_PTT:
 	case PERF_AUXTRACE_UNKNOWN:
 	default:
 		return -EINVAL;
