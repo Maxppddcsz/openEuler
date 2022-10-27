@@ -208,6 +208,9 @@ enum cpuhp_state {
 	CPUHP_AP_X86_KVM_CLK_ONLINE,
 	CPUHP_AP_ACTIVE,
 	CPUHP_ONLINE,
+#if defined(CONFIG_INTEL_IDXD_PERFMON) && !defined(__GENKSYMS__)
+	CPUHP_AP_PERF_X86_IDXD_ONLINE,
+#endif
 };
 
 int __cpuhp_setup_state(enum cpuhp_state state,	const char *name, bool invoke,
