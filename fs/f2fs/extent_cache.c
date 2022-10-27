@@ -878,3 +878,130 @@ void f2fs_destroy_extent_cache(void)
 	kmem_cache_destroy(extent_node_slab);
 	kmem_cache_destroy(extent_tree_slab);
 }
+
+/*
+ * check whether cluster blocks are contiguous, and add extent cache entry
+ * only if cluster blocks are logically and physically contiguous.
+ */
+static unsigned int f2fs_cluster_blocks_are_contiguous(struct dnode_of_data *dn)
+{
+	bool compressed = f2fs_data_blkaddr(dn) == COMPRESS_ADDR;
+	int i = compressed ? 1 : 0;
+	block_t first_blkaddr = data_blkaddr(dn->inode, dn->node_page,
+						dn->ofs_in_node + i);
+
+	for (i += 1; i < F2FS_I(dn->inode)->i_cluster_size; i++) {
+		block_t blkaddr = data_blkaddr(dn->inode, dn->node_page,
+				dn->ofs_in_node + i);
+
+		if (!__is_valid_data_blkaddr(blkaddr))
+			break;
+		if (first_blkaddr + i - (compressed ? 1 : 0) != blkaddr)
+				return 0;
+	}
+
+	return compressed ? i - 1 : i;
+}
+/*
+ * check whether normal file blocks are contiguous, and add extent cache
+ * entry only if remained blocks are logically and physically contiguous.
+ */
+static unsigned int f2fs_normal_blocks_are_contiguous(struct dnode_of_data *dn)
+{
+	int i = 0;
+	struct inode *inode = dn->inode;
+	block_t first_blkaddr = data_blkaddr(inode, dn->node_page,
+						dn->ofs_in_node);
+	unsigned int max_blocks = ADDRS_PER_PAGE(dn->node_page, inode)
+					- dn->ofs_in_node;
+
+	for (i = 1; i < max_blocks; i++) {
+		block_t blkaddr = data_blkaddr(inode, dn->node_page,
+				dn->ofs_in_node + i);
+
+		if (!__is_valid_data_blkaddr(blkaddr) ||
+				first_blkaddr + i != blkaddr)
+			return i;
+	}
+
+	return i;
+}
+
+#ifdef CONFIG_F2FS_FS_COMPRESSION
+static void f2fs_update_extent_tree_range_compressed(struct inode *inode,
+				pgoff_t fofs, block_t blkaddr, unsigned int llen,
+				unsigned int c_len)
+{
+	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
+	struct extent_tree *et = F2FS_I(inode)->extent_tree;
+	struct extent_node *en = NULL;
+	struct extent_node *prev_en = NULL, *next_en = NULL;
+	struct extent_info ei;
+	struct rb_node **insert_p = NULL, *insert_parent = NULL;
+	bool leftmost = false;
+
+	trace_f2fs_update_extent_tree_range(inode, fofs, blkaddr, llen);
+
+	/* it is safe here to check FI_NO_EXTENT w/o et->lock in ro image */
+	if (is_inode_flag_set(inode, FI_NO_EXTENT))
+		return;
+
+	write_lock(&et->lock);
+
+	en = (struct extent_node *)f2fs_lookup_rb_tree_ret(&et->root,
+				(struct rb_entry *)et->cached_en, fofs,
+				(struct rb_entry **)&prev_en,
+				(struct rb_entry **)&next_en,
+				&insert_p, &insert_parent, false,
+				&leftmost);
+	if (en)
+		goto unlock_out;
+
+	set_extent_info(&ei, fofs, blkaddr, llen);
+	ei.c_len = c_len;
+
+	if (!__try_merge_extent_node(sbi, et, &ei, prev_en, next_en))
+	{
+		if(!c_len && llen < F2FS_MIN_EXTENT_LEN)
+			goto unlock_out;
+		__insert_extent_tree(sbi, et, &ei,
+				insert_p, insert_parent, leftmost);
+	}
+unlock_out:
+	write_unlock(&et->lock);
+}
+#endif
+
+void f2fs_readonly_update_extent_cache(struct dnode_of_data *dn,
+					pgoff_t index)
+{
+	// unsigned int c_len = f2fs_cluster_blocks_are_contiguous(dn);
+	unsigned int c_len = 0;
+	unsigned int llen = 0;
+
+	block_t blkaddr;
+
+	// if (!c_len)
+	// 	return;
+
+	blkaddr = f2fs_data_blkaddr(dn);
+	// if (blkaddr == COMPRESS_ADDR)
+	// 	blkaddr = data_blkaddr(dn->inode, dn->node_page,
+	// 				dn->ofs_in_node + 1);
+	if (f2fs_compressed_file(dn->inode)) {
+		c_len = f2fs_cluster_blocks_are_contiguous(dn);
+		if (!c_len)
+			return;
+		llen = F2FS_I(dn->inode)->i_cluster_size;
+		if (blkaddr == COMPRESS_ADDR)
+			blkaddr = data_blkaddr(dn->inode, dn->node_page,
+					dn->ofs_in_node + 1);
+	} else {
+		llen = f2fs_normal_blocks_are_contiguous(dn);
+	}
+
+	f2fs_update_extent_tree_range_compressed(dn->inode,
+				index, blkaddr,
+				llen,
+				c_len);
+}
