@@ -340,6 +340,10 @@ void __init_rwsem(struct rw_semaphore *sem, const char *name,
 #ifdef CONFIG_RWSEM_SPIN_ON_OWNER
 	osq_lock_init(&sem->osq);
 #endif
+
+#ifdef CONFIG_NODE_CACHE_THRASH_OPTIMIZATION
+	sem->stat = 0;
+#endif
 }
 EXPORT_SYMBOL(__init_rwsem);
 

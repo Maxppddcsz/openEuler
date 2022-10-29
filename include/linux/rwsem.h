@@ -51,6 +51,9 @@ struct rw_semaphore {
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
 	struct lockdep_map	dep_map;
 #endif
+#ifdef CONFIG_NODE_CACHE_THRASH_OPTIMIZATION
+	u64 stat;
+#endif
 };
 
 /* In all implementations count != 0 means locked */
@@ -86,6 +89,7 @@ static inline int rwsem_is_locked(struct rw_semaphore *sem)
 #define __RWSEM_OPT_INIT(lockname)
 #endif
 
+#ifndef CONFIG_NODE_CACHE_THRASH_OPTIMIZATION
 #define __RWSEM_INITIALIZER(name)				\
 	{ __RWSEM_COUNT_INIT(name),				\
 	  .owner = ATOMIC_LONG_INIT(0),				\
@@ -94,6 +98,17 @@ static inline int rwsem_is_locked(struct rw_semaphore *sem)
 	  .wait_list = LIST_HEAD_INIT((name).wait_list),	\
 	  __RWSEM_DEBUG_INIT(name)				\
 	  __RWSEM_DEP_MAP_INIT(name) }
+#else
+#define __RWSEM_INITIALIZER(name)				\
+	{ __RWSEM_COUNT_INIT(name),				\
+	  .stat = 0,                                            \
+         .owner = ATOMIC_LONG_INIT(0),				\
+	  __RWSEM_OPT_INIT(name)				\
+	  .wait_lock = __RAW_SPIN_LOCK_UNLOCKED(name.wait_lock),\
+	  .wait_list = LIST_HEAD_INIT((name).wait_list),	\
+	  __RWSEM_DEBUG_INIT(name)				\
+	  __RWSEM_DEP_MAP_INIT(name) }
+#endif
 
 #define DECLARE_RWSEM(name) \
 	struct rw_semaphore name = __RWSEM_INITIALIZER(name)
