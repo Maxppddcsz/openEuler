@@ -7,7 +7,7 @@
 
 #include <linux/kobject.h>
 
-/* 定义bitmap的参数 */
+/* const variable about ovl cow bitmap */
 #define BITMAP_LEN 1024
 #define BITMAP_SZ 1024
 #define BLK_SZ 4096
@@ -139,13 +139,10 @@ struct ovl_inode {
 	struct dentry *__upperdentry;
 	struct inode *lower;
 
-	/* 标记cow的状态 */
+	/* whether cow is enable */
 	uint8_t cow_enable;
-	/* 底层文件的块数 */
 	loff_t block_count;
-	/* 底层文件长度 */
 	loff_t lens;
-	/* 位图，每个块对应位图中的一位 */
 	unsigned long *bitmap[BITMAP_LEN];
 
 	/* synchronize copy up and more */

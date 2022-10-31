@@ -665,7 +665,8 @@ static int ovl_copy_up_tmpfile(struct ovl_copy_up_ctx *c)
 	if (IS_ERR(temp))
 		return PTR_ERR(temp);
 
-	/* 设置cows的方式 */
+	/* set cow args. `cow_enable` will be check in `ovl_copy_up_inode` */
+	/* other fields will be used in ovl read and write, */ 
 	linode = c->dentry->d_inode;
 	OVL_I(linode)->cow_enable = 1;
 	OVL_I(linode)->lens = linode->i_size;

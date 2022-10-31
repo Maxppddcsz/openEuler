@@ -191,7 +191,7 @@ static struct inode *ovl_alloc_inode(struct super_block *sb)
 	oi->lowerdata = NULL;
 	mutex_init(&oi->lock);
 
-	/* 初始化参数 */
+	/* init cow vars, and bitmap */
 	oi->block_count = 0;
 	oi->cow_enable = 0;
 	for (i = 0; i < BITMAP_LEN; i++) {
@@ -206,7 +206,7 @@ static void ovl_free_inode(struct inode *inode)
 	int i = 0;
 	struct ovl_inode *oi = OVL_I(inode);
 
-	/* 在释放ovl_inode的时候，释放bitmap的内存 */
+	/* release bitmap branch mem. */
 	for (i = 0; i < BITMAP_LEN; i++) {
 		if (oi->bitmap[i])
 			kfree(oi->bitmap[i]);

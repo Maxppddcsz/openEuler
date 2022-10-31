@@ -336,7 +336,7 @@ ssize_t block_cow_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 	if (!upperfile)
 		return 0;
 
-	// 确定块的开头、末尾
+	/* get start block, end block, start offset, ened offset of ovl read. */
 	start_blk = pos / BLK_SZ;
 	start_offset = pos % BLK_SZ;
 	end_blk = (pos + count) / BLK_SZ;
@@ -438,22 +438,23 @@ static void cow_write_sync(struct dentry *dentry, loff_t offset, loff_t len)
 	struct path lowerpath;
 	struct path upperpath;
 
-	/* 分别记录写文件所在的起始、结束块号 */
+	/* block info about ovl write */
 	loff_t start_blk, end_blk, cur;
 	loff_t start_offset, end_offset;
 
-	/* 记录半块copy-up的参数 */
+	/* partial block copy-up start_pos */
 	loff_t start_pos;
+	/* partial block copy-up len */ 
 	size_t rwlen;
+	/* return value of file read from lower layer */
 	long bytes;
 
-	/* bitmap相关变量 */
+	/* bitmap index variable */
 	uint32_t branch;
 	uint32_t position;
 
 	offset -= len;
 
-	/* 没有cow参数直接返回 */
 	if (!OVL_I(dentry->d_inode)->cow_enable)
 		return;
 
@@ -468,7 +469,7 @@ static void cow_write_sync(struct dentry *dentry, loff_t offset, loff_t len)
 	lowerfile = ovl_path_open(&lowerpath, O_LARGEFILE | O_RDONLY);
 	upperfile = ovl_path_open(&upperpath, O_LARGEFILE | O_WRONLY);
 
-	/* 先判断起始块在不在upperdir中，如果在的话，就不需要拷贝了 */
+	/* judge the position of start partial block, if at upperdir, just go check end partial block. */
 	branch = start_blk / BITMAP_SZ;
 	position = start_blk % BITMAP_SZ;
 
@@ -479,6 +480,7 @@ static void cow_write_sync(struct dentry *dentry, loff_t offset, loff_t len)
 		}
 	}
 
+	/* if start partial not in upperdir, copy-up from lowerdir. */
 	if (start_offset != 0) {
 		start_pos = start_blk * BLK_SZ;
 		rwlen = start_offset;
@@ -491,7 +493,7 @@ end_part:
 
 	branch = end_blk / BITMAP_SZ;
 	position = end_blk % BITMAP_SZ;
-
+	/* end partial block is same as start. */ 
 	if (OVL_I(dentry->d_inode)->bitmap[branch] != 0) {
 		if (test_bit(position,
 			     OVL_I(dentry->d_inode)->bitmap[branch])) {
