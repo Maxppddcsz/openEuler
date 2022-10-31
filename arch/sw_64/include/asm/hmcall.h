@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-#ifndef _ASM_SW64_HMC_H
-#define _ASM_SW64_HMC_H
+#ifndef _ASM_SW64_HMCALL_H
+#define _ASM_SW64_HMCALL_H
 
 /*
  * Common HMC-code
@@ -12,12 +12,13 @@
 #define HMC_cpuid		0x03
 #define HMC_sleepen		0x05
 #define HMC_rdksp		0x06
+#define HMC_wrasid		0x08
 #define HMC_rdptbr		0x0B
 #define HMC_wrptbr		0x0C
 #define HMC_wrksp		0x0E
 #define HMC_mtinten		0x0F
 #define HMC_load_mm		0x11
-#define HMC_tbisasn		0x14
+#define HMC_tbisasid		0x14
 #define HMC_tbivpn		0x19
 #define HMC_ret			0x1A
 #define HMC_wrvpcr		0x29
@@ -55,15 +56,13 @@
 extern void __init fixup_hmcall(void);
 
 extern void halt(void) __attribute__((noreturn));
-#define __halt() __asm__ __volatile__ ("sys_call %0 #halt" : : "i" (HMC_halt))
 
-#define fpu_enable()						\
+#define __CALL_HMC_VOID(NAME)					\
+static inline void NAME(void)					\
 {								\
-	__asm__ __volatile__("sys_call %0" : : "i" (HMC_wrfen));\
+	__asm__ __volatile__(					\
+		"sys_call %0 ": : "i" (HMC_ ## NAME));		\
 }
-
-#define imb() \
-	__asm__ __volatile__ ("sys_call %0 #imb" : : "i" (HMC_imb) : "memory")
 
 #define __CALL_HMC_R0(NAME, TYPE)				\
 static inline TYPE NAME(void)					\
@@ -142,10 +141,14 @@ static inline RTYPE NAME(TYPE0 arg0, TYPE1 arg1, TYPE2 arg2)		\
 	return __r0;							\
 }
 
-#define sflush()						\
-{								\
-	__asm__ __volatile__("sys_call 0x2f");			\
-}
+
+__CALL_HMC_VOID(imb);
+__CALL_HMC_VOID(sflush);
+__CALL_HMC_VOID(wrfen);
+#define fpu_enable()	wrfen()
+
+__CALL_HMC_VOID(sleepen);
+__CALL_HMC_VOID(mtinten);
 
 __CALL_HMC_R0(rdps, unsigned long);
 
@@ -155,8 +158,15 @@ __CALL_HMC_W1(wrusp, unsigned long);
 __CALL_HMC_R0(rdksp, unsigned long);
 __CALL_HMC_W1(wrksp, unsigned long);
 
+/*
+ * Load a mm context. This is needed when we change the page
+ * table pointer(CSR:PTBR) or when we update the ASID.
+ * load_mm(asid, ptbr)
+ *
+ */
 __CALL_HMC_W2(load_mm, unsigned long, unsigned long);
 
+__CALL_HMC_W1(wrasid, unsigned long);
 __CALL_HMC_R0(rdptbr, unsigned long);
 __CALL_HMC_W1(wrptbr, unsigned long);
 
@@ -164,10 +174,8 @@ __CALL_HMC_RW1(swpipl, unsigned long, unsigned long);
 __CALL_HMC_R0(whami, unsigned long);
 __CALL_HMC_RW1(rdio64, unsigned long, unsigned long);
 __CALL_HMC_RW1(rdio32, unsigned int, unsigned long);
-__CALL_HMC_R0(sleepen, unsigned long);
-__CALL_HMC_R0(mtinten, unsigned long);
 __CALL_HMC_W2(wrent, void*, unsigned long);
-__CALL_HMC_W2(tbisasn, unsigned long, unsigned long);
+__CALL_HMC_W2(tbisasid, unsigned long, unsigned long);
 __CALL_HMC_W1(wrkgp, unsigned long);
 __CALL_HMC_RW2(wrperfmon, unsigned long, unsigned long, unsigned long);
 __CALL_HMC_RW3(sendii, unsigned long, unsigned long, unsigned long, unsigned long);
@@ -216,4 +224,4 @@ __CALL_HMC_W1(wrtp, unsigned long);
 #endif /* !__ASSEMBLY__ */
 #endif /* __KERNEL__ */
 
-#endif /* _ASM_SW64_HMC_H */
+#endif /* _ASM_SW64_HMCALL_H */
