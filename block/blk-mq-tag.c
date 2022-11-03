@@ -316,9 +316,12 @@ static void blk_mq_all_tag_busy_iter(struct blk_mq_tags *tags,
 void blk_mq_tagset_busy_iter(struct blk_mq_tag_set *tagset,
 		busy_tag_iter_fn *fn, void *priv)
 {
-	int i;
+	unsigned int flags = tagset->flags;
+	int i, nr_tags;
 
-	for (i = 0; i < tagset->nr_hw_queues; i++) {
+	nr_tags = blk_mq_is_sbitmap_shared(flags) ? 1 : tagset->nr_hw_queues;
+
+	for (i = 0; i < nr_tags; i++) {
 		if (tagset->tags && tagset->tags[i])
 			blk_mq_all_tag_busy_iter(tagset->tags[i], fn, priv);
 	}
