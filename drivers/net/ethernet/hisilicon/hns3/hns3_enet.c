@@ -91,8 +91,16 @@ const struct pci_device_id hns3_pci_tbl[] = {
 	 HNAE3_DEV_SUPPORT_ROCE_DCB_BITS},
 	{PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_100G_RDMA_MACSEC),
 	 HNAE3_DEV_SUPPORT_ROCE_DCB_BITS},
-	{PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_100G_VF), 0},
-	{PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_100G_RDMA_DCB_PFC_VF),
+	 {PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_100G_ROH),
+	 HNAE3_DEV_SUPPORT_ROCE_DCB_BITS},
+	{PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_200G_RDMA),
+	 HNAE3_DEV_SUPPORT_ROCE_DCB_BITS},
+	{PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_200G_ROH),
+	 HNAE3_DEV_SUPPORT_ROCE_DCB_BITS},
+	{PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_400G_ROH),
+	 HNAE3_DEV_SUPPORT_ROCE_DCB_BITS},
+	{PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_VF), 0},
+	{PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_RDMA_DCB_PFC_VF),
 	 HNAE3_DEV_SUPPORT_ROCE_DCB_BITS},
 	/* required last entry */
 	{0,}
@@ -1477,7 +1485,7 @@ static int hns3_fill_desc(struct hns3_enet_ring *ring, dma_addr_t dma,
 		return HNS3_LIKELY_BD_NUM;
 	}
 
-	frag_buf_num = (size + HNS3_MAX_BD_SIZE - 1) >> HNS3_MAX_BD_SIZE_OFFSET;
+	frag_buf_num = hns3_tx_bd_count(size);
 	sizeoflast = size % HNS3_MAX_BD_SIZE;
 	sizeoflast = sizeoflast ? sizeoflast : HNS3_MAX_BD_SIZE;
 
@@ -2764,9 +2772,13 @@ bool hns3_is_phys_func(struct pci_dev *pdev)
 	case HNAE3_DEV_ID_50GE_RDMA:
 	case HNAE3_DEV_ID_50GE_RDMA_MACSEC:
 	case HNAE3_DEV_ID_100G_RDMA_MACSEC:
+	case HNAE3_DEV_ID_100G_ROH:
+	case HNAE3_DEV_ID_200G_RDMA:
+	case HNAE3_DEV_ID_200G_ROH:
+	case HNAE3_DEV_ID_400G_ROH:
 		return true;
-	case HNAE3_DEV_ID_100G_VF:
-	case HNAE3_DEV_ID_100G_RDMA_DCB_PFC_VF:
+	case HNAE3_DEV_ID_VF:
+	case HNAE3_DEV_ID_RDMA_DCB_PFC_VF:
 		return false;
 	default:
 		dev_warn(&pdev->dev, "un-recognized pci device-id %u",
