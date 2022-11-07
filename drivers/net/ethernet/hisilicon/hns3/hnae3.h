@@ -55,8 +55,8 @@
 #define HNAE3_DEV_ID_200G_RDMA			0xA228
 #define HNAE3_DEV_ID_200G_ROH			0xA22C
 #define HNAE3_DEV_ID_400G_ROH			0xA22D
-#define HNAE3_DEV_ID_100G_VF			0xA22E
-#define HNAE3_DEV_ID_100G_RDMA_DCB_PFC_VF	0xA22F
+#define HNAE3_DEV_ID_VF				0xA22E
+#define HNAE3_DEV_ID_RDMA_DCB_PFC_VF		0xA22F
 
 #define HNAE3_CLASS_NAME_SIZE 16
 
@@ -69,6 +69,7 @@
 #define HNAE3_KNIC_CLIENT_INITED_B		0x3
 #define HNAE3_UNIC_CLIENT_INITED_B		0x4
 #define HNAE3_ROCE_CLIENT_INITED_B		0x5
+#define HNAE3_ROH_CLIENT_INITED_B		0x6
 
 #define HNAE3_DEV_SUPPORT_ROCE_DCB_BITS (BIT(HNAE3_DEV_SUPPORT_DCB_B) | \
 		BIT(HNAE3_DEV_SUPPORT_ROCE_B))
@@ -231,6 +232,7 @@ enum hnae3_loop {
 enum hnae3_client_type {
 	HNAE3_CLIENT_KNIC,
 	HNAE3_CLIENT_ROCE,
+	HNAE3_CLIENT_ROH,
 };
 
 enum hnae3_mac_type {
@@ -916,6 +918,12 @@ struct hnae3_roce_private_info {
 	unsigned long state;
 };
 
+struct hnae3_roh_private_info {
+	struct net_device *netdev;
+	void __iomem *roh_io_base;
+	int base_vector;
+};
+
 #define HNAE3_SUPPORT_APP_LOOPBACK    BIT(0)
 #define HNAE3_SUPPORT_PHY_LOOPBACK    BIT(1)
 #define HNAE3_SUPPORT_SERDES_SERIAL_LOOPBACK	BIT(2)
@@ -951,6 +959,7 @@ struct hnae3_handle {
 		struct net_device *netdev; /* first member */
 		struct hnae3_knic_private_info kinfo;
 		struct hnae3_roce_private_info rinfo;
+		struct hnae3_roh_private_info rohinfo;
 	};
 
 	u32 numa_node_mask;	/* for multi-chip support */
