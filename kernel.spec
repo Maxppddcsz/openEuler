@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .65.0
-%global pkg_release         .90
+%global maintenance_release .66.0
+%global pkg_release         .91
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -883,6 +883,26 @@ fi
 %endif
 
 %changelog
+* Tue Nov 08 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.66.0.91
+- bnx2x: fix potential memory leak in bnx2x_tpa_stop()
+- scsi: stex: Properly zero out the passthrough command structure
+- libbpf: Fix null-pointer dereference in find_prog_by_sec_insn()
+- blktrace: remove unnessary stop block trace in 'blk_trace_shutdown'
+- blktrace: fix possible memleak in '__blk_trace_remove'
+- blktrace: introduce 'blk_trace_{start,stop}' helper
+- ext4: record error information when insert extent failed in 'ext4_split_extent_at'
+- pgp: Check result of crypto_alloc_shash properly
+- net: tun: fix bugs for oversize packet when napi frags enabled
+- irqdomain: Fix driver re-inserting failures when IRQs not being freed
+- nbd: refactor size updates
+- nbd: move the task_recv check into nbd_size_update
+- nbd: remove the call to set_blocksize
+- Revert "cifs: fix double free race when mount fails in cifs_get_root()"
+- scsi: libsas: Resume SAS host for phy reset or enable via sysfs
+- !207 [5.10] [bugfix] : merge net-swift  txgbe out_of_tree module v1.2.3 to openEuler/txgbe for some known bugs
+- openeuler: net: txgbe: Fix some known bugs, merge net-swift txgbe-1.2.3 out-of-tree
+- openeuler: configs: delete txgbe/Kconfig, add txgbe_config to netswift/Kconfig
+
 * Wed Nov 02 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.65.0.90
 - atm: idt77252: fix use-after-free bugs caused by tst_timer
 - fs: fix UAF/GPF bug in nilfs_mdt_destroy
