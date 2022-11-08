@@ -9,9 +9,10 @@
 #include <linux/coresight-pmu.h>
 #include <api/fs/fs.h>
 
-#include "../../util/auxtrace.h"
+#include "../../../util/auxtrace.h"
+#include "../../../util/debug.h"
 #include "../../util/evlist.h"
-#include "../../util/pmu.h"
+#include "../../../util/pmu.h"
 #include "cs-etm.h"
 #include "arm-spe.h"
 #include "hisi-ptt.h"
