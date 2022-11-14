@@ -2070,10 +2070,16 @@ static struct uprobe *find_active_uprobe(unsigned long bp_vaddr, int *is_swbp)
 	return uprobe;
 }
 
-static void handler_chain(struct uprobe *uprobe, struct pt_regs *regs)
+/*
+ * The return value of handler_chain tags events that happen during
+ * calling handlers. If UPROBE_ALTER_PC happens, we must skip the
+ * single stepping.
+ */
+static int handler_chain(struct uprobe *uprobe, struct pt_regs *regs)
 {
 	struct uprobe_consumer *uc;
 	int remove = UPROBE_HANDLER_REMOVE;
+	int all_events = 0;
 	bool need_prep = false; /* prepare return uprobe, when needed */
 
 	down_read(&uprobe->register_rwsem);
@@ -2090,6 +2096,7 @@ static void handler_chain(struct uprobe *uprobe, struct pt_regs *regs)
 			need_prep = true;
 
 		remove &= rc;
+		all_events |= rc;
 	}
 
 	if (need_prep && !remove)
@@ -2100,6 +2107,7 @@ static void handler_chain(struct uprobe *uprobe, struct pt_regs *regs)
 		unapply_uprobe(uprobe, current->mm);
 	}
 	up_read(&uprobe->register_rwsem);
+	return all_events;
 }
 
 static void
@@ -2189,7 +2197,7 @@ static void handle_swbp(struct pt_regs *regs)
 {
 	struct uprobe *uprobe;
 	unsigned long bp_vaddr;
-	int is_swbp;
+	int is_swbp, all_events;
 
 	bp_vaddr = uprobe_get_swbp_addr(regs);
 	if (bp_vaddr == get_trampoline_vaddr())
@@ -2241,7 +2249,9 @@ static void handle_swbp(struct pt_regs *regs)
 	if (arch_uprobe_ignore(&uprobe->arch, regs))
 		goto out;
 
-	handler_chain(uprobe, regs);
+	all_events = handler_chain(uprobe, regs);
+	if (all_events & UPROBE_ALTER_PC)
+		goto out;
 
 	if (arch_uprobe_skip_sstep(&uprobe->arch, regs))
 		goto out;
