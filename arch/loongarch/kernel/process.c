@@ -71,10 +71,6 @@ void start_thread(struct pt_regs *regs, unsigned long pc, unsigned long sp)
 	unsigned long euen;
 
 	/* New thread loses kernel privileges. */
-	crmd = regs->csr_crmd & ~(PLV_MASK);
-	crmd |= PLV_USER;
-	regs->csr_crmd = crmd;
-
 	prmd = regs->csr_prmd & ~(PLV_MASK);
 	prmd |= PLV_USER;
 	regs->csr_prmd = prmd;
@@ -83,11 +79,12 @@ void start_thread(struct pt_regs *regs, unsigned long pc, unsigned long sp)
 	regs->csr_euen = euen;
 	lose_fpu(0);
 
-	clear_thread_flag(TIF_LSX_CTX_LIVE);
-	clear_thread_flag(TIF_LASX_CTX_LIVE);
+	__clear_thread_flag(TIF_LSX_CTX_LIVE);
+	__clear_thread_flag(TIF_LASX_CTX_LIVE);
 	clear_used_math();
 	regs->csr_era = pc;
 	regs->regs[3] = sp;
+	smp_wmb();
 }
 
 void exit_thread(struct task_struct *tsk)
@@ -134,10 +131,6 @@ int copy_thread(unsigned long clone_flags, unsigned long usp,
 	/*  Put the stack after the struct pt_regs.  */
 	childksp = (unsigned long) childregs;
 	p->thread.sched_cfa = 0;
-	p->thread.csr_euen = 0;
-	p->thread.csr_crmd = csr_read32(LOONGARCH_CSR_CRMD);
-	p->thread.csr_prmd = csr_read32(LOONGARCH_CSR_PRMD);
-	p->thread.csr_ecfg = csr_read32(LOONGARCH_CSR_ECFG);
 	if (unlikely(p->flags & (PF_KTHREAD | PF_IO_WORKER))) {
 		/* kernel thread */
 		p->thread.reg23 = usp; /* fn */
@@ -146,15 +139,19 @@ int copy_thread(unsigned long clone_flags, unsigned long usp,
 		p->thread.reg01 = (unsigned long) ret_from_kernel_thread;
 		p->thread.sched_ra = (unsigned long) ret_from_kernel_thread;
 		memset(childregs, 0, sizeof(struct pt_regs));
-		childregs->csr_euen = p->thread.csr_euen;
-		childregs->csr_crmd = p->thread.csr_crmd;
-		childregs->csr_prmd = p->thread.csr_prmd;
+		p->thread.csr_ecfg = csr_read32(LOONGARCH_CSR_ECFG);
+		childregs->csr_euen = 0;
+		childregs->csr_prmd = csr_read32(LOONGARCH_CSR_PRMD);
 		childregs->csr_ecfg = p->thread.csr_ecfg;
 		return 0;
 	}
 
 	/* user thread */
 	*childregs = *regs;
+
+	childregs->csr_prmd &= ~CSR_PRMD_PPLV;
+	childregs->csr_prmd |= PLV_USER;
+
 	childregs->regs[4] = 0; /* Child gets zero as return value */
 	if (usp)
 		childregs->regs[3] = usp;
@@ -169,14 +166,15 @@ int copy_thread(unsigned long clone_flags, unsigned long usp,
 	 */
 	childregs->csr_euen = 0;
 
-	clear_tsk_thread_flag(p, TIF_USEDFPU);
-	clear_tsk_thread_flag(p, TIF_USEDSIMD);
-	clear_tsk_thread_flag(p, TIF_LSX_CTX_LIVE);
-	clear_tsk_thread_flag(p, TIF_LASX_CTX_LIVE);
+	__clear_tsk_thread_flag(p, TIF_USEDFPU);
+	__clear_tsk_thread_flag(p, TIF_USEDSIMD);
+	__clear_tsk_thread_flag(p, TIF_LSX_CTX_LIVE);
+	__clear_tsk_thread_flag(p, TIF_LASX_CTX_LIVE);
 
 	if (clone_flags & CLONE_SETTLS)
 		childregs->regs[2] = tls;
 
+	smp_wmb();
 	return 0;
 }
 

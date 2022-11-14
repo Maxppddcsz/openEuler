@@ -1883,6 +1883,16 @@ static inline unsigned long wait_task_inactive(struct task_struct *p, long match
  * Set thread flags in other task's structures.
  * See asm/thread_info.h for TIF_xxxx flags available:
  */
+static inline void __set_tsk_thread_flag(struct task_struct *tsk, int flag)
+{
+	__set_ti_thread_flag(task_thread_info(tsk), flag);
+}
+
+static inline void __clear_tsk_thread_flag(struct task_struct *tsk, int flag)
+{
+	__clear_ti_thread_flag(task_thread_info(tsk), flag);
+}
+
 static inline void set_tsk_thread_flag(struct task_struct *tsk, int flag)
 {
 	set_ti_thread_flag(task_thread_info(tsk), flag);
