@@ -2334,7 +2334,7 @@ static void set_aborted_iptt(struct hisi_hba *hisi_hba,
 			1 << CFG_ABT_SET_IPTT_DONE_OFF);
 }
 
-static void
+static bool
 slot_err_v3_hw(struct hisi_hba *hisi_hba, struct sas_task *task,
 	       struct hisi_sas_slot *slot)
 {
@@ -2354,6 +2354,15 @@ slot_err_v3_hw(struct hisi_hba *hisi_hba, struct sas_task *task,
 	switch (task->task_proto) {
 	case SAS_PROTOCOL_SSP:
 		if (dma_rx_err_type & RX_DATA_LEN_UNDERFLOW_MSK) {
+			/*
+			 * If returned response frame is incorrect because of data underflow,
+			 * but I/O information has been written to the host memory, we examine
+			 * response IU.
+			 */
+			if (!(complete_hdr->dw0 & CMPLT_HDR_RSPNS_GOOD_MSK) &&
+				(complete_hdr->dw0 & CMPLT_HDR_RSPNS_XFRD_MSK))
+				return false;
+
 			ts->residual = trans_tx_fail_type;
 			ts->stat = SAS_DATA_UNDERRUN;
 			if (!(dw0 & CMPLT_HDR_RSPNS_GOOD_MSK) &&
@@ -2402,6 +2411,7 @@ slot_err_v3_hw(struct hisi_hba *hisi_hba, struct sas_task *task,
 	default:
 		break;
 	}
+	return true;
 }
 
 static int ssp_need_spin_up(struct hisi_sas_slot *slot)
@@ -2503,61 +2513,62 @@ static void slot_complete_v3_hw(struct hisi_hba *hisi_hba,
 		struct hisi_sas_itct *itct = &hisi_hba->itct[device_id];
 
 		set_aborted_iptt(hisi_hba, slot);
-		slot_err_v3_hw(hisi_hba, task, slot);
-		dev_info(dev, "erroneous completion iptt=%d task=%pK dev id=%d addr%016llx sas_addr=0x%llx CQ hdr: 0x%x 0x%x 0x%x 0x%x Error info: 0x%x 0x%x 0x%x 0x%x\n",
-			 slot->idx, task, sas_dev->device_id,
-			 SAS_ADDR(device->sas_addr), itct->sas_addr,
-			 dw0, dw1,
-			 complete_hdr->act, dw3,
-			 error_info[0], error_info[1],
-			 error_info[2], error_info[3]);
+		if (slot_err_v3_hw(hisi_hba, task, slot)) {
+			dev_info(dev, "erroneous completion iptt=%d task=%pK dev id=%d addr%016llx sas_addr=0x%llx CQ hdr: 0x%x 0x%x 0x%x 0x%x Error info: 0x%x 0x%x 0x%x 0x%x\n",
+				 slot->idx, task, sas_dev->device_id,
+				 SAS_ADDR(device->sas_addr), itct->sas_addr,
+				 dw0, dw1,
+				 complete_hdr->act, dw3,
+				 error_info[0], error_info[1],
+				 error_info[2], error_info[3]);
 
-		if ((dw0 & CMPLT_HDR_RSPNS_XFRD_MSK) &&
-			(task->task_proto & SAS_PROTOCOL_SATA ||
-			task->task_proto & SAS_PROTOCOL_STP)) {
-			struct hisi_sas_status_buffer *status_buf =
+			if ((dw0 & CMPLT_HDR_RSPNS_XFRD_MSK) &&
+			    (task->task_proto & SAS_PROTOCOL_SATA ||
+			     task->task_proto & SAS_PROTOCOL_STP)) {
+				struct hisi_sas_status_buffer *status_buf =
 				hisi_sas_status_buf_addr_mem(slot);
-			u8 *iu = &status_buf->iu[0];
-			struct dev_to_host_fis *d2h =
-				(struct dev_to_host_fis *)iu;
+				u8 *iu = &status_buf->iu[0];
+				struct dev_to_host_fis *d2h =
+					(struct dev_to_host_fis *)iu;
 
-			dev_info(dev, "sata d2h status 0x%02x, error 0x%02x\n",
-				d2h->status, d2h->error);
+				dev_info(dev, "sata d2h status 0x%02x, error 0x%02x\n",
+					d2h->status, d2h->error);
+			}
+
+			if ((error_info[3] & RX_DATA_LEN_UNDERFLOW_MSK) &&
+			    (task->task_proto == SAS_PROTOCOL_SSP)) {
+				/*print detail sense info when data underflow happened*/
+				bool rc;
+				int sb_len;
+				u8 *sense_buffer;
+				struct scsi_sense_hdr sshdr;
+				struct ssp_response_iu *iu =
+					hisi_sas_status_buf_addr_mem(slot) +
+					sizeof(struct hisi_sas_err_record);
+
+				sb_len = iu->sense_data_len;
+				sense_buffer = iu->sense_data;
+				rc = scsi_normalize_sense(sense_buffer, sb_len, &sshdr);
+				if (rc)
+					dev_info(dev, "data underflow, rsp_code:0x%x, sensekey:0x%x, ASC:0x%x, ASCQ:0x%x.\n",
+						 sshdr.response_code,
+						 sshdr.sense_key,
+						 sshdr.asc,
+						 sshdr.ascq);
+				else
+					dev_info(dev, "data underflow without sense, rsp_code:0x%02x.\n",
+						 iu->resp_data[0]);
+			}
+			if (unlikely(slot->abort)) {
+				if (dev_is_sata(device) && task->ata_task.use_ncq)
+					hisi_sas_ata_device_link_abort(device);
+				else
+					sas_task_abort(task);
+
+				return;
+			}
+			goto out;
 		}
-
-		if ((error_info[3] & RX_DATA_LEN_UNDERFLOW_MSK) &&
-			(task->task_proto == SAS_PROTOCOL_SSP)) {
-			/*print detail sense info when data underflow happened*/
-			bool rc;
-			int sb_len;
-			u8 *sense_buffer;
-			struct scsi_sense_hdr sshdr;
-			struct ssp_response_iu *iu =
-				hisi_sas_status_buf_addr_mem(slot) +
-				sizeof(struct hisi_sas_err_record);
-
-			sb_len = iu->sense_data_len;
-			sense_buffer = iu->sense_data;
-			rc = scsi_normalize_sense(sense_buffer, sb_len, &sshdr);
-			if (rc)
-				dev_info(dev, "data underflow, rsp_code:0x%x, sensekey:0x%x, ASC:0x%x, ASCQ:0x%x.\n",
-					sshdr.response_code,
-					sshdr.sense_key,
-					sshdr.asc,
-					sshdr.ascq);
-			else
-				dev_info(dev, "data underflow without sense, rsp_code:0x%02x.\n",
-					iu->resp_data[0]);
-		}
-		if (unlikely(slot->abort)) {
-			if (dev_is_sata(device) && task->ata_task.use_ncq)
-				hisi_sas_ata_device_link_abort(device);
-			else
-				sas_task_abort(task);
-
-			return;
-		}
-		goto out;
 	}
 
 	switch (task->task_proto) {
