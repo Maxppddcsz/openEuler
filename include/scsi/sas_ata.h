@@ -56,6 +56,7 @@ void sas_suspend_sata(struct asd_sas_port *port);
 void sas_resume_sata(struct asd_sas_port *port);
 void sas_ata_end_eh(struct ata_port *ap);
 void sas_ata_check_topology(struct asd_sas_port *port);
+int sas_ata_wait_after_reset(struct domain_device *dev, unsigned long deadline);
 #else
 
 
@@ -113,6 +114,11 @@ static inline void sas_ata_check_topology(struct asd_sas_port *port)
 {
 }
 
+static inline int sas_ata_wait_after_reset(struct domain_device *dev,
+					   unsigned long deadline)
+{
+	return -ETIMEDOUT;
+}
 #endif
 
 #endif /* _SAS_ATA_H_ */
