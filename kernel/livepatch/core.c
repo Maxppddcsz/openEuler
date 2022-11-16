@@ -1343,7 +1343,7 @@ int __weak arch_klp_check_activeness_func(struct klp_func *func, int enable,
 	unsigned long func_addr, func_size;
 	struct klp_func_node *func_node = NULL;
 
-	func_node = klp_find_func_node(func->old_func);
+	func_node = func->func_node;
 	/* Check func address in stack */
 	if (enable) {
 		if (func->patched || func->force == KLP_ENFORCEMENT)
@@ -1351,8 +1351,7 @@ int __weak arch_klp_check_activeness_func(struct klp_func *func, int enable,
 		/*
 		 * When enable, checking the currently active functions.
 		 */
-		if (!func_node ||
-		    list_empty(&func_node->func_stack)) {
+		if (list_empty(&func_node->func_stack)) {
 			/*
 			 * Not patched on this function [the origin one]
 			 */
@@ -1385,11 +1384,6 @@ int __weak arch_klp_check_activeness_func(struct klp_func *func, int enable,
 				return ret;
 		}
 	} else {
-		/*
-		 * When disable, check for the function itself which to be unpatched.
-		 */
-		if (!func_node)
-			return -EINVAL;
 #ifdef CONFIG_PREEMPTION
 		/*
 		 * No scheduling point in the replacement instructions. Therefore,
@@ -1529,7 +1523,7 @@ static LIST_HEAD(klp_func_list);
  * The caller must ensure that the klp_mutex lock is held or is in the rcu read
  * critical area.
  */
-struct klp_func_node *klp_find_func_node(const void *old_func)
+static struct klp_func_node *klp_find_func_node(const void *old_func)
 {
 	struct klp_func_node *func_node;
 
