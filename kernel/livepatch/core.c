@@ -1042,7 +1042,7 @@ static int klp_init_object_loaded(struct klp_patch *patch,
 			return -ENOENT;
 		}
 		if (func->old_size < KLP_MAX_REPLACE_SIZE) {
-			pr_err("%s size less than limit (%lu < %ld)\n", func->old_name,
+			pr_err("%s size less than limit (%lu < %zu)\n", func->old_name,
 			       func->old_size, KLP_MAX_REPLACE_SIZE);
 			return -EINVAL;
 		}
@@ -1218,13 +1218,13 @@ static int check_address_conflict(struct klp_patch *patch)
 			end = start + KLP_MAX_REPLACE_SIZE - 1;
 			ret = jump_label_text_reserved(start, end);
 			if (ret) {
-				pr_err("'%s' has static key in first %ld bytes, ret=%d\n",
+				pr_err("'%s' has static key in first %zu bytes, ret=%d\n",
 				       func->old_name, KLP_MAX_REPLACE_SIZE, ret);
 				return -EINVAL;
 			}
 			ret = static_call_text_reserved(start, end);
 			if (ret) {
-				pr_err("'%s' has static call in first %ld bytes, ret=%d\n",
+				pr_err("'%s' has static call in first %zu bytes, ret=%d\n",
 				       func->old_name, KLP_MAX_REPLACE_SIZE, ret);
 				return -EINVAL;
 			}
