@@ -1054,10 +1054,9 @@ static int klp_init_object_loaded(struct klp_patch *patch,
 		 * feature 'function descriptor'), otherwise size found by
 		 * 'kallsyms_lookup_size_offset' may be abnormal.
 		 */
-		if (func->old_name[0] !=  '.') {
+		if (func->old_name[0] !=  '.')
 			pr_warn("old_name '%s' may miss the prefix '.', old_size=%lu\n",
 				func->old_name, func->old_size);
-		}
 #endif
 
 		if (func->nop)
