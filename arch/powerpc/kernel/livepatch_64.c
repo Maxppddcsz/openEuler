@@ -314,16 +314,7 @@ static int do_check_calltrace(struct walk_stackframe_args *args,
 			 * so similar
 			 */
 			stack = (unsigned long *)current_stack_pointer;
-		} else if (strncmp(t->comm, "migration/", 10) == 0) {
-			/*
-			 * current on other CPU
-			 * we call this in stop_machine, so the current
-			 * of each CPUs is mirgation, just compare the
-			 * task_comm here, because we can't get the
-			 * cpu_curr(task_cpu(t))). This assumes that no
-			 * other thread will pretend to be a stopper via
-			 * task_comm.
-			 */
+		} else if (klp_is_migration_thread(t->comm)) {
 			continue;
 		} else {
 			/*
