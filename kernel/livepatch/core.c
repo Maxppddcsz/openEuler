@@ -1564,7 +1564,6 @@ static int klp_mem_prepare(struct klp_patch *patch)
 
 static void remove_breakpoint(struct klp_func *func, bool restore)
 {
-
 	struct klp_func_node *func_node = klp_find_func_node(func->old_func);
 	struct arch_klp_data *arch_data = &func_node->arch_data;
 
