@@ -416,7 +416,7 @@ static int do_patch(unsigned long pc, unsigned long new_addr)
 		for (i = 0; i < LJMP_INSN_SIZE; i++) {
 			ret = aarch64_insn_patch_text_nosync(((u32 *)pc) + i, insns[i]);
 			if (ret) {
-				pr_err("patch instruction(%d) large range failed, ret=%d\n",
+				pr_err("patch instruction %d large range failed, ret=%d\n",
 				       i, ret);
 				return -EPERM;
 			}
@@ -462,7 +462,7 @@ void arch_klp_unpatch_func(struct klp_func *func)
 			ret = aarch64_insn_patch_text_nosync(((u32 *)pc) + i,
 							     func_node->arch_data.old_insns[i]);
 			if (ret) {
-				pr_err("restore instruction(%d) failed, ret=%d\n", i, ret);
+				pr_err("restore instruction %d failed, ret=%d\n", i, ret);
 				return;
 			}
 		}

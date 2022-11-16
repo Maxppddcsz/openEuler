@@ -467,7 +467,7 @@ void arch_klp_unpatch_func(struct klp_func *func)
 			ret = patch_instruction((struct ppc_inst *)((u32 *)pc + i),
 						ppc_inst(func_node->arch_data.old_insns[i]));
 			if (ret) {
-				pr_err("restore instruction(%d) failed, ret=%d\n", i, ret);
+				pr_err("restore instruction %d failed, ret=%d\n", i, ret);
 				break;
 			}
 		}
