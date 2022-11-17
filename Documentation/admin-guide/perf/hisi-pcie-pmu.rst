@@ -101,6 +101,24 @@ For example, "thr_len=4" means threshold is 2^4 DW, "thr_mode=0" means
 counter counts when TLP length >= threshold, and "thr_mode=1" means counts
 when TLP length < threshold.
 
-Example usage of perf::
+  Example usage of perf::
 
-  $# perf stat -e hisi_pcie0_core0/rx_mrd_flux,thr_len=0x4,thr_mode=1/ sleep 5
+    $# perf stat -e hisi_pcie0_core0/rx_mrd_flux,thr_len=0x4,thr_mode=1/ sleep 5
+
+4. TLP Length filter
+
+   When counting bandwidth, the data can be composed of certain parts of TLP
+   packets. You can specify it through "len_mode":
+
+   - 2'b00: Reserved (Do not use this since the behaviour is undefined)
+   - 2'b01: Bandwidth of TLP payloads
+   - 2'b10: Bandwidth of TLP headers
+   - 2'b11: Bandwidth of both TLP payloads and headers
+
+   For example, "len_mode=2" means only counting the bandwidth of TLP headers
+   and "len_mode=3" means the final bandwidth data is composed of both TLP
+   headers and payloads. Default value if not specified is 2'b11.
+
+   Example usage of perf::
+
+     $# perf stat -e hisi_pcie0_core0/rx_mrd_flux,len_mode=0x1/ sleep 5
