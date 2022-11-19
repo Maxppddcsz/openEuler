@@ -3755,6 +3755,60 @@ union bpf_attr {
  *             Get Ipv4 origdst or replysrc. Works with IPv4.
  *     Return
  *             0 on success, or a negative error in case of failure.
+ * void *bpf_strch(void *src, int ch)
+ * 		Description
+ * 			Finds the first match of a given character `ch` in `src`
+ * 		Return
+ * 			Returns a pointer to the first occurrence of the character in the
+ *			string, or NULL if the character does not exist in the string.
+ *
+ * void *bpf_strstr(void *src, void *tar)
+ * 		Description
+ * 			Finds the first match of a given string `tar` in `src`
+ * 		Return
+ * 			Returns a pointer to the first occurrence of string2 in string1,
+ * 			or NULL if the string2 does not exist in the string1.
+ *
+ * int bpf_strcmp(void *s1, void *s2)
+ * 		Description
+ * 			Compares two strings and returns an integer based on the comparison
+ * 			result.
+ * 		Return
+ * 			A negative number is returned when s1 < s2.
+ * 			Return value is 0 when s1 = s2.
+ * 			A positive number is returned when s1 > s2.
+ *
+ * int bpf_strcpy(char *dst, u32 dst_size, char *src)
+ * 		Description
+ * 			Copies a string that starts with the src address and ends with the
+ * 			NULL character to the address space that starts with dst.
+ * 		Return
+ * 			Returns a apointer to dst.
+ *
+ * char *bpf_strnstr(void *s1, void *s2, u32 size)
+ * 		Description
+ * 			Search for s2 in the first position character string os s1.
+ * 		Return
+ * 			If s2 exists, returns the position of s2 in s1. If s2 is not found,
+ * 			return NULL.
+ *
+ * int bpf_strlen(char *buff)
+ * 		Description
+ * 			Obtains the length of a character string.
+ * 		Return
+ * 			Length of the string.
+ *
+ * int bpf_parse_header_msg(struct bpf_mem_ptr *msg)
+ * 		Description
+ * 			Parses the content of the msg. User can use `parse_protocol_func`
+ * 			to define the parse function.
+ * 		Return
+ * 			User-defined return value.
+ *
+ * void *bpf_get_msg_header_element(char *name)
+ * 		Description
+ * 			Reads the content of the parsed msg. User can use
+ * 			`get_protocol_element_func` to define the content.
  */
 #define __BPF_FUNC_MAPPER(FN)		\
 	FN(unspec),			\
@@ -3915,6 +3969,14 @@ union bpf_attr {
 	FN(redirect_peer),		\
 	FN(get_sockops_uid_gid),	\
 	FN(sk_original_addr),		\
+	FN(strchr),				\
+	FN(strstr),				\
+	FN(strcmp),				\
+	FN(strcpy),				\
+	FN(strnstr),			\
+	FN(strlen),				\
+	FN(parse_header_msg),	\
+	FN(get_msg_header_element),	\
 	/* */
 
 /* integer value in 'imm' field of BPF_CALL instruction selects which helper
@@ -5049,6 +5111,15 @@ struct btf_ptr {
 	void *ptr;
 	__u32 type_id;
 	__u32 flags;		/* BTF ptr flags; unused at present. */
+};
+
+/*
+ * struct bpf_mem_ptr is used for pointer to the memory. It records
+ * the location and length of the memory.
+ */
+struct bpf_mem_ptr {
+	void *ptr;
+	__u32 size;
 };
 
 /*

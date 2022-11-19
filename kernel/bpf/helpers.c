@@ -653,6 +653,94 @@ const struct bpf_func_proto bpf_this_cpu_ptr_proto = {
 	.arg1_type	= ARG_PTR_TO_PERCPU_BTF_ID,
 };
 
+BPF_CALL_2(bpf_strchr, void *, s, int, c)
+{
+	return strchr(s, c);
+}
+
+const struct bpf_func_proto bpf_strchr_proto = {
+	.func		= bpf_strchr,
+	.gpl_only	= false,
+	.ret_type	= RET_PTR_TO_ALLOC_MEM_OR_NULL,
+	.arg1_type	= ARG_ANYTHING,
+	.arg2_type	= ARG_ANYTHING,
+};
+
+BPF_CALL_2(bpf_strstr, void *, s1, void *, s2)
+{
+    return strstr(s1, s2);
+}
+
+const struct bpf_func_proto bpf_strstr_proto = {
+	.func	= bpf_strstr,
+	.gpl_only	= false,
+	.ret_type	= RET_PTR_TO_ALLOC_MEM_OR_NULL,
+	.arg1_type	= ARG_ANYTHING,
+	.arg2_type	= ARG_ANYTHING,
+};
+
+BPF_CALL_3(bpf_strnstr, void *, s1, void *, s2, size_t, len)
+{
+	return strnstr(s1, s2, len);
+}
+
+const struct bpf_func_proto bpf_strnstr_proto = {
+	.func		= bpf_strnstr,
+	.gpl_only	= false,
+	.ret_type	= RET_PTR_TO_ALLOC_MEM_OR_NULL,
+	.arg1_type	= ARG_ANYTHING,
+	.arg2_type	= ARG_ANYTHING,
+	.arg3_type	= ARG_ANYTHING,
+};
+
+BPF_CALL_2(bpf_strcmp, void *, str1, void *, str2)
+{
+	return strcmp(str1, str2);
+}
+
+BPF_CALL_3(bpf_strcpy, void *, dst, u32, dst_size, void *, src)
+{
+	u32 src_size;
+	if (!dst || !src)
+		return -1;
+
+	src_size = strlen(src) + 1;
+	if (src_size > dst_size)
+		return -1;
+
+	(void)strcpy(dst, src);
+	return 0;
+}
+
+const struct bpf_func_proto bpf_strcpy_proto = {
+	.func		= bpf_strcpy,
+	.gpl_only	= true,
+	.ret_type	= RET_INTEGER,
+	.arg1_type	= ARG_ANYTHING,
+	.arg2_type	= ARG_ANYTHING,
+	.arg3_type	= ARG_ANYTHING,
+};
+
+BPF_CALL_1(bpf_strlen, void *, src)
+{
+	return strlen(src);
+}
+
+const struct bpf_func_proto bpf_strlen_proto = {
+	.func		= bpf_strlen,
+	.gpl_only	= false,
+	.ret_type	= RET_INTEGER,
+	.arg1_type	= ARG_ANYTHING,
+};
+
+const struct bpf_func_proto bpf_strcmp_proto = {
+	.func		= bpf_strcmp,
+	.gpl_only	= false,
+	.ret_type	= RET_INTEGER,
+	.arg1_type	= ARG_ANYTHING,
+	.arg2_type	= ARG_ANYTHING,
+};
+
 const struct bpf_func_proto bpf_get_current_task_proto __weak;
 const struct bpf_func_proto bpf_probe_read_user_proto __weak;
 const struct bpf_func_proto bpf_probe_read_user_str_proto __weak;
@@ -697,6 +785,18 @@ bpf_base_func_proto(enum bpf_func_id func_id)
 		return &bpf_ringbuf_discard_proto;
 	case BPF_FUNC_ringbuf_query:
 		return &bpf_ringbuf_query_proto;
+	case BPF_FUNC_strchr:
+		return &bpf_strchr_proto;
+	case BPF_FUNC_strstr:
+		return &bpf_strstr_proto;
+	case BPF_FUNC_strnstr:
+		return &bpf_strnstr_proto;
+	case BPF_FUNC_strcmp:
+		return &bpf_strcmp_proto;
+	case BPF_FUNC_strcpy:
+		return &bpf_strcpy_proto;
+	case BPF_FUNC_strlen:
+		return &bpf_strlen_proto;
 	default:
 		break;
 	}
