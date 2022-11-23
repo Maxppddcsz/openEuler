@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .67.0
-%global pkg_release         .92
+%global maintenance_release .68.0
+%global pkg_release         .93
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -883,6 +883,73 @@ fi
 %endif
 
 %changelog
+* Wed Nov 23 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.68.0.93
+- Bluetooth: L2CAP: Fix accepting connection request for invalid SPSM
+- Bluetooth: L2CAP: Fix attempting to access uninitialized memory
+- !225 Synchronize the coresight code of the Linux mainline to support HiSilicon tracing
+- !257 [5.10] [Feature] ：add net-swift ngbe NIC support
+- !263 svm: Delete unused ioctl command
+- svm: Delete unused ioctl command
+- openeuler: net: ngbe: add ngbe module source code
+- openeuler: net: ngbe add build support
+- openeuler: config: add NGBE MODODULE CONFIG
+- openeuler_defconfig: Enable TRBE and TMC
+- drivers/ETM: fix error in invalid cs_id
+- coresight: etm4x: Expose trcdevarch via sysfs
+- perf cs-etm: Update ARM's CoreSight hardware tracing OpenCSD library to v1.0.0
+- coresight: etm4x: Add support for PE OS lock
+- coresight: etm4x: Convert all register accesses
+- coresight: etm4x: avoid build failure with unrolled loops
+- coresight: trbe: Make sure we have enough space
+- coresight: trbe: Allow driver to choose a different alignment
+- coresight: trbe: Decouple buffer base from the hardware base
+- coresight: trbe: Add a helper to pad a given buffer area
+- coresight: trbe: Add a helper to calculate the trace generated
+- coresight: trbe: Defer the probe on offline CPUs
+- coresight: trbe: Fix incorrect access of the sink specific data
+- coresight: trbe: Prohibit trace before disabling TRBE
+- coresight: trbe: End the AUX handle on truncation
+- coresight: trbe: Do not truncate buffer on IRQ
+- coresight: trbe: Fix handling of spurious interrupts
+- coresight: trbe: irq handler: Do not disable TRBE if no action is needed
+- coresight: trbe: Unify the enabling sequence
+- coresight: trbe: Drop duplicate TRUNCATE flags
+- coresight: trbe: Ensure the format flag is always set
+- coresight: etm-pmu: Ensure the AUX handle is valid
+- coresight: etm4x: Use Trace Filtering controls dynamically
+- coresight: etm4x: Save restore TRFCR_EL1
+- coresight: etm4x: Move ETM to prohibited region for disable
+- coresight: Don't immediately close events that are run on invalid CPU/sink combos
+- coresight: tmc-etr: Speed up for bounce buffer in flat mode
+- KVM: arm64: Handle access to TRFCR_EL1
+- coresight: sink: Add TRBE driver
+- perf: aux: Add flags for the buffer format
+- perf: aux: Add CoreSight PMU buffer formats
+- arm64: Add support for trace synchronization barrier
+- coresight: core: Add support for dedicated percpu sinks
+- coresight: etm-perf: Handle stale output handles
+- coresight: ete: Add support for ETE tracing
+- coresight: ete: Add support for ETE sysreg access
+- coresight: Add support for v8.4 SelfHosted tracing
+- arm64: Add TRBE definitions
+- arm64: Add TRFCR_ELx definitions
+- coresight: etm4x: Add support for sysreg only devices
+- coresight: etm4x: Refactor probing routine
+- coresight: etm4x: Use TRCDEVARCH for component discovery
+- coresight: etm4x: Add necessary synchronization for sysreg access
+- coresight: etm4x: Detect system instructions support
+- coresight: etm4x: Detect access early on the target CPU
+- coresight: etm4x: Handle ETM architecture version
+- coresight: etm4x: Check for Software Lock
+- coresight: etm4x: Define DEVARCH register fields
+- coresight: etm4x: Hide sysfs attributes for unavailable registers
+- coresight: etm4x: Add sysreg access helpers
+- coresight: etm4x: Make offset available for sysfs attributes
+- coresight: etm4x: Always read the registers on the host CPU
+- coresight: Convert claim/disclaim operations to use access wrappers
+- coresight: Convert coresight_timeout to use access abstraction
+- coresight: Introduce device access abstraction
+
 * Fri Nov 18 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.67.0.92
 - btrfs: raid56: don't trust any cached sector in __raid56_parity_recover()
 - btrfs: only write the sectors in the vertical stripe which has data stripes
