@@ -1,0 +1,16 @@
+diff a/drivers/scsi/qla2xxx/qla_gs.c b/drivers/scsi/qla2xxx/qla_gs.c	(rejected hunks)
+@@ -3558,10 +3558,10 @@ void qla24xx_async_gnnft_done(scsi_qla_host_t *vha, srb_t *sp)
+ 					if (fcport->flags & FCF_FCP2_DEVICE)
+ 						fcport->logout_on_delete = 0;
+ 
+-					ql_dbg(ql_dbg_disc, vha, 0x20f0,
+-					    "%s %d %8phC post del sess\n",
+-					    __func__, __LINE__,
+-					    fcport->port_name);
++					ql_log(ql_log_warn, vha, 0x20f0,
++					       "%s %d %8phC post del sess\n",
++					       __func__, __LINE__,
++					       fcport->port_name);
+ 
+ 					qlt_schedule_sess_for_deletion(fcport);
+ 					continue;
