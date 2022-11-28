@@ -1,0 +1,9 @@
+diff a/arch/x86/configs/openeuler_defconfig b/arch/x86/configs/openeuler_defconfig	(rejected hunks)
+@@ -157,6 +157,7 @@ CONFIG_BLK_CGROUP=y
+ CONFIG_CGROUP_WRITEBACK=y
+ CONFIG_CGROUP_SCHED=y
+ CONFIG_QOS_SCHED=y
++CONFIG_QOS_SCHED_DYNAMIC_AFFINITY=y
+ CONFIG_FAIR_GROUP_SCHED=y
+ CONFIG_QOS_SCHED_SMT_EXPELLER=y
+ CONFIG_CFS_BANDWIDTH=y
