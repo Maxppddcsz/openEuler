@@ -96,7 +96,7 @@
 #include <linux/kasan.h>
 #include <linux/scs.h>
 #include <linux/io_uring.h>
-#include <linux/share_pool.h>
+#include <linux/sched/mm.h>
 
 #include <linux/share_pool.h>
 #include <asm/pgalloc.h>
@@ -174,6 +174,7 @@ static inline struct task_struct *alloc_task_struct_node(int node)
 
 static inline void free_task_struct(struct task_struct *tsk)
 {
+	kfree(tsk->_resvd);
 	kmem_cache_free(task_struct_cachep, tsk);
 }
 #endif
@@ -852,6 +853,18 @@ void set_task_stack_end_magic(struct task_struct *tsk)
 	*stackend = STACK_END_MAGIC;	/* for overflow detection */
 }
 
+static bool dup_resvd_task_struct(struct task_struct *dst,
+				  struct task_struct *orig, int node)
+{
+	dst->_resvd = kmalloc_node(sizeof(struct task_struct_resvd),
+					  GFP_KERNEL, node);
+	if (!dst->_resvd)
+		return false;
+
+	dst->_resvd->task = dst;
+	return true;
+}
+
 static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 {
 	struct task_struct *tsk;
@@ -864,6 +877,12 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	tsk = alloc_task_struct_node(node);
 	if (!tsk)
 		return NULL;
+	/*
+	 * before proceeding, we need to make tsk->_resvd = NULL,
+	 * otherwise the error paths below, if taken, might end up causing
+	 * a double-free for task_struct_resvd extension object.
+	 */
+	WRITE_ONCE(tsk->_resvd, NULL);
 
 	stack = alloc_thread_stack_node(tsk, node);
 	if (!stack)
@@ -889,7 +908,7 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	refcount_set(&tsk->stack_refcount, 1);
 #endif
 
-	if (err)
+	if (err || !dup_resvd_task_struct(tsk, orig, node))
 		goto free_stack;
 
 	err = scs_prepare(tsk, node);
@@ -944,6 +963,10 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	tsk->use_memdelay = 0;
 #endif
 
+#ifdef CONFIG_IOMMU_SVA
+	tsk->pasid_activated = 0;
+#endif
+
 #ifdef CONFIG_MEMCG
 	tsk->active_memcg = NULL;
 #endif
@@ -996,13 +1019,6 @@ static void mm_init_owner(struct mm_struct *mm, struct task_struct *p)
 #endif
 }
 
-static void mm_init_pasid(struct mm_struct *mm)
-{
-#ifdef CONFIG_IOMMU_SUPPORT
-	mm->pasid = INIT_PASID;
-#endif
-}
-
 static void mm_init_uprobes_state(struct mm_struct *mm)
 {
 #ifdef CONFIG_UPROBES
@@ -1033,7 +1049,7 @@ static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
 	mm_init_cpumask(mm);
 	mm_init_aio(mm);
 	mm_init_owner(mm, p);
-	mm_init_pasid(mm);
+	mm_pasid_init(mm);
 	RCU_INIT_POINTER(mm->exe_file, NULL);
 	mmu_notifier_subscriptions_init(mm);
 	init_tlb_flush_pending(mm);
@@ -1070,6 +1086,20 @@ fail_nopgd:
 	return NULL;
 }
 
+static inline void mm_struct_clear(struct mm_struct *mm) {
+	memset(mm, 0, sizeof(*mm));
+
+#if (defined(CONFIG_X86_64))
+	/*
+	 * init the mm_struct_extend extra area at the bottom of
+	 * the allocated mm struct and reset mm->mm_extend accordingly.
+	 */
+	memset((void *)((unsigned long) mm + _MM_STRUCT_SIZE),
+		0, sizeof(struct mm_struct_extend));
+	mm->mm_extend = (struct mm_struct_extend *)((unsigned long) mm + _MM_STRUCT_SIZE);
+#endif
+}
+
 /*
  * Allocate and initialize an mm_struct.
  */
@@ -1081,7 +1111,8 @@ struct mm_struct *mm_alloc(void)
 	if (!mm)
 		return NULL;
 
-	memset(mm, 0, sizeof(*mm));
+	mm_struct_clear(mm);
+
 	return mm_init(mm, current, current_user_ns());
 }
 
@@ -1106,6 +1137,7 @@ static inline void __mmput(struct mm_struct *mm)
 	}
 	if (mm->binfmt)
 		module_put(mm->binfmt->module);
+	mm_pasid_drop(mm);
 	mmdrop(mm);
 }
 
@@ -1115,9 +1147,6 @@ static inline void __mmput(struct mm_struct *mm)
 void mmput(struct mm_struct *mm)
 {
 	might_sleep();
-
-	if (sp_group_exit(mm))
-		return;
 
 	if (atomic_dec_and_test(&mm->mm_users))
 		__mmput(mm);
@@ -1367,6 +1396,24 @@ void exec_mm_release(struct task_struct *tsk, struct mm_struct *mm)
 	mm_release(tsk, mm);
 }
 
+static inline void mm_struct_copy(struct mm_struct *mm, struct mm_struct *oldmm)
+{
+	memcpy(mm, oldmm, sizeof(*mm));
+
+#if defined(CONFIG_X86_64)
+	/*
+	 * copy the mm_struct_extend extra area at the bottom of
+	 * the oldmm slab object over to the newly allocated mm struct,
+	 * and reset mm->mm_extend accordingly.
+	 */
+	memcpy((void *)((unsigned long) mm + _MM_STRUCT_SIZE),
+		(void *)((unsigned long) oldmm + _MM_STRUCT_SIZE),
+		sizeof(struct mm_struct_extend));
+
+	mm->mm_extend = (struct mm_struct_extend *)((unsigned long) mm + _MM_STRUCT_SIZE);
+#endif
+}
+
 /**
  * dup_mm() - duplicates an existing mm structure
  * @tsk: the task_struct with which the new mm will be associated.
@@ -1387,7 +1434,7 @@ static struct mm_struct *dup_mm(struct task_struct *tsk,
 	if (!mm)
 		goto fail_nomem;
 
-	memcpy(mm, oldmm, sizeof(*mm));
+	mm_struct_copy(mm, oldmm);
 
 	if (!mm_init(mm, tsk, mm->user_ns))
 		goto fail_nomem;
@@ -2857,13 +2904,13 @@ void __init proc_caches_init(void)
 	 * dynamically sized based on the maximum CPU number this system
 	 * can have, taking hotplug into account (nr_cpu_ids).
 	 */
-	mm_size = sizeof(struct mm_struct) + cpumask_size();
+	mm_size = MM_STRUCT_SIZE;
 
 	mm_cachep = kmem_cache_create_usercopy("mm_struct",
 			mm_size, ARCH_MIN_MMSTRUCT_ALIGN,
 			SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_ACCOUNT,
-			offsetof(struct mm_struct, saved_auxv),
-			sizeof_field(struct mm_struct, saved_auxv),
+			OFFSET_OF_MM_SAVED_AUXV,
+			SIZE_OF_MM_SAVED_AUXV,
 			NULL);
 	vm_area_cachep = KMEM_CACHE(vm_area_struct, SLAB_PANIC|SLAB_ACCOUNT);
 	mmap_init();

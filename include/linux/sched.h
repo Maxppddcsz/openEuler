@@ -677,6 +677,12 @@ struct wake_q_node {
 * struct task_struct_resvd - KABI extension struct
 */
 struct task_struct_resvd {
+	/* pointer back to the main task_struct */
+	struct task_struct	*task;
+
+#ifdef CONFIG_MMU
+	struct timer_list	oom_reaper_timer;
+#endif
 };
 
 struct task_struct {
@@ -869,6 +875,9 @@ struct task_struct {
 #ifdef CONFIG_PAGE_OWNER
 	/* Used by page_owner=on to detect recursion in page tracking. */
 	unsigned			in_page_owner:1;
+#endif
+#ifdef CONFIG_IOMMU_SVA
+	KABI_FILL_HOLE(unsigned		pasid_activated:1)
 #endif
 
 	unsigned long			atomic_flags; /* Flags requiring atomic access. */
@@ -1619,6 +1628,7 @@ extern struct pid *cad_pid;
 #define PF_KTHREAD		0x00200000	/* I am a kernel thread */
 #define PF_RANDOMIZE		0x00400000	/* Randomize virtual address space */
 #define PF_SWAPWRITE		0x00800000	/* Allowed to write to swap */
+#define PF_COREDUMP_MCS		0x01000000      /* Task coredump support machine check safe */
 #define PF_NO_SETAFFINITY	0x04000000	/* Userland is not allowed to meddle with cpus_mask */
 #define PF_MCE_EARLY		0x08000000      /* Early kill for mce process policy */
 #define PF_MEMALLOC_NOCMA	0x10000000	/* All allocation request will have _GFP_MOVABLE cleared */

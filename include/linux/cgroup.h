@@ -307,7 +307,7 @@ void css_task_iter_end(struct css_task_iter *it);
  * Inline functions.
  */
 
-static inline u64 cgroup_id(struct cgroup *cgrp)
+static inline u64 cgroup_id(const struct cgroup *cgrp)
 {
 	return cgrp->kn->id;
 }
@@ -696,12 +696,15 @@ static inline void cgroup_kthread_ready(void)
 }
 
 void cgroup_path_from_kernfs_id(u64 id, char *buf, size_t buflen);
+#ifdef CONFIG_CGROUP_V1_WRITEBACK
+struct cgroup *cgroup1_get_from_id(struct cgroup_root *root, u64 id);
+#endif
 #else /* !CONFIG_CGROUPS */
 
 struct cgroup_subsys_state;
 struct cgroup;
 
-static inline u64 cgroup_id(struct cgroup *cgrp) { return 1; }
+static inline u64 cgroup_id(const struct cgroup *cgrp) { return 1; }
 static inline void css_get(struct cgroup_subsys_state *css) {}
 static inline void css_put(struct cgroup_subsys_state *css) {}
 static inline int cgroup_attach_task_all(struct task_struct *from,

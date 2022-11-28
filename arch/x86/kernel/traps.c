@@ -39,6 +39,7 @@
 #include <linux/io.h>
 #include <linux/hardirq.h>
 #include <linux/atomic.h>
+#include <linux/ioasid.h>
 
 #include <asm/stacktrace.h>
 #include <asm/processor.h>
@@ -48,7 +49,7 @@
 #include <asm/ftrace.h>
 #include <asm/traps.h>
 #include <asm/desc.h>
-#include <asm/fpu/internal.h>
+#include <asm/fpu/api.h>
 #include <asm/cpu.h>
 #include <asm/cpu_entry_area.h>
 #include <asm/mce.h>
@@ -562,6 +563,57 @@ static bool fixup_iopl_exception(struct pt_regs *regs)
 	return true;
 }
 
+/*
+ * The unprivileged ENQCMD instruction generates #GPs if the
+ * IA32_PASID MSR has not been populated.  If possible, populate
+ * the MSR from a PASID previously allocated to the mm.
+ */
+static bool try_fixup_enqcmd_gp(void)
+{
+#ifdef CONFIG_IOMMU_SVA
+	u32 pasid;
+
+	/*
+	 * MSR_IA32_PASID is managed using XSAVE.  Directly
+	 * writing to the MSR is only possible when fpregs
+	 * are valid and the fpstate is not.  This is
+	 * guaranteed when handling a userspace exception
+	 * in *before* interrupts are re-enabled.
+	 */
+	lockdep_assert_irqs_disabled();
+
+	/*
+	 * Hardware without ENQCMD will not generate
+	 * #GPs that can be fixed up here.
+	 */
+	if (!cpu_feature_enabled(X86_FEATURE_ENQCMD))
+		return false;
+
+	pasid = current->mm->pasid;
+
+	/*
+	 * If the mm has not been allocated a
+	 * PASID, the #GP can not be fixed up.
+	 */
+	if (!pasid_valid(pasid))
+		return false;
+
+	/*
+	 * Did this thread already have its PASID activated?
+	 * If so, the #GP must be from something else.
+	 */
+	if (current->pasid_activated)
+		return false;
+
+	wrmsrl(MSR_IA32_PASID, pasid | MSR_IA32_PASID_VALID);
+	current->pasid_activated = 1;
+
+	return true;
+#else
+	return false;
+#endif
+}
+
 DEFINE_IDTENTRY_ERRORCODE(exc_general_protection)
 {
 	char desc[sizeof(GPFSTR) + 50 + 2*sizeof(unsigned long) + 1] = GPFSTR;
@@ -569,6 +621,9 @@ DEFINE_IDTENTRY_ERRORCODE(exc_general_protection)
 	struct task_struct *tsk;
 	unsigned long gp_addr;
 	int ret;
+
+	if (user_mode(regs) && try_fixup_enqcmd_gp())
+		return;
 
 	cond_local_irq_enable(regs);
 
@@ -1093,9 +1148,10 @@ static void math_error(struct pt_regs *regs, int trapnr)
 	}
 
 	/*
-	 * Save the info for the exception handler and clear the error.
+	 * Synchronize the FPU register state to the memory register state
+	 * if necessary. This allows the exception handler to inspect it.
 	 */
-	fpu__save(fpu);
+	fpu_sync_fpstate(fpu);
 
 	task->thread.trap_nr	= trapnr;
 	task->thread.error_code = 0;
@@ -1154,9 +1210,47 @@ DEFINE_IDTENTRY(exc_spurious_interrupt_bug)
 	 */
 }
 
+static bool handle_xfd_event(struct pt_regs *regs)
+{
+	u64 xfd_err;
+	int err;
+
+	if (!IS_ENABLED(CONFIG_X86_64) || !cpu_feature_enabled(X86_FEATURE_XFD))
+		return false;
+
+	rdmsrl(MSR_IA32_XFD_ERR, xfd_err);
+	if (!xfd_err)
+		return false;
+
+	wrmsrl(MSR_IA32_XFD_ERR, 0);
+
+	/* Die if that happens in kernel space */
+	if (WARN_ON(!user_mode(regs)))
+		return false;
+
+	local_irq_enable();
+
+	err = xfd_enable_feature(xfd_err);
+
+	switch (err) {
+	case -EPERM:
+		force_sig_fault(SIGILL, ILL_ILLOPC, error_get_trap_addr(regs));
+		break;
+	case -EFAULT:
+		force_sig(SIGSEGV);
+		break;
+	}
+
+	local_irq_disable();
+	return true;
+}
+
 DEFINE_IDTENTRY(exc_device_not_available)
 {
 	unsigned long cr0 = read_cr0();
+
+	if (handle_xfd_event(regs))
+		return;
 
 #ifdef CONFIG_MATH_EMULATION
 	if (!boot_cpu_has(X86_FEATURE_FPU) && (cr0 & X86_CR0_EM)) {
