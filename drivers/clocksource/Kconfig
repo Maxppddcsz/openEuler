@@ -348,6 +348,14 @@ config ARM_ARCH_TIMER_EVTSTREAM
 config ARM_ARCH_TIMER_OOL_WORKAROUND
 	bool
 
+config ARM_ARCH_TIMER_VCT_ACCESS
+	bool "Support for ARM architected timer virtual counter access in userspace"
+	default n
+	depends on ARM_ARCH_TIMER
+	help
+	  This option enables support for reading the ARM architected timer's
+	  virtual counter in userspace.
+
 config FSL_ERRATUM_A008585
 	bool "Workaround for Freescale/NXP Erratum A-008585"
 	default y
@@ -399,6 +407,12 @@ config ARM_GLOBAL_TIMER
 
 config ARM_TIMER_SP804
 	bool "Support for Dual Timer SP804 module" if COMPILE_TEST
+	depends on GENERIC_SCHED_CLOCK && CLKDEV_LOOKUP
+	select CLKSRC_MMIO
+	select TIMER_OF if OF
+
+config TIMER_HISP804
+	bool "Support for hisilicon SP804 module"
 	depends on GENERIC_SCHED_CLOCK && CLKDEV_LOOKUP
 	select CLKSRC_MMIO
 	select TIMER_OF if OF

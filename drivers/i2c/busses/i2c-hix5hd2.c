@@ -360,14 +360,27 @@ static int hix5hd2_i2c_xfer(struct i2c_adapter *adap,
 	pm_runtime_get_sync(priv->dev);
 
 	for (i = 0; i < num; i++, msgs++) {
-		stop = (i == num - 1);
+		if ((i == num - 1) || (msgs->flags & I2C_M_STOP))
+			stop = 1;
+		else
+			stop = 0;
+
 		ret = hix5hd2_i2c_xfer_msg(priv, msgs, stop);
 		if (ret < 0)
 			goto out;
 	}
 
-	ret = num;
+	if (i == num) {
+		ret = num;
+	} else {
+		/* Only one message, cannot access the device */
+		if (i == 1)
+			ret = -EREMOTEIO;
+		else
+			ret = i;
 
+		dev_warn(priv->dev, "xfer message failed\n");
+	}
 out:
 	pm_runtime_mark_last_busy(priv->dev);
 	pm_runtime_put_autosuspend(priv->dev);
