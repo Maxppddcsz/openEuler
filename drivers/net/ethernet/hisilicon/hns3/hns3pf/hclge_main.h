@@ -296,6 +296,7 @@ struct hclge_mac {
 	u8 duplex_last;
 	u8 support_autoneg;
 	u8 speed_type;	/* 0: sfp speed, 1: active speed */
+	u8 lane_num;
 	u32 speed;
 	u32 max_speed;
 	u32 speed_ability; /* speed ability supported by current media */
@@ -1168,7 +1169,6 @@ int hclge_enable_vport_vlan_filter(struct hclge_vport *vport, bool request_en);
 int hclge_mac_update_stats(struct hclge_dev *hdev);
 int hclge_register_sysfs(struct hclge_dev *hdev);
 void hclge_unregister_sysfs(struct hclge_dev *hdev);
-int hclge_cfg_mac_speed_dup_hw(struct hclge_dev *hdev, int speed, u8 duplex);
 int hclge_get_wol_supported_mode(struct hclge_dev *hdev, u32 *wol_supported);
 int hclge_get_wol_cfg(struct hclge_dev *hdev, u32 *mode);
 struct hclge_vport *hclge_get_vf_vport(struct hclge_dev *hdev, int vf);
@@ -1177,4 +1177,6 @@ void hclge_reset_event(struct pci_dev *pdev, struct hnae3_handle *handle);
 void hclge_get_media_type(struct hnae3_handle *handle, u8 *media_type,
 			  u8 *module_type);
 int hclge_cfg_mac_mode(struct hclge_dev *hdev, bool enable);
+int hclge_cfg_mac_speed_dup_hw(struct hclge_dev *hdev, int speed, u8 duplex,
+			       u8 lane_num);
 #endif
