@@ -7,6 +7,9 @@
 
 #include "hnae3.h"
 
+#define HCLGE_COMM_CMD_FLAG_IN			BIT(0)
+#define HCLGE_COMM_CMD_FLAG_NEXT		BIT(2)
+#define HCLGE_COMM_CMD_FLAG_WR			BIT(3)
 #define HCLGE_COMM_CMD_FLAG_NO_INTR		BIT(4)
 
 #define HCLGE_COMM_SEND_SYNC(flag) \
