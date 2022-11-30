@@ -79,6 +79,12 @@ enum hclge_mbx_tbl_cfg_subcode {
 	HCLGE_MBX_VPORT_LIST_CLEAR,
 };
 
+enum hclge_mbx_qb_cfg_subcode {
+	HCLGE_MBX_QB_CHECK_CAPS = 0,	/* query whether support qb */
+	HCLGE_MBX_QB_ENABLE,		/* request pf enable qb */
+	HCLGE_MBX_QB_GET_STATE		/* query whether qb enabled */
+};
+
 #define HCLGE_MBX_MAX_MSG_SIZE	14
 #define HCLGE_MBX_MAX_RESP_DATA_SIZE	8U
 #define HCLGE_MBX_MAX_RING_CHAIN_PARAM_NUM	4
