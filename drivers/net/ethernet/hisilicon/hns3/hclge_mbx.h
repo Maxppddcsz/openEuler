@@ -24,7 +24,7 @@ enum HCLGE_MBX_OPCODE {
 	HCLGE_MBX_GET_RETA,		/* (VF -> PF) get RETA */
 	HCLGE_MBX_GET_RSS_KEY,		/* (VF -> PF) get RSS key */
 	HCLGE_MBX_GET_MAC_ADDR,		/* (VF -> PF) get MAC addr */
-	HCLGE_MBX_PF_VF_RESP,		/* (PF -> VF) generate respone to VF */
+	HCLGE_MBX_PF_VF_RESP,		/* (PF -> VF) generate response to VF */
 	HCLGE_MBX_GET_BDNUM,		/* (VF -> PF) get BD num */
 	HCLGE_MBX_GET_BUFSIZE,		/* (VF -> PF) get buffer size */
 	HCLGE_MBX_GET_STREAMID,		/* (VF -> PF) get stream id */
@@ -47,6 +47,8 @@ enum HCLGE_MBX_OPCODE {
 	HCLGE_MBX_VF_UNINIT,            /* (VF -> PF) vf is unintializing */
 	HCLGE_MBX_HANDLE_VF_TBL,	/* (VF -> PF) store/clear hw table */
 	HCLGE_MBX_GET_RING_VECTOR_MAP,	/* (VF -> PF) get ring-to-vector map */
+	HCLGE_MBX_SET_QB = 0x28,        /* (VF -> PF) set queue bonding */
+	HCLGE_MBX_PUSH_QB_STATE,        /* (PF -> VF) push qb state */
 
 	HCLGE_MBX_GET_VF_FLR_STATUS = 200, /* (M7 -> PF) get vf flr status */
 	HCLGE_MBX_PUSH_LINK_STATUS,	/* (M7 -> PF) get port link status */
@@ -185,6 +187,15 @@ struct hclgevf_mbx_arq_ring {
 	atomic_t count;
 	u16 msg_q[HCLGE_MBX_MAX_ARQ_MSG_NUM][HCLGE_MBX_MAX_ARQ_MSG_SIZE];
 };
+
+#define HCLGE_MBX_OPCODE_MAX 256
+struct hclge_mbx_ops_param {
+	struct hclge_vport *vport;
+	struct hclge_mbx_vf_to_pf_cmd *req;
+	struct hclge_respond_to_vf_msg *resp_msg;
+};
+
+typedef int (*hclge_mbx_ops_fn)(struct hclge_mbx_ops_param *param);
 
 #define hclge_mbx_ring_ptr_move_crq(crq) \
 	(crq->next_to_use = (crq->next_to_use + 1) % crq->desc_num)
