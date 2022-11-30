@@ -99,6 +99,10 @@ enum HNAE3_DEV_CAP_BITS {
 	HNAE3_DEV_SUPPORT_RXD_ADV_LAYOUT_B,
 	HNAE3_DEV_SUPPORT_PORT_VLAN_BYPASS_B,
 	HNAE3_DEV_SUPPORT_VLAN_FLTR_MDF_B,
+	HNAE3_DEV_SUPPORT_MC_MAC_MNG_B,
+	HNAE3_DEV_SUPPORT_CQ_B,
+	HNAE3_DEV_SUPPORT_LANE_NUM_B,
+	HNAE3_DEV_SUPPORT_WOL_B,
 };
 
 #define hnae3_ae_dev_fd_supported(ae_dev) \
@@ -157,6 +161,18 @@ enum HNAE3_DEV_CAP_BITS {
 
 #define hnae3_ae_dev_rxd_adv_layout_supported(ae_dev) \
 	test_bit(HNAE3_DEV_SUPPORT_RXD_ADV_LAYOUT_B, (ae_dev)->caps)
+
+#define hnae3_ae_dev_mc_mac_mng_supported(ae_dev) \
+	test_bit(HNAE3_DEV_SUPPORT_MC_MAC_MNG_B, (ae_dev)->caps)
+
+#define hnae3_ae_dev_cq_supported(ae_dev) \
+	test_bit(HNAE3_DEV_SUPPORT_CQ_B, (ae_dev)->caps)
+
+#define hnae3_ae_dev_lane_num_supported(ae_dev) \
+	test_bit(HNAE3_DEV_SUPPORT_LANE_NUM_B, (ae_dev)->caps)
+
+#define hnae3_ae_dev_wol_supported(ae_dev) \
+	test_bit(HNAE3_DEV_SUPPORT_WOL_B, (ae_dev)->caps)
 
 enum HNAE3_PF_CAP_BITS {
 	HNAE3_PF_SUPPORT_VLAN_FLTR_MDF_B = 0,
@@ -562,6 +578,12 @@ struct hnae3_ae_dev {
  *   Get 1588 rx hwstamp
  * get_ts_info
  *   Get phc info
+ * clean_vf_config
+ *   Clean residual vf info after disable sriov
+ * get_wol
+ *   Get wake on lan info
+ * set_wol
+ *   Config wake on lan
  */
 struct hnae3_ae_ops {
 	int (*init_ae_dev)(struct hnae3_ae_dev *ae_dev);
@@ -758,6 +780,13 @@ struct hnae3_ae_ops {
 			   struct ethtool_ts_info *info);
 	int (*get_link_diagnosis_info)(struct hnae3_handle *handle,
 				       u32 *status_code);
+	void (*clean_vf_config)(struct hnae3_ae_dev *ae_dev, int num_vfs);
+	int (*get_dscp_prio)(struct hnae3_handle *handle, u8 dscp,
+			     u8 *tc_map_mode, u8 *priority);
+	void (*get_wol)(struct hnae3_handle *handle,
+			struct ethtool_wolinfo *wol);
+	int (*set_wol)(struct hnae3_handle *handle,
+		       struct ethtool_wolinfo *wol);
 /* Notice! If the function is not for test, the definition must before
  * CONFIG_HNS3_TEST! Because RoCE will use this head file, and it won't
  * set CONFIG_HNS3_TEST, that may cause RoCE calling the wrong function.
