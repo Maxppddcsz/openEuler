@@ -312,6 +312,8 @@ enum hclge_opcode_type {
 	HCLGE_PPP_CMD1_INT_CMD		= 0x2101,
 	HCLGE_PPP_MAC_VLAN_IDX_RD	= 0x2104,
 	HCLGE_MAC_ETHERTYPE_IDX_RD      = 0x2105,
+	HCLGE_OPC_WOL_CFG               = 0x2200,
+	HCLGE_OPC_WOL_GET_SUPPORTED_MODE        = 0x2201,
 	HCLGE_NCSI_INT_EN		= 0x2401,
 
 	/* PHY command */
@@ -1275,6 +1277,29 @@ static inline u32 hclge_read_reg(u8 __iomem *base, u32 reg)
 
 #define HCLGE_SEND_SYNC(flag) \
 	((flag) & HCLGE_CMD_FLAG_NO_INTR)
+enum HCLGE_WOL_MODE {
+	HCLGE_WOL_PHY           = BIT(0),
+	HCLGE_WOL_UNICAST       = BIT(1),
+	HCLGE_WOL_MULTICAST     = BIT(2),
+	HCLGE_WOL_BROADCAST     = BIT(3),
+	HCLGE_WOL_ARP           = BIT(4),
+	HCLGE_WOL_MAGIC         = BIT(5),
+	HCLGE_WOL_MAGICSECURED  = BIT(6),
+	HCLGE_WOL_FILTER        = BIT(7),
+	HCLGE_WOL_DISABLE       = 0,
+};
+
+struct hclge_wol_cfg_cmd {
+	__le32 wake_on_lan_mode;
+	u8 sopass[SOPASS_MAX];
+	u8 sopass_size;
+	u8 rsv[13];
+};
+
+struct hclge_query_wol_supported_cmd {
+	__le32 supported_wake_mode;
+	u8 rsv[20];
+};
 
 struct hclge_hw;
 int hclge_cmd_send(struct hclge_hw *hw, struct hclge_desc *desc, int num);
