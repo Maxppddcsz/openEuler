@@ -34,11 +34,6 @@ struct klp_func;
 int arch_klp_patch_func(struct klp_func *func);
 void arch_klp_unpatch_func(struct klp_func *func);
 
-#ifdef CONFIG_LIVEPATCH_STOP_MACHINE_CONSISTENCY
-int klp_check_calltrace(struct klp_patch *patch, int enable);
-#endif
-
-
 #if defined(CONFIG_LIVEPATCH_STOP_MACHINE_CONSISTENCY)
 
 #ifdef CONFIG_ARM_MODULE_PLTS
@@ -57,11 +52,12 @@ struct arch_klp_data {
 	u32 saved_opcode;
 };
 
+#define KLP_MAX_REPLACE_SIZE sizeof_field(struct arch_klp_data, old_insns)
+
 int arch_klp_add_breakpoint(struct arch_klp_data *arch_data, void *old_func);
 void arch_klp_remove_breakpoint(struct arch_klp_data *arch_data, void *old_func);
 long arch_klp_save_old_code(struct arch_klp_data *arch_data, void *old_func);
 int arch_klp_module_check_calltrace(void *data);
-
 #endif
 
 #endif /* _ASM_ARM_LIVEPATCH_H */

@@ -26,17 +26,12 @@ int arch_klp_patch_func(struct klp_func *func);
 void arch_klp_unpatch_func(struct klp_func *func);
 #endif
 
-#ifdef CONFIG_LIVEPATCH_STOP_MACHINE_CONSISTENCY
-int klp_check_calltrace(struct klp_patch *patch, int enable);
-#endif
-
-
 #if defined(CONFIG_LIVEPATCH_STOP_MACHINE_CONSISTENCY) || \
     defined(CONFIG_LIVEPATCH_WO_FTRACE)
 
 #define JMP_E9_INSN_SIZE 5
 struct arch_klp_data {
-	unsigned char old_code[JMP_E9_INSN_SIZE];
+	unsigned char old_insns[JMP_E9_INSN_SIZE];
 #ifdef CONFIG_LIVEPATCH_STOP_MACHINE_CONSISTENCY
 	/*
 	 * Saved opcode at the entry of the old func (which maybe replaced
@@ -45,6 +40,8 @@ struct arch_klp_data {
 	unsigned char saved_opcode;
 #endif
 };
+
+#define KLP_MAX_REPLACE_SIZE sizeof_field(struct arch_klp_data, old_insns)
 
 long arch_klp_save_old_code(struct arch_klp_data *arch_data, void *old_func);
 #ifdef CONFIG_LIVEPATCH_STOP_MACHINE_CONSISTENCY

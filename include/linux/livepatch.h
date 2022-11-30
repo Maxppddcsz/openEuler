@@ -239,9 +239,6 @@ struct klp_func_node {
 	void *brk_func;
 };
 
-struct klp_func_node *klp_find_func_node(const void *old_func);
-void klp_add_func_node(struct klp_func_node *func_node);
-void klp_del_func_node(struct klp_func_node *func_node);
 void *klp_get_brk_func(void *addr);
 
 static inline
@@ -258,6 +255,16 @@ int klp_compare_address(unsigned long pc, unsigned long func_addr,
 
 void arch_klp_init(void);
 int klp_module_delete_safety_check(struct module *mod);
+
+typedef int (*klp_add_func_t)(struct list_head *func_list,
+			       unsigned long func_addr, unsigned long func_size,
+			       const char *func_name, int force);
+
+struct walk_stackframe_args {
+	void *data;
+	int ret;
+	bool (*check_func)(void *data, int *ret, unsigned long pc);
+};
 
 #endif
 
@@ -309,12 +316,32 @@ static inline int klp_module_coming(struct module *mod) { return 0; }
 static inline void klp_module_going(struct module *mod) {}
 static inline bool klp_patch_pending(struct task_struct *task) { return false; }
 static inline void klp_update_patch_state(struct task_struct *task) {}
+#ifdef CONFIG_LIVEPATCH_BREAKPOINT_NO_STOP_MACHINE
+void klp_copy_process(struct task_struct *child);
+#else
 static inline void klp_copy_process(struct task_struct *child) {}
+#endif
 static inline bool klp_have_reliable_stack(void) { return true; }
 
 #ifndef klp_smp_isb
 #define klp_smp_isb()
 #endif
+
+#define KLP_MIGRATION_NAME_PREFIX	"migration/"
+static inline bool klp_is_migration_thread(const char *task_name)
+{
+	/*
+	 * current on other CPU
+	 * we call this in stop_machine, so the current
+	 * of each CPUs is migration, just compare the
+	 * task_comm here, because we can't get the
+	 * cpu_curr(task_cpu(t))). This assumes that no
+	 * other thread will pretend to be a stopper via
+	 * task_comm.
+	 */
+	return !strncmp(task_name, KLP_MIGRATION_NAME_PREFIX,
+			sizeof(KLP_MIGRATION_NAME_PREFIX) - 1);
+}
 
 #endif /* CONFIG_LIVEPATCH_PER_TASK_CONSISTENCY */
 
