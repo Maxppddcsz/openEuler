@@ -1182,6 +1182,8 @@ void inet_register_protosw(struct inet_protosw *p)
 		/* Check only the non-wild match. */
 		if ((INET_PROTOSW_PERMANENT & answer->flags) == 0)
 			break;
+		if (p->flags & INET_PROTOSW_PERMANENT_OVERRIDE)
+			break;
 		if (protocol == answer->protocol)
 			goto out_permanent;
 		last_perm = lh;

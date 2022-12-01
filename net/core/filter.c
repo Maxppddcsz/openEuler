@@ -6964,6 +6964,42 @@ static const struct bpf_func_proto bpf_sock_ops_reserve_hdr_opt_proto = {
 	.arg3_type	= ARG_ANYTHING,
 };
 
+typedef u32 (*bpf_parse_protocol_func)(struct bpf_mem_ptr* msg);
+bpf_parse_protocol_func parse_protocol_func = NULL;
+EXPORT_SYMBOL(parse_protocol_func);
+
+typedef struct bpf_mem_ptr* (*bpf_get_protocol_element_func)(char *key);
+bpf_get_protocol_element_func get_protocol_element_func = NULL;
+EXPORT_SYMBOL(get_protocol_element_func);
+
+BPF_CALL_1(bpf_parse_header_msg, struct bpf_mem_ptr *, msg)
+{
+	if (!parse_protocol_func)
+		return -ENOTSUPP;
+	return parse_protocol_func(msg);
+}
+
+static const struct bpf_func_proto bpf_parse_header_msg_proto = {
+	.func		= bpf_parse_header_msg,
+	.gpl_only	= true,
+	.ret_type	= RET_INTEGER,
+	.arg1_type	= ARG_ANYTHING,
+};
+
+BPF_CALL_1(bpf_get_msg_header_element, char *, key)
+{
+	if (!get_protocol_element_func)
+		return -ENOTSUPP;
+	return get_protocol_element_func(key);
+}
+
+static const struct bpf_func_proto bpf_get_msg_header_element_proto = {
+	.func		= bpf_get_msg_header_element,
+	.gpl_only	= true,
+	.ret_type	= RET_PTR_TO_ALLOC_MEM_OR_NULL,
+	.arg1_type	= ARG_ANYTHING,
+};
+
 #endif /* CONFIG_INET */
 
 bool bpf_helper_changes_pkt_data(void *func)
@@ -7392,6 +7428,10 @@ sock_ops_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
 		return &bpf_sock_ops_reserve_hdr_opt_proto;
 	case BPF_FUNC_tcp_sock:
 		return &bpf_tcp_sock_proto;
+	case BPF_FUNC_parse_header_msg:
+		return &bpf_parse_header_msg_proto;
+	case BPF_FUNC_get_msg_header_element:
+		return &bpf_get_msg_header_element_proto;
 #endif /* CONFIG_INET */
 	default:
 		return bpf_sk_base_func_proto(func_id);
