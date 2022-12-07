@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .55.0
-%global pkg_release         .54
+%global maintenance_release .68.0
+%global pkg_release         .55
 %global rt_release          .rt62
 
 %define with_debuginfo 1
@@ -71,7 +71,7 @@ Source9002: series.conf
 Source9998: patches.tar.bz2
 %endif
 
-Patch0: 0000-kernel-rt62.patch
+Patch0: 0001-add-preemptRT-patch.patch
 Patch1: 0001-kernel-rt62-modify-defconfig.patch
 
 #BuildRequires:
@@ -885,6 +885,11 @@ fi
 %endif
 
 %changelog
+
+* Wed Dec 06 2022 kylin-mayukun <mayukun@kylinos.cn> - 5.10.0-60.68.0.55
+- update preempt-rt kernel to 5.10.0-60.68.0
+
+
 * Wed Sep 14 2022 kylin-mayukun <mayukun@kylinos.cn> - 5.10.0-60.55.0.54
 - update preempt-rt kernel to 5.10.0-60.55.0
 
