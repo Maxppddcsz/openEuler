@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .68.0
-%global pkg_release         .93
+%global maintenance_release .70.0
+%global pkg_release         .94
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -883,6 +883,765 @@ fi
 %endif
 
 %changelog
+* Wed Dec 07 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.70.0.94
+- staging: rtl8712: fix use after free bugs
+- drivers/perf: fixed the issue that the kabi value changed
+- drm/i915: fix TLB invalidation for Gen12 video and compute engines
+- l2tp: Don't sleep and disable BH under writer-side sk_callback_lock
+- l2tp: Serialize access to sk_user_data with sk_callback_lock
+- Bluetooth: L2CAP: Fix u8 overflow
+- dm: Fix UAF in run_timer_softirq()
+- dm-thin: Resume failed in FAIL mode
+- mm: hugetlb: fix UAF in hugetlb_handle_userfault
+- ARM: 9160/1: NOMMU: Reload __secondary_data after PROCINFO_INITFUNC
+- ARM: 9059/1: cache-v7: get rid of mini-stack
+- ARM: 9058/1: cache-v7: refactor v7_invalidate_l1 to avoid clobbering r5/r6
+- block: check flags of claimed slave bdev to fix uaf for bd_holder_dir
+- mpi: Fix length check in mpi_key_length()
+- dm btree spine: show warning if node_check failed in node_prep_for_write()
+- dm btree spine: remove paranoid node_check call in node_prep_for_write()
+- signal: fix deadlock caused by calling printk() under sighand->siglock
+- mm: fix missing handler for __GFP_NOWARN
+- Fix kabi change caused by reverting patches
+- Revert "iommu: Introduce attach/detach_pasid_table API"
+- Revert "iommu: Introduce bind/unbind_guest_msi"
+- Revert "iommu/smmuv3: Allow s1 and s2 configs to coexist"
+- Revert "iommu/smmuv3: Get prepared for nested stage support"
+- Revert "iommu/smmuv3: Implement attach/detach_pasid_table"
+- Revert "iommu/smmuv3: Allow stage 1 invalidation with unmanaged ASIDs"
+- Revert "iommu/smmuv3: Implement cache_invalidate"
+- Revert "dma-iommu: Implement NESTED_MSI cookie"
+- Revert "iommu/smmuv3: Nested mode single MSI doorbell per domain enforcement"
+- Revert "iommu/smmuv3: Enforce incompatibility between nested mode and HW MSI regions"
+- Revert "iommu/smmuv3: Implement bind/unbind_guest_msi"
+- Revert "iommu/smmuv3: report additional recoverable faults"
+- Revert "vfio: VFIO_IOMMU_SET_PASID_TABLE"
+- Revert "vfio: VFIO_IOMMU_CACHE_INVALIDATE"
+- Revert "vfio: VFIO_IOMMU_SET_MSI_BINDING"
+- Revert "vfio/pci: Add VFIO_REGION_TYPE_NESTED region type"
+- Revert "vfio/pci: Register an iommu fault handler"
+- Revert "vfio/pci: Allow to mmap the fault queue"
+- Revert "vfio: Use capability chains to handle device specific irq"
+- Revert "vfio/pci: Add framework for custom interrupt indices"
+- Revert "vfio: Add new IRQ for DMA fault reporting"
+- Revert "vfio/pci: Register and allow DMA FAULT IRQ signaling"
+- Revert "vfio: Document nested stage control"
+- Revert "vfio/pci: Register a DMA fault response region"
+- Revert "vfio/pci: Inject page response upon response region fill"
+- Revert "iommu/arm-smmu-v3: Using HTTU with SMMU STE and stage 2 TTD"
+- Revert "iommu/io-pgtable-arm: Make data access permissions of stage1/2 compatible"
+- Revert "iommu/io-pgtable-arm: Remove the limitation on the page table format of sync/clear_dirty_log()"
+- Revert "iommu/arm-smmu-v3: Change the TLBI CMD in arm_smmu_cache_invalidate()"
+- Revert "iommu/arm-smmu-v3: Align invalid range with leaf page size upwards when support RIL"
+- Revert "iommu/arm-smmu-v3: Standardize granule size when support RIL"
+- Revert "iommu/arm-smmu-v3: Remove the redundant shift operation of 'size'"
+- Revert "iommu: fix build error when CONFIG_IOMMU_API is off"
+- Revert "vfio/pci: Fix wrong return value when get iommu attribute DOMAIN_ATTR_NESTING"
+- Revert "iommu/smmuv3: Remove the S1 mapping restriction of dirty log"
+- perf/core: Fix reentry problem in perf_output_read_group()
+- tty: serial: uartlite: Disable clocks in case of errors
+- cgroup: Fix race condition at rebind_subsystems()
+- xfs: Fix unreferenced object reported by kmemleak in xfs_sysfs_init()
+- xfs: fix memory leak in xfs_errortag_init
+- xfs: fix sb write verify for lazysbcount
+- xfs: reject crazy array sizes being fed to XFS_IOC_GETBMAP*
+- xfs: prevent a WARN_ONCE() in xfs_ioc_attr_list()
+- xfs: prevent a UAF when log IO errors race with unmount
+- xfs: purge dquots after inode walk fails during quotacheck
+- xfs: revert "xfs: actually bump warning counts when we send warnings"
+- xfs: run callbacks before waking waiters in xlog_state_shutdown_callbacks
+- xfs: async CIL flushes need pending pushes to be made stable
+- xfs: don't generate selinux audit messages for capability testing
+- xfs: only bother with sync_filesystem during readonly remount
+- xfs: remove xfs_inew_wait
+- xfs: mark a data structure sick if there are cross-referencing errors
+- xfs: restore speculative_cow_prealloc_lifetime sysctl
+- xfs: make xfs_file_aio_write_checks IOCB_NOWAIT-aware
+- xfs: scrub should mark a directory corrupt if any entries cannot be iget'd
+- xfs: factor out a xfs_ilock_iocb helper
+- xfs: fix parent pointer scrubber bailing out on unallocated inodes
+- xfs: fix uaf when leaf dir bestcount not match with dir data blocks
+- xfs: Fix dax inode extent calculation when direct write is performed on an unwritten extent
+- xfs: Check for extent overflow when swapping extents
+- xfs: Check for extent overflow when remapping an extent
+- xfs: Check for extent overflow when moving extent from cow to data fork
+- xfs: Check for extent overflow when writing to unwritten extent
+- xfs: Check for extent overflow when adding/removing xattrs
+- xfs: Check for extent overflow when renaming dir entries
+- xfs: Check for extent overflow when removing dir entries
+- xfs: Check for extent overflow when adding dir entries
+- xfs: Check for extent overflow when punching a hole
+- xfs: Check for extent overflow when trivally adding a new extent
+- xfs: Add helper for checking per-inode extent count overflow
+- xfs: flush inode gc workqueue before clearing agi bucket
+- xfs: check sb_meta_uuid for dabuf buffer recovery
+- xfs: Fix the free logic of state in xfs_attr_node_hasname
+- xfs: reduce kvmalloc overhead for CIL shadow buffers
+- xfs: only run COW extent recovery when there are no live extents
+- xfs: remove all COW fork extents when remounting readonly
+- xfs: don't catch dax+reflink inodes as corruption in verifier
+- xfs: fix soft lockup via spinning in filestream ag selection loop
+- xfs: return errors in xfs_fs_sync_fs
+- bpf, test_run: Fix alignment problem in bpf_prog_test_run_skb()
+- PCI: Do not enable AtomicOps on VFs
+- ext4: fix bug in extents parsing when eh_entries == 0 and eh_depth > 0
+- config: enable CONFIG_EFI_VARS_PSTORE_DEFAULT_DISABLE by default
+- scsi: hisi_sas: Prevent parallel FLR and controller reset
+- scsi: hisi_sas: Prevent parallel controller reset and control phy command
+- xfs: fix incorrect i_nlink caused by inode racing
+- block: Fix kabi broken in blk-merge.h and blk-cgroup.h
+- block: don't merge across cgroup boundaries if blkcg is enabled
+- ima: Handle -ESTALE returned by ima_filter_rule_match()
+- ima: Simplify ima_lsm_copy_rule
+- selftests: bpf: Don't run sk_lookup in verifier tests
+- bpf: Add PROG_TEST_RUN support for sk_lookup programs
+- bpf: Consolidate shared test timing code
+- arm64/mm: Drop THP conditionality from FORCE_MAX_ZONEORDER
+- blk-mq: fix io hang for scsi drivers that depends on timeout handling during scan
+- blk-mq: fix null pointer dereference in blk_mq_queue_tag_busy_ite
+- KVM: arm64: Only probe Hisi ncsnp feature on Hisi CPUs
+- dm ioctl: print error when HC and MD do not match
+- block: fix use after free for bd_holder_dir
+- Revert "block: Fix UAF in bd_link_disk_holder()"
+- block: Fix UAF in bd_link_disk_holder()
+- ftrace: Fix use-after-free for dynamic ftrace_ops
+- blk-mq: fix null pointer dereference in blk_mq_clear_rq_mapping()
+- scsi: hisi_sas: Revert "scsi: hisi_sas: Limit max hw sectors for v3 HW"
+- bfq: Make sure bfqg for which we are queueing requests is online
+- bfq: Get rid of __bio_blkcg() usage
+- bfq: Track whether bfq_group is still online
+- Revert "block, bfq: move bfqq to root_group if parent group is offlined"
+- blk-wbt: fix that 'rwb->wc' is always set to 1 in wbt_init()
+- blk-wbt: call rq_qos_add() after wb_normal is initialized
+- block: wbt: Remove unnecessary invoking of wbt_update_limits in wbt_init
+- blk-mq: fix missing blk_account_io_done() in error path
+- stack: Declare {randomize_,}kstack_offset to fix Sparse warnings
+- stack: Introduce CONFIG_RANDOMIZE_KSTACK_OFFSET
+- stack: Replace "o" output with "r" input constraint
+- lkdtm: Add REPORT_STACK for checking stack offsets
+- arm64: entry: Enable random_kstack_offset support
+- x86/entry: Enable random_kstack_offset support
+- stack: Optionally randomize kernel stack offset each syscall
+- jump_label: Provide CONFIG-driven build state defaults
+- ext4: fix super block checksum incorrect after mount
+- Revert "block/wbt: fix negative inflight counter when remove scsi device"
+- !313 openEuler: add openEuler/MAINTAINERS for Maintainers & Committers
+- openEuler: add openEuler/MAINTAINERS for Maintainers & Committers
+- !301 txgbe : fix arm32 compiler error warning in txgbe_main.c
+- !287 defconfig: add helper script for update openeuler_defconfig
+- configs: update arch/x86/configs/openeuler_defconfig
+- configs: update arch/arm64/configs/openeuler_defconfig
+- kconfig: Add script to update openeuler_defconfig
+- !264 Add LoongArch support
+- !297 tc-testing: fix a bug in gitignore of tc-testing
+- openeuler: net: txgbe: fix arm 32bit arch compile warning.
+- tc-testing: gitignore, delete plugins directory
+- !277 net: ngbe: fix ngbe checkpatch warnnings
+- LoongArch: defconfig: Set CONFIG_TXGBE=m by default
+- LS7A2000 : Add quirk for OHCI device rev 0x02
+- stmmac: pci: Add dwmac support for Loongson
+- LoongArch: hugepage table replace tlb
+- LoongArch: change global registers to local registers
+- LoongArch: Old BPI compatibility
+- LoongArch: add kernel setvirtmap for runtime
+- LoongArch: enable some netfilter related configs
+- LoongArch: defconfig: use make defconfig to save a clean defconfig
+- tools perf: Fix compilation error with new binutils
+- tools include: add dis-asm-compat.h to handle version differences
+- tools build: Don't display disassembler-four-args feature test
+- tools build: Add feature test for init_disassemble_info API changes
+- LoongArch: Support R_LARCH_GOT_PC_{LO12,HI20} in modules
+- LoongArch: Support PC-relative relocations in modules
+- LoongArch: Define ELF relocation types added in v2.00 ABI
+- LoongArch: Adjust symbol addressing for AS_HAS_EXPLICIT_RELOCS
+- LoongArch: Add Kconfig option AS_HAS_EXPLICIT_RELOCS
+- irqchip/loongson-liointc: Fix an error handling path in liointc_init()
+- irqchip/loongarch: Fix irq_domain_alloc_fwnode() abuse
+- irqchip/loongson-eiointc: Fix a build warning
+- irqchip/loongson-eiointc: Fix irq affinity setting
+- irqchip: Adjust Kconfig for Loongson
+- PCI: Add quirk for LS7A to avoid reboot failure
+- PCI: loongson: Improve the MRRS quirk for LS7A
+- PCI: loongson: Work around LS7A incorrect Interrupt Pin registers
+- PCI: loongson: Don't access non-existent devices
+- PCI: loongson: Add ACPI init support
+- PCI: loongson: Use generic 8/16/32-bit config ops on LS2K/LS7A
+- irqchip / ACPI: Introduce ACPI_IRQ_MODEL_LPIC for LoongArch
+- ACPI: irq: Allow acpi_gsi_to_irq() to have an arch-specific fallback
+- APCI: irq: Add support for multiple GSI domains
+- drm/radeon: Workaround radeon driver bug for Loongson
+- LoongArch: Add writecombine support for drm
+- Input: i8042 - Add PNP checking hook for Loongson
+- LoongArch: Add qspinlock support
+- LoongArch: Add perf events support
+- LoongArch: Add SysRq-x (TLB Dump) support
+- LoongArch: Use TLB for ioremap()
+- LoongArch: Enable ARCH_WANT_HUGETLB_PAGE_OPTIMIZE_VMEMMAP
+- LoongArch: Add sparse memory vmemmap support
+- MIPS&LoongArch&NIOS2: Adjust prototypes of p?d_init()
+- irqchip/loongson-pch-lpc: Add suspend/resume support
+- irqchip/loongson-pch-pic: Add suspend/resume support
+- irqchip/loongson-eiointc: Add suspend/resume support
+- irqchip/loongson-htvec: Add suspend/resume support
+- irqchip/loongson-htvec: Add ACPI init support
+- ACPI / table: Print CORE_PIC information when MADT is parsed
+- ACPICA: Events: Support fixed pcie wake event
+- ACPICA: MADT: Add LoongArch APICs support
+- ACPI: Add LoongArch support for ACPI_PROCESSOR/ACPI_NUMA
+- Revert "LoongArch: Provisionally add ACPICA data structures"
+- loongarch: efi: enable generic EFI compressed boot
+- efi/libstub: implement generic EFI zboot
+- efi/libstub: use EFI provided memcpy/memset routines
+- efi/libstub: add some missing EFI prototypes
+- efi/loongarch: Add efistub booting support
+- irqchip: Select downstream irqchip drivers for LoongArch CPU
+- LoongArch: Add subword xchg/cmpxchg emulation
+- LoongArch: Cleanup headers to avoid circular dependency
+- LoongArch: Cleanup reset routines with new API
+- LoongArch: Fix build warnings in VDSO
+- LoongArch: Select PCI_QUIRKS to avoid build error
+- LoongArch: Update Loongson-3 default config file
+- LoongArch: Add USER_STACKTRACE support
+- LoongArch: Add STACKTRACE support
+- LoongArch: Add prologue unwinder support
+- LoongArch: Add guess unwinder support
+- LoongArch: Add vDSO syscall __vdso_getcpu()
+- LoongArch: Add PCI controller support
+- LoongArch: Parse MADT to get multi-processor information
+- LoongArch: Jump to the link address before enable PG
+- LoongArch: Requires __force attributes for any casts
+- LoongArch: Fix unsigned comparison with less than zero
+- LoongArch: Adjust arch/loongarch/Kconfig
+- LoongArch: cpuinfo: Fix a warning for CONFIG_CPUMASK_OFFSTACK
+- irqchip/loongson-pch-pic: Move find_pch_pic() into CONFIG_ACPI
+- LoongArch: Fix wrong "ROM Size" of boardinfo
+- LoongArch: Fix missing fcsr in ptrace's fpr_set
+- LoongArch: Fix shared cache size calculation
+- LoongArch: Disable executable stack by default
+- LoongArch: Remove unused variables
+- LoongArch: Remove clock setting during cpu hotplug stage
+- LoongArch: Remove useless header compiler.h
+- LoongArch: Remove several syntactic sugar macros for branches
+- LoongArch: Re-tab the assembly files
+- LoongArch: Simplify "BGT foo, zero" with BGTZ
+- LoongArch: Simplify "BLT foo, zero" with BLTZ
+- LoongArch: Simplify "BEQ/BNE foo, zero" with BEQZ/BNEZ
+- LoongArch: Use the "move" pseudo-instruction where applicable
+- LoongArch: Use the "jr" pseudo-instruction where applicable
+- LoongArch: Use ABI names of registers where appropriate
+- irqchip: Add LoongArch CPU interrupt controller support
+- LoongArch: fix kabi change due to enum chuph_state
+- irqchip: Add Loongson Extended I/O interrupt controller support
+- irqchip/loongson-liointc: Add ACPI init support
+- irqchip/loongson-pch-msi: Add ACPI init support
+- irqchip/loongson-pch-pic: Add ACPI init support
+- irqchip: Add Loongson PCH LPC controller support
+- LoongArch: Prepare to support multiple pch-pic and pch-msi irqdomain
+- LoongArch: Use ACPI_GENERIC_GSI for gsi handling
+- LoongArch: Provisionally add ACPICA data structures
+- loongarch: drop definition of PGD_ORDER
+- loongarch: drop definition of PUD_ORDER
+- loongarch: drop definition of PMD_ORDER
+- loongarch: drop definition of PTE_ORDER
+- LoongArch: Fix section mismatch warning
+- LoongArch: Fix build errors for tinyconfig
+- LoongArch: Remove obsolete mentions of vcsr
+- LoongArch: Drop these obsolete selects in Kconfig
+- efi: Simplify arch_efi_call_virt() macro
+- LoongArch: Make compute_return_era() return void
+- LoongArch: Fix wrong fpu version
+- LoongArch: Fix EENTRY/MERRENTRY setting in setup_tlb_handler()
+- LoongArch: Fix sleeping in atomic context in setup_tlb_handler()
+- LoongArch: Fix the _stext symbol address
+- LoongArch: Fix the !THP build
+- LoongArch: vmlinux.lds.S: Add missing ELF_DETAILS
+- LoongArch: Remove MIPS comment about cycle counter
+- LoongArch: Fix the !CONFIG_SMP build
+- LoongArch: Add Loongson-3 default config file
+- LoongArch: Add Non-Uniform Memory Access (NUMA) support
+- LoongArch: Add multi-processor (SMP) support
+- LoongArch: Add VDSO and VSYSCALL support
+- LoongArch: Add some library functions
+- LoongArch: Add misc common routines
+- LoongArch: Add ELF and module support
+- LoongArch: Add signal handling support
+- LoongArch: Add system call support
+- LoongArch: Add memory management
+- LoongArch: Add process management
+- LoongArch: Add exception/interrupt handling
+- LoongArch: Add boot and setup routines
+- LoongArch: Add other common headers
+- LoongArch: Add atomic/locking headers
+- LoongArch: Add CPU definition headers
+- LoongArch: Add ELF-related definitions
+- LoongArch: Add build infrastructure
+- fbdev: Prevent probing generic drivers if a FB is already registered
+- serial: 8250_pnp: Support configurable clock frequency
+- genirq/generic_chip: Export irq_unmap_generic_chip
+- mm/swapops: make is_pmd_migration_entry more strict
+- initramfs: Provide a common initrd reserve function
+- initrd: Add the preprocessor guard in initrd.h
+- PCI/ERR: Retain status from error notification
+- tee: fix memory leak in tee_shm_register()
+- qrtr: Convert qrtr_ports from IDR to XArray
+- can: j1939: j1939_sk_queue_activate_next_locked(): replace WARN_ON_ONCE with netdev_warn_once()
+- tracing/probes: Have kprobes and uprobes use $COMM too
+- netfilter: nf_tables: fix audit memory leak in nf_tables_commit
+- netfilter: nftables: fix a warning message in nf_tables_commit_audit_collect()
+- MIPS: tlbex: Explicitly compare _PAGE_NO_EXEC against 0
+- video: fbdev: i740fb: Check the argument of i740_calc_vclk()
+- powerpc/64: Init jump labels before parse_early_param()
+- smb3: check xattr value length earlier
+- f2fs: fix to do sanity check on segment type in build_sit_entries()
+- f2fs: fix to avoid use f2fs_bug_on() in f2fs_new_node_page()
+- ALSA: control: Use deferred fasync helper
+- ALSA: timer: Use deferred fasync helper
+- ALSA: core: Add async signal helpers
+- powerpc/32: Don't always pass -mcpu=powerpc to the compiler
+- watchdog: export lockup_detector_reconfigure
+- RISC-V: Add fast call path of crash_kexec()
+- riscv: mmap with PROT_WRITE but no PROT_READ is invalid
+- modules: Ensure natural alignment for .altinstructions and __bug_table sections
+- mips: cavium-octeon: Fix missing of_node_put() in octeon2_usb_clocks_start
+- vfio: Clear the caps->buf to NULL after free
+- tty: serial: Fix refcount leak bug in ucc_uart.c
+- lib/list_debug.c: Detect uninitialized lists
+- ext4: avoid resizing to a partial cluster size
+- ext4: avoid remove directory when directory is corrupted
+- drivers:md:fix a potential use-after-free bug
+- nvmet-tcp: fix lockdep complaint on nvmet_tcp_wq flush during queue teardown
+- md: Notify sysfs sync_completed in md_reap_sync_thread()
+- dmaengine: sprd: Cleanup in .remove() after pm_runtime_get_sync() failed
+- selftests/kprobe: Do not test for GRP/ without event failures
+- csky/kprobe: reclaim insn_slot on kprobe unregistration
+- RDMA/rxe: Limit the number of calls to each tasklet
+- um: add "noreboot" command line option for PANIC_TIMEOUT=-1 setups
+- PCI/ACPI: Guard ARM64-specific mcfg_quirks
+- cxl: Fix a memory leak in an error handling path
+- pinctrl: intel: Check against matching data instead of ACPI companion
+- gadgetfs: ep_io - wait until IRQ finishes
+- scsi: lpfc: Prevent buffer overflow crashes in debugfs with malformed user input
+- clk: qcom: clk-alpha-pll: fix clk_trion_pll_configure description
+- zram: do not lookup algorithm in backends table
+- uacce: Handle parent device removal or parent driver module rmmod
+- clk: qcom: ipq8074: dont disable gcc_sleep_clk_src
+- vboxguest: Do not use devm for irq
+- usb: dwc2: gadget: remove D+ pull-up while no vbus with usb-role-switch
+- usb: renesas: Fix refcount leak bug
+- usb: host: ohci-ppc-of: Fix refcount leak bug
+- clk: ti: Stop using legacy clkctrl names for omap4 and 5
+- drm/meson: Fix overflow implicit truncation warnings
+- irqchip/tegra: Fix overflow implicit truncation warnings
+- usb: gadget: uvc: call uvc uvcg_warn on completed status instead of uvcg_info
+- usb: cdns3 fix use-after-free at workaround 2
+- platform/chrome: cros_ec_proto: don't show MKBP version if unsupported
+- PCI: Add ACS quirk for Broadcom BCM5750x NICs
+- drm/sun4i: dsi: Prevent underflow when computing packet sizes
+- netfilter: add helper function to set up the nfnetlink header and use it
+- netfilter: nftables: add helper function to set the base sequence number
+- audit: log nftables configuration change events once per table
+- drm/meson: Fix refcount bugs in meson_vpu_has_available_connectors()
+- ASoC: SOF: intel: move sof_intel_dsp_desc() forward
+- gcc-plugins: Undefine LATENT_ENTROPY_PLUGIN when plugin disabled for a file
+- kbuild: fix the modules order between drivers and libs
+- igb: Add lock to avoid data race
+- stmmac: intel: Add a missing clk_disable_unprepare() call in intel_eth_pci_remove()
+- fec: Fix timer capture timing in `fec_ptp_enable_pps()`
+- i40e: Fix to stop tx_timeout recovery if GLOBR fails
+- regulator: pca9450: Remove restrictions for regulator-name
+- i2c: imx: Make sure to unregister adapter on remove()
+- ice: Ignore EEXIST when setting promisc mode
+- net: dsa: sja1105: fix buffer overflow in sja1105_setup_devlink_regions()
+- net: genl: fix error path memory leak in policy dumping
+- net: dsa: felix: fix ethtool 256-511 and 512-1023 TX packet counters
+- net: dsa: microchip: ksz9477: fix fdb_dump last invalid entry
+- net: moxa: pass pdev instead of ndev to DMA functions
+- net: dsa: mv88e6060: prevent crash on an unused port
+- spi: meson-spicc: add local pow2 clock ops to preserve rate between messages
+- powerpc/pci: Fix get_phb_number() locking
+- netfilter: nf_tables: check NFT_SET_CONCAT flag if field_count is specified
+- netfilter: nf_tables: validate NFTA_SET_ELEM_OBJREF based on NFT_SET_OBJECT flag
+- netfilter: nf_tables: really skip inactive sets when allocating name
+- ASoC: tas2770: Fix handling of mute/unmute
+- ASoC: tas2770: Drop conflicting set_bias_level power setting
+- ASoC: tas2770: Allow mono streams
+- ASoC: tas2770: Set correct FSYNC polarity
+- iavf: Fix adminq error handling
+- nios2: add force_successful_syscall_return()
+- nios2: restarts apply only to the first sigframe we build...
+- nios2: fix syscall restart checks
+- nios2: traced syscall does need to check the syscall number
+- nios2: don't leave NULLs in sys_call_table[]
+- nios2: page fault et.al. are *not* restartable syscalls...
+- dpaa2-eth: trace the allocated address instead of page struct
+- perf probe: Fix an error handling path in 'parse_perf_probe_command()'
+- geneve: fix TOS inheriting for ipv4
+- xen/xenbus: fix return type in xenbus_file_read()
+- nfp: ethtool: fix the display error of `ethtool -m DEVNAME`
+- NTB: ntb_tool: uninitialized heap data in tool_fn_write()
+- tools build: Switch to new openssl API for test-libcrypto
+- kbuild: dummy-tools: avoid tmpdir leak in dummy gcc
+- ceph: don't leak snap_rwsem in handle_cap_grant
+- tools/vm/slabinfo: use alphabetic order when two values are equal
+- ceph: use correct index when encoding client supported features
+- dt-bindings: clock: qcom,gcc-msm8996: add more GCC clock sources
+- dt-bindings: arm: qcom: fix MSM8916 MTP compatibles
+- vsock: Set socket state back to SS_UNCONNECTED in vsock_connect_timeout()
+- plip: avoid rcu debug splat
+- ipv6: do not use RT_TOS for IPv6 flowlabel
+- geneve: do not use RT_TOS for IPv6 flowlabel
+- ACPI: property: Return type of acpi_add_nondev_subnodes() should be bool
+- pinctrl: qcom: sm8250: Fix PDC map
+- pinctrl: sunxi: Add I/O bias setting for H6 R-PIO
+- pinctrl: qcom: msm8916: Allow CAMSS GP clocks to be muxed
+- pinctrl: nomadik: Fix refcount leak in nmk_pinctrl_dt_subnode_to_map
+- net: bgmac: Fix a BUG triggered by wrong bytes_compl
+- virtio_net: fix memory leak inside XPD_TX with mergeable
+- SUNRPC: Reinitialise the backchannel request buffers before reuse
+- sunrpc: fix expiry of auth creds
+- net: atlantic: fix aq_vec index out of range error
+- can: mcp251x: Fix race condition on receive interrupt
+- bpf: Check the validity of max_rdwr_access for sock local storage map iterator
+- bpf: Acquire map uref in .init_seq_private for sock{map,hash} iterator
+- bpf: Acquire map uref in .init_seq_private for sock local storage map iterator
+- bpf: Acquire map uref in .init_seq_private for hash map iterator
+- bpf: Acquire map uref in .init_seq_private for array map iterator
+- NFSv4/pnfs: Fix a use-after-free bug in open
+- NFSv4.1: RECLAIM_COMPLETE must handle EACCES
+- NFSv4: Fix races in the legacy idmapper upcall
+- NFSv4.1: Handle NFS4ERR_DELAY replies to OP_SEQUENCE correctly
+- NFSv4.1: Don't decrease the value of seq_nr_highest_sent
+- Documentation: ACPI: EINJ: Fix obsolete example
+- apparmor: Fix memleak in aa_simple_write_to_buffer()
+- apparmor: fix reference count leak in aa_pivotroot()
+- apparmor: fix overlapping attachment computation
+- apparmor: fix setting unconfined mode on a loaded profile
+- apparmor: fix aa_label_asxprint return check
+- apparmor: Fix failed mount permission check error message
+- apparmor: fix absroot causing audited secids to begin with =
+- apparmor: fix quiet_denied for file rules
+- can: ems_usb: fix clang's -Wunaligned-access warning
+- ALSA: usb-audio: More comprehensive mixer map for ASUS ROG Zenith II
+- tracing: Have filter accept "common_cpu" to be consistent
+- btrfs: fix lost error handling when looking up extended ref on log replay
+- mmc: meson-gx: Fix an error handling path in meson_mmc_probe()
+- mmc: pxamci: Fix an error handling path in pxamci_probe()
+- mmc: pxamci: Fix another error handling path in pxamci_probe()
+- ata: libata-eh: Add missing command name
+- rds: add missing barrier to release_refill
+- x86/mm: Use proper mask when setting PUD mapping
+- ALSA: hda/realtek: Add quirk for Clevo NS50PU, NS70PU
+- ALSA: info: Fix llseek return value when using callback
+- !280 ksmbd-introduce-new-SMB3-kernel-server
+- ksmbd: add reserved room in ipc request/response
+- ksmbd: limits exceeding the maximum allowable outstanding requests
+- ksmbd: move credit charge deduction under processing request
+- ksmbd: add support for smb2 max credit parameter
+- ksmbd: set unique value to volume serial field in FS_VOLUME_INFORMATION
+- cifsd: add Kconfig and Makefile
+- ksmbd: Fix wrong return value and message length check in smb2_ioctl()
+- ksmbd: set NTLMSSP_NEGOTIATE_SEAL flag to challenge blob
+- ksmbd: fix encryption failure issue for session logoff response
+- ksmbd: fix endless loop when encryption for response fails
+- ksmbd: return STATUS_BAD_NETWORK_NAME error status if share is not configured
+- ksmbd: prevent out of bound read for SMB2_TREE_CONNNECT
+- ksmbd: Fix user namespace mapping
+- ksmbd: fix use-after-free bug in smb2_tree_disconect
+- ksmbd: fix memory leak in smb2_handle_negotiate
+- ksmbd: fix racy issue while destroying session on multichannel
+- ksmbd: use vfs_llseek instead of dereferencing NULL
+- ksmbd: remove unused ksmbd_share_configs_cleanup function
+- ksmbd: fix kernel oops from idr_remove()
+- ksmbd: replace sessions list in connection with xarray
+- ksmbd: use wait_event instead of schedule_timeout()
+- ksmbd: fix incorrect handling of iterate_dir
+- ksmbd: handle smb2 query dir request for OutputBufferLength that is too small
+- ksmbd: add channel rwlock
+- ksmbd: smbd: fix connection dropped issue
+- ksmbd: fix reference count leak in smb_check_perm_dacl()
+- ksmbd: reduce smb direct max read/write size
+- ksmbd: don't align last entry offset in smb2 query directory
+- ksmbd: fix same UniqueId for dot and dotdot entries
+- ksmbd: smbd: validate buffer descriptor structures
+- ksmbd: fix SMB 3.11 posix extension mount failure
+- ksmbd: fix guest connection failure with nautilus
+- ksmbd: uninitialized variable in create_socket()
+- ksmbd: smbd: fix missing client's memory region invalidation
+- ksmbd: add smb-direct shutdown
+- ksmbd: smbd: change the default maximum read/write, receive size
+- ksmbd: smbd: create MR pool
+- ksmbd: smbd: call rdma_accept() under CM handler
+- ksmbd: set 445 port to smbdirect port by default
+- ksmbd: register ksmbd ib client with ib_register_client()
+- ksmbd: Fix smb2_get_name() kernel-doc comment
+- ksmbd: Fix smb2_set_info_file() kernel-doc comment
+- ksmbd: Fix buffer_check_err() kernel-doc comment
+- ksmbd: fix multi session connection failure
+- ksmbd: set both ipv4 and ipv6 in FSCTL_QUERY_NETWORK_INTERFACE_INFO
+- ksmbd: set RSS capable in FSCTL_QUERY_NETWORK_INTERFACE_INFO
+- ksmbd: Remove unused fields from ksmbd_file struct definition
+- ksmbd: Remove unused parameter from smb2_get_name()
+- ksmbd: disable SMB2_GLOBAL_CAP_ENCRYPTION for SMB 3.1.1
+- ksmbd: fix uninitialized symbol 'pntsd_size'
+- ksmbd: remove select FS_POSIX_ACL in Kconfig
+- ksmbd: fix memleak in get_file_stream_info()
+- ksmbd: contain default data stream even if xattr is empty
+- ksmbd: downgrade addition info error msg to debug in smb2_get_info_sec()
+- ksmbd: Fix an error handling path in 'smb2_sess_setup()'
+- ksmbd: change LeaseKey data type to u8 array
+- ksmbd: remove smb2_buf_length in smb2_transform_hdr
+- ksmbd: remove smb2_buf_length in smb2_hdr
+- ksmbd: don't need 8byte alignment for request length in ksmbd_check_message
+- ksmbd: Fix buffer length check in fsctl_validate_negotiate_info()
+- ksmbd: Remove redundant 'flush_workqueue()' calls
+- ksmdb: use cmd helper variable in smb2_get_ksmbd_tcon()
+- ksmbd: use ksmbd_req_buf_next() in ksmbd_smb2_check_message()
+- ksmbd: use ksmbd_req_buf_next() in ksmbd_verify_smb_message()
+- ksmbd: add buffer validation in session setup
+- ksmbd: throttle session setup failures to avoid dictionary attacks
+- ksmbd: validate OutputBufferLength of QUERY_DIR, QUERY_INFO, IOCTL requests
+- ksmbd: validate credit charge after validating SMB2 PDU body size
+- ksmbd: add buffer validation for smb direct
+- ksmbd: limit read/write/trans buffer size not to exceed 8MB
+- ksmbd: validate compound response buffer
+- ksmbd: fix potencial 32bit overflow from data area check in smb2_write
+- ksmbd: improve credits management
+- ksmbd: add validation in smb2_ioctl
+- ksmbd: fix oops from fuse driver
+- ksmbd: fix version mismatch with out of tree
+- ksmbd: use buf_data_size instead of recalculation in smb3_decrypt_req()
+- ksmbd: remove the leftover of smb2.0 dialect support
+- ksmbd: check strictly data area in ksmbd_smb2_check_message()
+- ksmbd: add the check to vaildate if stream protocol length exceeds maximum value
+- ksmbd: missing check for NULL in convert_to_nt_pathname()
+- ksmbd: fix transform header validation
+- ksmbd: add buffer validation for SMB2_CREATE_CONTEXT
+- ksmbd: add validation in smb2 negotiate
+- ksmbd: add request buffer validation in smb2_set_info
+- ksmbd: use correct basic info level in set_file_basic_info()
+- ksmbd: remove NTLMv1 authentication
+- ksmbd: fix documentation for 2 functions
+- ksmbd: fix invalid request buffer access in compound
+- ksmbd: remove RFC1002 check in smb2 request
+- ksmbd: use LOOKUP_BENEATH to prevent the out of share access
+- ksmbd: remove follow symlinks support
+- ksmbd: check protocol id in ksmbd_verify_smb_message()
+- ksmbd: add default data stream name in FILE_STREAM_INFORMATION
+- ksmbd: log that server is experimental at module load
+- ksmbd: add validation for FILE_FULL_EA_INFORMATION of smb2_get_info
+- ksmbd: prevent out of share access
+- ksmbd: transport_rdma: Don't include rwlock.h directly
+- ksmbd: fix read of uninitialized variable ret in set_file_basic_info
+- ksmbd: remove unused ksmbd_file_table_flush function
+- ksmbd: smbd: fix dma mapping error in smb_direct_post_send_data
+- ksmbd: Reduce error log 'speed is unknown' to debug
+- ksmbd: remove setattr preparations in set_file_basic_info()
+- ksmbd: ensure error is surfaced in set_file_basic_info()
+- ksmbd: fix __write_overflow warning in ndr_read_string
+- ksmbd: fix permission check issue on chown and chmod
+- ksmbd: don't set FILE DELETE and FILE_DELETE_CHILD in access mask by default
+- ksmbd: smbd: fix kernel oops during server shutdown
+- ksmbd: use proper errno instead of -1 in smb2_get_ksmbd_tcon()
+- ksmbd: update the comment for smb2_get_ksmbd_tcon()
+- ksmbd: change int data type to boolean
+- ksmbd: Fix multi-protocol negotiation
+- ksmbd: fix an oops in error handling in smb2_open()
+- ksmbd: add ipv6_addr_v4mapped check to know if connection from client is ipv4
+- ksmbd: fix missing error code in smb2_lock
+- ksmbd: use channel signingkey for binding SMB2 session setup
+- ksmbd: don't set RSS capable in FSCTL_QUERY_NETWORK_INTERFACE_INFO
+- ksmbd: Return STATUS_OBJECT_PATH_NOT_FOUND if smb2_creat() returns ENOENT
+- ksmbd: fix -Wstringop-truncation warnings
+- ksmbd: Fix potential memory leak in tcp_destroy_socket()
+- ksmbd: add support for negotiating signing algorithm
+- ksmbd: add negotiate context verification
+- ksmbd: fix typo of MS-SMBD
+- ksmbd: move credit charge verification over smb2 request size verification
+- ksmbd: set STATUS_INVALID_PARAMETER error status if credit charge is invalid
+- ksmbd: fix wrong error status return on session setup
+- ksmbd: fix wrong compression context size
+- ksmbd: fix typo in comment
+- ksmbd: fix an error message in ksmbd_conn_trasnport_init
+- ksmbd: set RDMA capability for FSCTL_QUERY_NETWORK_INTERFACE_INFO
+- ksmbd: fix unused err value in smb2_lock
+- ksmbd: fix memory leak in ksmbd_vfs_get_sd_xattr()
+- ksmbd: remove unneeded check_context_err
+- ksmbd: handle error cases first in smb2_create_sd_buffers
+- ksmbd: make smb2_find_context_vals return NULL if not found
+- ksmbd: uninterruptible wait for a file being unlocked
+- ksmbd: free ksmbd_lock when file is closed
+- ksmbd: fix the running request count decrement
+- ksmbd: use kasprintf() in ksmbd_vfs_xattr_stream_name()
+- ksmbd: delete some stray tabs
+- ksmbd: change data type of volatile/persistent id to u64
+- ksmbd: fix memory leak in smb_inherit_dacl()
+- ksmbd: fix memory leak smb2_populate_readdir_entry()
+- ksmbd: fix read on the uninitialized send_ctx
+- ksmbd: remove unneeded NULL check in for_each_netdev
+- ksmbd: Fix read on the uninitialized pointer sess
+- ksmbd: fix kernel oops in ksmbd_rpc_ioctl/rap()
+- ksmbd: adapt vfs api to 5.10
+- ksmbd: replace struct dentry with struct path in some function's arguments
+- ksmbd: reorder and document on-disk and netlink structures in headers
+- ksmbd: change server config string index to enumeration
+- ksmbd: change server state type macro to enumeration
+- ksmbd: change sid types to enumeration
+- ksmbd: change ACE types to enumeration
+- ksmbd: remove SMB1 oplock level macros
+- ksmbd: opencode to remove ATTR_FP macro
+- ksmbd: use ksmbd_vfs_lock_parent to get stable parent dentry
+- ksmbd: opencode to remove FP_INODE macro
+- ksmbd: fix dentry racy with rename()
+- ksmbd: Relax credit_charge check in smb2_validate_credit_charge()
+- ksmbd: allow PROTECTED_DACL_SECINFO and UNPROTECTED_DACL_SECINFO addition information in smb2 set info security
+- ksmbd: replace request and respone buffer macro with inline functions
+- ksmbd: replace SMB_DIRECT_TRANS macro with inline function
+- ksmbd: remove and replace macros with inline functions in smb_common.h
+- ksmbd: remove getting worker state macros
+- ksmbd: replace PAYLOAD_HEAD with inline function
+- ksmbd: replace KSMBD_ALIGN with kernel ALIGN macro
+- ksmbd: replace BUFFER_NR_PAGES with inline function
+- ksmbd: remove macros in transport_ipc.c
+- ksmbd: set MAY_* flags together with open flags
+- ksmbd: factor out a ksmbd_vfs_lock_parent helper
+- ksmbd: move fs/cifsd to fs/ksmbd
+- cifsd: add index.rst in cifs documentation
+- cifsd: fix WARNING: document isn't included in any toctree
+- cifsd: add ksmbd/nfsd interoperability to feature table
+- doc: cifsd: change the reference to configuration.txt
+- cifsd: fix build warnings from cifsd.rst
+- cifsd: update cifsd.rst document
+- cifsd: fix WARNING: Title overline too short
+- ksmbd: use f_bsize in FS_SECTOR_SIZE_INFORMATION
+- ksmbd: remove unneeded NULL check in the list iterator
+- ksmbd: use f_bsize instead of q->limits.logical_block_size
+- ksmbd: change stream type macro to enumeration
+- ksmbd: opencode posix acl functions instead of wrappers
+- ksmbd: factor out a ksmbd_validate_entry_in_use helper from __ksmbd_vfs_rename
+- ksmbd: opencode to avoid trivial wrappers
+- ksmbd: remove ksmbd_err/info
+- ksmbd: replace KSMBD_SHARE_CONFIG_PATH with inline function
+- ksmbd: remove ____ksmbd_align in ksmbd_server.h
+- ksmbd: remove unneeded FIXME comment
+- ksmbd: fix overly long line
+- ksmbd: use goto instead of duplicating the resoure cleanup in ksmbd_open_fd
+- ksmbd: use list_for_each_entry instead of list_for_each
+- ksmbd: remove ksmbd_vfs_copy_file_range
+- ksmbd: initialize variables on the declaration
+- ksmbd: remove cache read/trans buffer support
+- ksmbd: add support for SMB3 multichannel
+- ksmbd: fix kfree of uninitialized pointer oid
+- cifsd: append ksmbd prefix into names for asn1 decoder
+- cifsd: remove duplicated argument
+- cifsd: set epoch in smb2_lease_break response
+- cifsd: fix list_add double add BUG_ON trap in setup_async_work()
+- cifsd: fix additional warnings from checkpatch.pl --strict
+- cifsd: fix potential read overflow in ksmbd_vfs_stream_read()
+- cifsd: check return value of ksmbd_vfs_getcasexattr() correctly
+- cifsd: fix memleak in ksmbd_vfs_stream_read()
+- cifsd: fix memleak in ksmbd_vfs_stream_write()
+- cifsd: make alignment match open parenthesis
+- cifsd: enclose macro variables in parenthesis
+- cifsd: fix Control flow issues in ksmbd_build_ntlmssp_challenge_blob()
+- cifsd: lookup a file with LOOKUP_FOLLOW only if 'follow symlinks = yes'
+- cifsd: Prefer kernel type 'u16' over 'uint16_t'
+- cifsd: remove unnecessary parentheses around
+- cifsd: Alignment should match open parenthesis
+- cifsd: Blank lines aren't necessary after an open brace '{'
+- cifsd: No space is necessary after a cast
+- cifsd: don't use multiple blank lines
+- cifsd: spaces preferred around that '/'
+- cifsd: braces {} should be used on all arms of this statement
+- cifsd: add the check to prevent potential overflow with smb_strtoUTF16() and UNICODE_LEN()
+- cifsd: alignment match open parenthesis
+- cifsd: return -ENOMEM about error from ksmbd_crypto_ctx_find_xxx calls
+- cifsd: simplify error handling in ksmbd_gen_preauth_integrity_hash()
+- cifsd: call kzalloc() directly instead of wrapper
+- cifsd: add default case in switch statment in alloc_shash_desc()
+- cifsd: change success handling to failure handling
+- cifsd: fix wrong return value in ksmbd_crypt_message()
+- cifsd: remove unneeded initialization of rc variable in ksmbd_crypt_message()
+- cifsd: len can never be negative in ksmbd_init_sg()
+- cifsd: add the check if nvec is zero
+- cifsd: never return 1 on failure
+- cifsd: return zero in always success case
+- cifsd: set error return value for memcmp() difference
+- cifsd: remove unneeded type casting
+- cifsd: simplify error handling in ksmbd_auth_ntlm()
+- cifsd: move ret check before the out label
+- cifsd: just return smbhash() instead of using rc return value
+- cifsd: move fips_enabled check before the str_to_key()
+- cifsd: add goto fail in neg_token_init_mech_type()
+- cifsd: use memcmp instead of for loop check in oid_eq()
+- cifsd: add goto fail in asn1_oid_decode()
+- cifsd: add support for FSCTL_DUPLICATE_EXTENTS_TO_FILE
+- cifsd: Do not use 0 or 0xFFFFFFFF for TreeID
+- cifsd: fix xfstests generic/504 test failure
+- cifsd: fix boolreturn.cocci warnings
+- cifsd: fix WARNING: Too many leading tabs
+- cifsd: fix WARNING: Possible unnecessary 'out of memory' message
+- cifsd: decoding gss token using lib/asn1_decoder.c
+- cifsd: fix invalid memory access in smb2_write()
+- cifsd: add support for AES256 encryption
+- cifsd: Fix potential null-ptr-deref in destroy_previous_session()
+- cifsd: Update out_buf_len in smb2_populate_readdir_entry()
+- cifsd: Handle ksmbd_session_rpc_open() failure in create_smb2_pipe()
+- cifsd: Call smb2_set_err_rsp() in smb2_read/smb2_write error path
+- cifsd: Fix regression in smb2_get_info
+- cifsd: Remove is_attributes_write_allowed() wrapper
+- cifsd: Update access check in set_file_allocation_info/set_end_of_file_info
+- cifsd: remove the dead code of unimplemented durable handle
+- cifsd: use d_inode()
+- cifsd: Fix potential null-ptr-deref in smb2_open()
+- cifsd: move nt time functions to misc.c
+- cifsd: remove unused nterr.c file
+- cifsd: remove unused smberr.h
+- cifsd: Remove smb2_put_name()
+- cifsd: fix reference count decrement of unclaimed file in __ksmbd_lookup_fd
+- cifsd: re-implement ksmbd_vfs_kern_path
+- cifsd: get parent dentry from child in ksmbd_vfs_remove_file()
+- cifsd: add the check if parent is stable by unexpected rename
+- cifsd: declare ida statically
+- cifsd: remove unused including <linux/version.h>
+- cifsd: prevent a integer overflow in wm_alloc()
+- cifsd: remove wrappers of kvmalloc/kvfree
+- cifsd: fix memdup.cocci warnings
+- cifsd: use kfree to free memory allocated by kmalloc or kzalloc
+- cifsd: fix memory leak when loop ends
+- cifsd: remove stale prototype and variables
+- cifsd: use xarray instead of linked list for tree connect list
+- cifsd: remove useless error handling in ksmbd_vfs_read
+- cifsd: use file_inode() instead of d_inode()
+- cifsd: handle unhashed dentry in ksmbd_vfs_mkdir
+- cifsd: remove calling d_path in error paths
+- cifsd: remove smack inherit leftovers
+- cifsd: fix wrong prototype in comment
+- cifsd: merge time_wrappers.h into smb_common.h
+- cifsd: clean-up codes using chechpatch.pl --strict
+- cifsd: fix error return code in ksmbd_vfs_remove_file()
+- cifsd: add the check to work file lock and rename behaviors like Windows unless POSIX extensions are negotiated
+- cifsd: use kmalloc() for small allocations
+- cifsd: fix wrong use of rw semaphore in __session_create()
+- cifsd: remove unneeded macros
+- cifsd: remove redundant assignment to variable err
+- cifsd: fix error handling in ksmbd_server_init()
+- cifsd: Fix an error code in smb2_read()
+- cifsd: Pass string length parameter to match_pattern()
+- cifsd: fix warning: variable 'total_ace_size' and 'posix_ccontext' set but not used
+- cifsd: fix incorrect comments
+- cifsd: remove unneeded FIXME comments
+- cifsd: fix static checker warning from smb_check_perm_dacl()
+- cifsd: fix static checker warning from smb_direct_post_send_data()
+- cifsd: Fix a use after free on error path
+- cifsd: fix a IS_ERR() vs NULL bug
+- cifsd: fix a precedence bug in parse_dacl()
+- cifsd: Fix a handful of spelling mistakes
+- cifsd: uniquify extract_sharename()
+- cifsd: add file operations
+- cifsd: add server-side procedures for SMB3
+- cifsd: add server handler for central processing and tranport layers
+- openeuler: net: ngbe: fix ngbe checkpatch warnnings
+
 * Wed Nov 23 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.68.0.93
 - Bluetooth: L2CAP: Fix accepting connection request for invalid SPSM
 - Bluetooth: L2CAP: Fix attempting to access uninitialized memory
