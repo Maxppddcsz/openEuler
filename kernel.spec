@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .70.0
-%global pkg_release         .94
+%global maintenance_release .71.0
+%global pkg_release         .95
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -883,6 +883,12 @@ fi
 %endif
 
 %changelog
+* Tue Dec 13 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.71.0.95
+- blk-mq: don't access request_wrapper if request is not allocated from block layer
+- blk-mq: fix kabi broken due to request_wrapper
+- ide-cd: don't clear rq_flags after blk_get_request
+- iommu: Fix error handling in probe_acpi_namespace_devices()
+
 * Wed Dec 07 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.70.0.94
 - staging: rtl8712: fix use after free bugs
 - drivers/perf: fixed the issue that the kabi value changed
