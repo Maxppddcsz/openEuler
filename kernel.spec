@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .71.0
-%global pkg_release         .95
+%global maintenance_release .72.0
+%global pkg_release         .96
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -883,6 +883,108 @@ fi
 %endif
 
 %changelog
+* Tue Dec 13 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.72.0.96
+- block: fix regression for dm
+- dm: switch to rq-based after queue is initialized
+- net/af_packet: make sure to pull mac header
+- net/af_packet: add VLAN support for AF_PACKET SOCK_RAW GSO
+- sched: Fix null-ptr-deref in free_fair_sched_group
+- arm64: fix a concurrency issue in emulation_proc_handler()
+- dm thin: Fix ABBA deadlock between shrink_slab and dm_pool_abort_metadata
+- Revert "ipvlan: Modify the value of ipvlan modes"
+- workqueue: fix state-dump console deadlock
+- preempt/dynamic: Fix typo in macro conditional statement
+- jump_label: Fix usage in module __init
+- arm64/mpam: update last_cmd_status in parse_cache() and parse_bw()
+- arm64/mpam: remove kernfs_get() calls() and add kernfs_put() calls to prevent refcount leak
+- arm64/mpam: make mbw_max/min not less than min_bw
+- arm64/mpam: Fix indent format error in resctrl_parse_param()
+- arm64/mpam: decrease dom_num when domain goes offline
+- arm64/mpam: correct mbw_max/min if remainder is too large
+- Revert "add barriers to buffer_uptodate and set_buffer_uptodate"
+- pinctrl: core: Set ret to 0 when group is skipped
+- pinctrl: core: Handling pinmux and pinconf separately
+- ACPI: APD: Check for NULL pointer after calling devm_ioremap()
+- Revert "ACPICA: Interpreter: fix memory leak by using existing buffer"
+- mm/dynamic_hugetlb: fix compound_nr incorrect
+- scsi: storvsc: Remove WQ_MEM_RECLAIM from storvsc_error_wq
+- scsi: ufs: core: Enable link lost interrupt
+- perf/x86/intel/uncore: Fix broken read_counter() for SNB IMC PMU
+- perf python: Fix build when PYTHON_CONFIG is user supplied
+- Documentation/ABI: Mention retbleed vulnerability info file for sysfs
+- arm64: Fix match_list for erratum 1286807 on Arm Cortex-A76
+- md: call __md_stop_writes in md_stop
+- Revert "md-raid: destroy the bitmap after destroying the thread"
+- mm/hugetlb: fix hugetlb not supporting softdirty tracking
+- xen/privcmd: fix error exit of privcmd_ioctl_dm_op()
+- ACPI: processor: Remove freq Qos request for all CPUs
+- s390: fix double free of GS and RI CBs on fork() failure
+- asm-generic: sections: refactor memory_intersects
+- loop: Check for overflow while configuring loop
+- x86/bugs: Add "unknown" reporting for MMIO Stale Data
+- perf/x86/lbr: Enable the branch type for the Arch LBR by default
+- btrfs: check if root is readonly while setting security xattr
+- btrfs: add info when mount fails due to stale replace target
+- btrfs: replace: drop assert for suspended replace
+- btrfs: fix silent failure when deleting root reference
+- ionic: fix up issues with handling EAGAIN on FW cmds
+- rxrpc: Fix locking in rxrpc's sendmsg
+- ixgbe: stop resetting SYSTIME in ixgbe_ptp_start_cyclecounter
+- net: Fix a data-race around sysctl_somaxconn.
+- net: Fix data-races around sysctl_devconf_inherit_init_net.
+- net: Fix data-races around sysctl_fb_tunnels_only_for_init_net.
+- net: Fix a data-race around netdev_budget_usecs.
+- net: Fix a data-race around netdev_budget.
+- net: Fix a data-race around sysctl_net_busy_read.
+- net: Fix a data-race around sysctl_net_busy_poll.
+- net: Fix a data-race around sysctl_tstamp_allow_data.
+- net: Fix data-races around sysctl_optmem_max.
+- bpf: Folding omem_charge() into sk_storage_charge()
+- ratelimit: Fix data-races in ___ratelimit().
+- net: Fix data-races around netdev_tstamp_prequeue.
+- net: Fix data-races around netdev_max_backlog.
+- net: Fix data-races around weight_p and dev_weight_[rt]x_bias.
+- net: Fix data-races around sysctl_[rw]mem_(max|default).
+- net: Fix data-races around sysctl_[rw]mem(_offset)?.
+- tcp: tweak len/truesize ratio for coalesce candidates
+- netfilter: nf_tables: disallow jump to implicit chain from set element
+- netfilter: nf_tables: upfront validation of data via nft_data_init()
+- netfilter: bitwise: improve error goto labels
+- netfilter: nft_cmp: optimize comparison for 16-bytes
+- netfilter: nf_tables: consolidate rule verdict trace call
+- netfilter: nftables: remove redundant assignment of variable err
+- netfilter: nft_tunnel: restrict it to netdev family
+- netfilter: nft_osf: restrict osf to ipv4, ipv6 and inet families
+- netfilter: nf_tables: do not leave chain stats enabled on error
+- netfilter: nft_payload: do not truncate csum_offset and csum_type
+- netfilter: nft_payload: report ERANGE for too long offset and length
+- bnxt_en: fix NQ resource accounting during vf creation on 57500 chips
+- netfilter: ebtables: reject blobs that don't provide all entry points
+- net: ipvtap - add __init/__exit annotations to module init/exit funcs
+- bonding: 802.3ad: fix no transmission of LACPDUs
+- net: moxa: get rid of asymmetry in DMA mapping/unmapping
+- net: ipa: don't assume SMEM is page-aligned
+- net/mlx5e: Properly disable vlan strip on non-UL reps
+- ice: xsk: prohibit usage of non-balanced queue id
+- ice: xsk: Force rings to be sized to power of 2
+- nfc: pn533: Fix use-after-free bugs caused by pn532_cmd_timeout
+- rose: check NULL rose_loopback_neigh->loopback
+- mm/smaps: don't access young/dirty bit if pte unpresent
+- mm/huge_memory.c: use helper function migration_entry_to_page()
+- SUNRPC: RPC level errors should set task->tk_rpc_status
+- NFSv4.2 fix problems with __nfs42_ssc_open
+- NFS: Don't allocate nfs_fattr on the stack in __nfs42_ssc_open()
+- xfrm: clone missing x->lastused in xfrm_do_migrate
+- xfrm: fix refcount leak in __xfrm_policy_check()
+- kernel/sched: Remove dl_boosted flag comment
+- vfs: make sync_filesystem return errors from ->sync_fs
+- fs: remove __sync_filesystem
+- pinctrl: amd: Don't save/restore interrupt status and wake status bits
+- kernel/sys_ni: add compat entry for fadvise64_64
+- parisc: Fix exception handler for fldw and fstw instructions
+- audit: fix potential double free on error path from fsnotify_add_inode_mark
+- kbuild: dummy-tools: avoid tmpdir leak in dummy gcc
+
 * Tue Dec 13 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.71.0.95
 - blk-mq: don't access request_wrapper if request is not allocated from block layer
 - blk-mq: fix kabi broken due to request_wrapper
