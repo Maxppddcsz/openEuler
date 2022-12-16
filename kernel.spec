@@ -1,9 +1,13 @@
 %define with_signmodules  1
+%ifarch loongarch64
+%define with_kabichk 0
+%else
 %define with_kabichk 1
+%endif
 
 %define modsign_cmd %{SOURCE10}
 
-%global Arch $(echo %{_host_cpu} | sed -e s/i.86/x86/ -e s/x86_64/x86/ -e s/aarch64.*/arm64/)
+%global Arch $(echo %{_host_cpu} | sed -e s/i.86/x86/ -e s/x86_64/x86/ -e s/aarch64.*/arm64/ -e s/loongarch64/loongarch/)
 
 %global KernelVer %{version}-%{release}.%{_target_cpu}
 %global debuginfodir /usr/lib/debug
@@ -109,7 +113,7 @@ Provides: kernel-uname-r = %{KernelVer} kernel=%{KernelVer}
 
 Requires: dracut >= 001-7 grubby >= 8.28-2 initscripts >= 8.11.1-1 linux-firmware >= 20100806-2 module-init-tools >= 3.16-2
 
-ExclusiveArch: noarch aarch64 i686 x86_64
+ExclusiveArch: noarch aarch64 i686 x86_64 loongarch64
 ExclusiveOS: Linux
 
 %if %{with_perf}
@@ -329,7 +333,21 @@ sed -i arch/arm64/configs/openeuler_defconfig -e 's/^CONFIG_ARM64_VA_BITS=.*/CON
 sed -i arch/arm64/configs/openeuler_defconfig -e 's/^CONFIG_ARM64_VA_BITS_.*/CONFIG_ARM64_VA_BITS_52=y/'
 %endif
 
+%ifarch loongarch64
+
+%if 0%{with_signmodules}
+echo "CONFIG_MODULE_SIG=y" >>arch/loongarch/configs/loongson3_defconfig
+%endif
+
+%if 0%{with_debuginfo}
+echo "CONFIG_DEBUG_INFO=y" >>arch/loongarch/configs/loongson3_defconfig
+%endif
+
+make ARCH=%{Arch} loongson3_defconfig
+
+%else
 make ARCH=%{Arch} openeuler_defconfig
+%endif
 
 TargetImage=$(basename $(make -s image_name))
 
@@ -440,7 +458,13 @@ cd linux-%{KernelVer}
 mkdir -p $RPM_BUILD_ROOT/boot
 dd if=/dev/zero of=$RPM_BUILD_ROOT/boot/initramfs-%{KernelVer}.img bs=1M count=20
 
+%ifarch loongarch64
+strip -s vmlinux -o vmlinux.elf
+install -m 755 vmlinux.elf $RPM_BUILD_ROOT/boot/vmlinuz-%{KernelVer}
+%else
 install -m 755 $(make -s image_name) $RPM_BUILD_ROOT/boot/vmlinuz-%{KernelVer}
+%endif
+
 pushd $RPM_BUILD_ROOT/boot
 sha512hmac ./vmlinuz-%{KernelVer} >./.vmlinuz-%{KernelVer}.hmac
 popd
@@ -448,9 +472,7 @@ popd
 install -m 644 .config $RPM_BUILD_ROOT/boot/config-%{KernelVer}
 install -m 644 System.map $RPM_BUILD_ROOT/boot/System.map-%{KernelVer}
 
-%if 0%{?with_kabichk}
-    gzip -c9 < Module.symvers > $RPM_BUILD_ROOT/boot/symvers-%{KernelVer}.gz
-%endif
+gzip -c9 < Module.symvers > $RPM_BUILD_ROOT/boot/symvers-%{KernelVer}.gz
 
 mkdir -p $RPM_BUILD_ROOT%{_sbindir}
 install -m 755 %{SOURCE200} $RPM_BUILD_ROOT%{_sbindir}/mkgrub-menu-%{devel_release}.sh
@@ -725,6 +747,12 @@ fi
 if [ -d /lib/modules/%{KernelVer} ] && [ "`ls -A  /lib/modules/%{KernelVer}`" = "" ]; then
     rm -rf /lib/modules/%{KernelVer}
 fi
+if [ `uname -i` == "loongarch64" ];then
+	[ -f /etc/grub2.cfg ] && GRUB_CFG=`readlink -f /etc/grub2.cfg`
+	[ "x${GRUB_CFG}" == "x" ] && [ -f /etc/grub2-efi.cfg ] && GRUB_CFG=`readlink -f /etc/grub2-efi.cfg`
+	[ "x${GRUB_CFG}" == "x" ] && [ -f /boot/efi/EFI/openEuler/grub.cfg ] && GRUB_CFG=/boot/efi/EFI/openEuler/grub.cfg
+	[ "x${GRUB_CFG}" != "x" ] && grub2-mkconfig -o ${GRUB_CFG}
+fi
 
 %posttrans
 %{_sbindir}/new-kernel-pkg --package kernel --mkinitrd --dracut --depmod --update %{KernelVer} || exit $?
@@ -732,6 +760,13 @@ fi
 if [ `uname -i` == "aarch64" ] &&
         [ -f /boot/EFI/grub2/grub.cfg ]; then
 	/usr/bin/sh %{_sbindir}/mkgrub-menu-%{devel_release}.sh %{version}-%{devel_release}.aarch64  /boot/EFI/grub2/grub.cfg  update
+fi
+if [ `uname -i` == "loongarch64" ];then
+	[ -f /etc/grub2.cfg ] && GRUB_CFG=`readlink -f /etc/grub2.cfg`
+	[ "x${GRUB_CFG}" == "x" ] && [ -f /etc/grub2-efi.cfg ] && GRUB_CFG=`readlink -f /etc/grub2-efi.cfg`
+	[ "x${GRUB_CFG}" == "x" ] && [ -f /boot/efi/EFI/openEuler/grub.cfg ] && GRUB_CFG=/boot/efi/EFI/openEuler/grub.cfg
+	[ "x${GRUB_CFG}" != "x" ] && grub2-mkconfig -o ${GRUB_CFG}
+	grubby --set-default=/boot/vmlinuz-%{KernelVer}
 fi
 if [ -x %{_sbindir}/weak-modules ]
 then
@@ -771,9 +806,7 @@ fi
 %ifarch aarch64
 /boot/dtb-*
 %endif
-%if 0%{?with_kabichk}
 /boot/symvers-*
-%endif
 /boot/System.map-*
 /boot/vmlinuz-*
 %ghost /boot/initramfs-%{KernelVer}.img
@@ -794,6 +827,8 @@ fi
 %files headers
 %defattr (-, root, root)
 /usr/include/*
+%exclude %{_includedir}/cpufreq.h
+%exclude %{_includedir}/cpuidle.h
 
 %if %{with_perf}
 %files -n perf
