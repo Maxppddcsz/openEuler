@@ -28,6 +28,7 @@
 #include <linux/tboot.h>
 #include <linux/trace_events.h>
 #include <linux/entry-kvm.h>
+#include <linux/pkram.h>
 
 #include <asm/apic.h>
 #include <asm/asm.h>
@@ -7227,7 +7228,10 @@ static void vmx_free_vcpu(struct kvm_vcpu *vcpu)
 	free_vpid(vmx->vpid);
 	nested_vmx_free_vcpu(vcpu);
 	free_loaded_vmcs(vmx->loaded_vmcs);
-	free_page((unsigned long)vmx->pi_desc);
+	if (pkram_available())
+		pkram_free_page(virt_to_page(vmx->pi_desc));
+	else
+		free_page((unsigned long)vmx->pi_desc);
 }
 
 static int vmx_create_vcpu(struct kvm_vcpu *vcpu)
@@ -7241,7 +7245,10 @@ static int vmx_create_vcpu(struct kvm_vcpu *vcpu)
 
 	err = -ENOMEM;
 
-	page = alloc_page(GFP_KERNEL | __GFP_ZERO);
+	if (pkram_available())
+		page = pkram_alloc_page();
+	else
+		page = alloc_page(GFP_KERNEL | __GFP_ZERO);
 	if (!page)
 		return err;
 	vmx->pi_desc = page_address(page);
@@ -7374,7 +7381,10 @@ free_pml:
 	vmx_destroy_pml_buffer(vmx);
 free_vpid:
 	free_vpid(vmx->vpid);
-	free_page((unsigned long)vmx->pi_desc);
+	if (pkram_available())
+		pkram_free_page(virt_to_page(vmx->pi_desc));
+	else
+		free_page((unsigned long)vmx->pi_desc);
 	vmx->pi_desc = NULL;
 	return err;
 }
