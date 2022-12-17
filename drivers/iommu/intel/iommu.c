@@ -10,6 +10,7 @@
  *          Joerg Roedel <jroedel@suse.de>
  */
 
+#include "asm/page.h"
 #define pr_fmt(fmt)     "DMAR: " fmt
 #define dev_fmt(fmt)    pr_fmt(fmt)
 
@@ -528,7 +529,11 @@ void *alloc_pgtable_page(int node)
 	struct page *page;
 	void *vaddr = NULL;
 
-	page = alloc_pages_node(node, GFP_ATOMIC | __GFP_ZERO, 0);
+	if (pkram_available())
+		page = pkram_alloc_page();
+	else
+		page = alloc_pages_node(node, GFP_ATOMIC | __GFP_ZERO, 0);
+
 	if (page)
 		vaddr = page_address(page);
 	return vaddr;
@@ -536,7 +541,14 @@ void *alloc_pgtable_page(int node)
 
 void free_pgtable_page(void *vaddr)
 {
-	free_page((unsigned long)vaddr);
+	struct page *page;
+
+	if (pkram_available()) {
+		page = virt_to_page(vaddr);
+		pkram_free_page(page);
+	} else {
+		free_page((unsigned long)vaddr);
+	}
 }
 
 static inline void *alloc_domain_mem(void)

@@ -29,6 +29,7 @@
 #include <linux/iommu.h>
 #include <linux/numa.h>
 #include <linux/limits.h>
+#include <linux/pkram.h>
 #include <asm/irq_remapping.h>
 #include <asm/iommu_table.h>
 
@@ -1719,7 +1720,10 @@ int dmar_enable_qi(struct intel_iommu *iommu)
 	 * Need two pages to accommodate 256 descriptors of 256 bits each
 	 * if the remapping hardware supports scalable mode translation.
 	 */
-	page = alloc_pages_node(iommu->node, GFP_ATOMIC | __GFP_ZERO,
+	if (pkram_available())
+		page = pkram_alloc_pages(1);
+	else
+		page = alloc_pages_node(iommu->node, GFP_ATOMIC | __GFP_ZERO,
 				     !!ecap_smts(iommu->ecap));
 	if (!page) {
 		kfree(qi);
@@ -1729,9 +1733,15 @@ int dmar_enable_qi(struct intel_iommu *iommu)
 
 	qi->desc = page_address(page);
 
-	page = alloc_page(GFP_ATOMIC | __GFP_ZERO);
+	if (pkram_available())
+		page = pkram_alloc_page();
+	else
+		page = alloc_page(GFP_ATOMIC | __GFP_ZERO);
 	if (!page) {
-		free_page((unsigned long) qi->desc);
+		if (pkram_available())
+			pkram_free_pages(virt_to_page(qi->desc), 1);
+		else
+			free_page((unsigned long) qi->desc);
 		kfree(qi);
 		iommu->qi = NULL;
 		return -ENOMEM;
