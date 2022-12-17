@@ -6900,7 +6900,7 @@ static int pci_save_all_keepalive_states(void)
 	struct pci_bus *bus;
 	int err;
 
-	err = pkram_prepare_save(&ps, "pci-keepalive-state", GFP_KERNEL);
+	err = pkram_prepare_save(&ps, "pci-keepalive-state");
 	if (err)
 		return err;
 

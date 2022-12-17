@@ -769,7 +769,7 @@ static int vfio_pci_pkram_save(void)
 	struct pkram_stream ps;
 	int ret;
 
-	ret = pkram_prepare_save(&ps, "vfio-pci", GFP_KERNEL);
+	ret = pkram_prepare_save(&ps, "vfio-pci");
 	if (ret)
 		return ret;
 

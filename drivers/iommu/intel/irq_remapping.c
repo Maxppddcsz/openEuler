@@ -816,13 +816,10 @@ int intel_ir_pkram_load(void)
 {
 	struct intel_ir_data *state;
 	struct pkram_stream ps;
-	unsigned long cnt;
+	unsigned long i, cnt;
 	int ret;
 
 	ret = pkram_prepare_load(&ps, "intel_ir_data");
-	if (ret)
-		return ret;
-	ret = pkram_prepare_load_obj(&ps);
 	if (ret)
 		return ret;
 
@@ -830,30 +827,29 @@ int intel_ir_pkram_load(void)
 	if (ret)
 		return ret;
 
-	while (cnt--) {
+	pr_info("PKRAM: intel_ir_data: total %lu states\n", cnt);
+
+	for (i = 0; i < cnt; i++) {
 		state = kmalloc(sizeof(*state), GFP_KERNEL);
 		if (!state) {
-			ret = -ENOMEM;
-			goto fail_pkram_load;
+			pr_info("intel_ir_pkram_load failed after kmalloc\n");
+			return -ENOMEM;
 		}
 
+		pr_info("PKRAM: intel_ir_data: load state %lu\n", i);
 		ret = pkram_load_chunk(&ps, state, sizeof(*state));
 		if (ret) {
 			kfree(state);
-			goto fail_pkram_load;
+			pr_info("intel_ir_pkram_load failed after load chunk\n");
+			return ret;
 		}
 
 		spin_lock(&ir_data_lock);
 		list_add(&state->list, &intel_ir_data_list);
 		spin_unlock(&ir_data_lock);
 	}
-	pkram_finish_load_obj(&ps);
-	pkram_finish_load(&ps);
+	pr_info("intel_ir_pkram_load finished\n");
 	return 0;
-fail_pkram_load:
-	pkram_finish_load_obj(&ps);
-	pkram_finish_load(&ps);
-	return ret;
 }
 
 static int __init intel_prepare_irq_remapping(void)
@@ -1472,7 +1468,7 @@ int intel_ir_pkram_save(void)
 	unsigned long cnt;
 	int ret;
 
-	ret = pkram_prepare_save(&ps, "intel_ir_data", GFP_KERNEL);
+	ret = pkram_prepare_save(&ps, "intel_ir_data");
 	if (ret)
 		return ret;
 	pkram_prepare_save_obj(&ps);
