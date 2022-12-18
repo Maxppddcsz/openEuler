@@ -309,6 +309,7 @@ static int pgp_key_parse(struct key_preparsed_payload *prep)
 
 	memset(&ctx, 0, sizeof(ctx));
 	ctx.pgp.types_of_interest = (1 << PGP_PKT_PUBLIC_KEY) |
+				    (1 << PGP_PKT_PUBLIC_SUBKEY) |
 				    (1 << PGP_PKT_USER_ID);
 	ctx.pgp.process_packet = pgp_process_public_key;
 
