@@ -338,6 +338,10 @@ out:
 static int vmx_vcpu_save_pi_desc(struct kvm_vcpu *vcpu, void **data)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
+	struct page *page;
+
+	page = virt_to_page(vmx->pi_desc);
+	pkram_get_page(page);
 
 	*data = (void *)virt_to_phys(vmx->pi_desc);
 	pi_set_sn(vmx->pi_desc);
@@ -362,12 +366,15 @@ static int vmx_vcpu_restore_pi_desc(struct kvm_vcpu *vcpu, void **data)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	struct pi_desc *pi_desc = phys_to_virt((phys_addr_t)*data);
+	struct page *page;
 
 	if (vmx->pi_desc != pi_desc) {
-		struct page *page = virt_to_page(vmx->pi_desc);
+		page = virt_to_page(vmx->pi_desc);
 		pkram_free_page(page);
 		vmx->pi_desc = pi_desc;
 	}
+	page = virt_to_page(pi_desc);
+	atomic_set(&page->_refcount, 1);
 
 	vmx_vcpu_load_pi_desc(vcpu);
 
