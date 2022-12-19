@@ -15,8 +15,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .72.0
-%global pkg_release         .96
+%global maintenance_release .73.0
+%global pkg_release         .97
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -918,6 +918,15 @@ fi
 %endif
 
 %changelog
+* Fri Dec 16 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.73.0.97
+- proc: proc_skip_spaces() shouldn't think it is working on C strings
+- proc: avoid integer type confusion in get_proc_long
+- xen/netback: fix build warning
+- xen/netback: Ensure protocol headers don't fall in the non-linear area
+- livepatch/ppc64: Fix preemption check when enabling
+- block: only use cmpxchg64 in 64bit platform
+- efi/libstub: Fix build error in efi-stub.c for riscv
+
 * Tue Dec 13 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.72.0.96
 - block: fix regression for dm
 - dm: switch to rq-based after queue is initialized
