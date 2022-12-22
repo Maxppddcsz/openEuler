@@ -32,6 +32,8 @@
 #include <linux/phy/phy.h>
 
 #define DWC3_MSG_MAX	500
+#define DWC3_PIPE_TRANS_LIMIT_MASK  (0xf << 8)
+#define DWC3_PIPE_TRANS_LIMIT       (0x7 << 8)
 
 /* Global constants */
 #define DWC3_PULL_UP_TIMEOUT	500	/* ms */
