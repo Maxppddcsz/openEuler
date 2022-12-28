@@ -102,7 +102,8 @@ int __init preload_pgp_keys(const u8 *pgpdata, size_t pgpdatalen,
 	struct preload_pgp_keys_context ctx;
 	int ret;
 
-	ctx.pgp.types_of_interest = (1 << PGP_PKT_PUBLIC_KEY);
+	ctx.pgp.types_of_interest = (1 << PGP_PKT_PUBLIC_KEY) |
+				    (1 << PGP_PKT_PUBLIC_SUBKEY);
 	ctx.pgp.process_packet = found_pgp_key;
 	ctx.keyring = make_key_ref(keyring, 1);
 	ctx.found_key = false;
