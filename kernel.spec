@@ -15,8 +15,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .73.0
-%global pkg_release         .97
+%global maintenance_release .74.0
+%global pkg_release         .98
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -918,6 +918,15 @@ fi
 %endif
 
 %changelog
+* Wed Dec 28 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.74.0.98
+- wifi: wilc1000: validate length of IEEE80211_P2P_ATTR_CHANNEL_LIST attribute
+- xen/netback: don't call kfree_skb() with interrupts disabled
+- media: dvb-core: Fix UAF due to refcount races at releasing
+- wifi: wilc1000: validate pairwise and authentication suite offsets
+- wifi: wilc1000: validate number of channels
+- wifi: wilc1000: validate length of IEEE80211_P2P_ATTR_OPER_CHANNEL attribute
+- drm/amdkfd: Check for null pointer after calling kmemdup
+
 * Fri Dec 16 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.73.0.97
 - proc: proc_skip_spaces() shouldn't think it is working on C strings
 - proc: avoid integer type confusion in get_proc_long
