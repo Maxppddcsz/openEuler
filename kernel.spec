@@ -15,8 +15,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .74.0
-%global pkg_release         .98
+%global maintenance_release .75.0
+%global pkg_release         .99
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -918,6 +918,38 @@ fi
 %endif
 
 %changelog
+* Wed Jan 04 2023 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.75.0.99
+- ext2: replace bh_submit_read() helper with bh_read()
+- ufs: replace ll_rw_block()
+- udf: replace ll_rw_block()
+- reiserfs: replace ll_rw_block()
+- ocfs2: replace ll_rw_block()
+- ntfs3: replace ll_rw_block()
+- jbd2: replace ll_rw_block()
+- isofs: replace ll_rw_block()
+- gfs2: replace ll_rw_block()
+- fs/buffer: replace ll_rw_block()
+- fs/buffer: add some new buffer read helpers
+- sched/qos: Don't unthrottle cfs_rq when cfs_rq is throttled by qos
+- mtd: physmap-core: Fix NULL pointer dereferencing in of_select_probe_type()
+- blk-mq: set default elevator as deadline in case of hctx shared tagset
+- dm thin: Use last transaction's pmd->root when commit failed
+- media: mceusb: Use new usb_control_msg_*() routines
+- block, bfq: fix possible uaf for 'bfqq->bic'
+- block, bfq: fix null pointer dereference in bfq_bio_bfqg()
+- scsi: iscsi: remove .unbind_conn from iscsi_transport
+- Revert "scsi: iscsi: fix kabi broken in struct iscsi_transport"
+- blk-mq: fix kabi broken in struct bio
+- blk-mq: fix kabi broken in struct request
+- mm/dynamic_hugetlb: fix clear PagePool without lock protection
+- mm/dynamic_hugetlb: fix list corruption in hpool_merge_page()
+- x86/cpu/hygon: Set __max_die_per_package on Hygon
+- block: always align request_wrapper to cacheline
+- block: fix crash on cmpxchg for request_wrapper
+- clk: imx: Add check for kcalloc
+- Bluetooth: L2CAP: fix use-after-free in l2cap_conn_del()
+- Bluetooth: L2CAP: Fix build errors in some archs
+
 * Wed Dec 28 2022 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.74.0.98
 - wifi: wilc1000: validate length of IEEE80211_P2P_ATTR_CHANNEL_LIST attribute
 - xen/netback: don't call kfree_skb() with interrupts disabled
