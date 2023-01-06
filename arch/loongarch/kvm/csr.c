@@ -9,9 +9,9 @@
 #include "kvmcpu.h"
 #include "intc/ls3a_ipi.h"
 #include "intc/ls3a_ext_irq.h"
-#include "ls_irq.h"
 #include "kvm_compat.h"
 #include "kvmcsr.h"
+#include "irq.h"
 
 #define CASE_READ_SW_GCSR(csr, regid, csrid) \
 	do {                                          \
