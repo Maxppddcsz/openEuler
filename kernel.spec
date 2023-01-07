@@ -15,8 +15,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .75.0
-%global pkg_release         .99
+%global maintenance_release .76.0
+%global pkg_release         .100
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -918,6 +918,17 @@ fi
 %endif
 
 %changelog
+* Fri Jan 06 2023 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.76.0.100
+- KVM: VMX: Execute IBPB on emulated VM-exit when guest has IBRS
+- bfq: fix null-ptr-deref in bfq_pd_offline
+- i2c: ismt: Fix an out-of-bounds bug in ismt_access()
+- ksmbd: fix heap-based overflow in set_ntacl_dacl()
+- ksmbd: prevent out of bound read for SMB2_WRITE
+- ksmbd: validate length in smb2_write()
+- xfs: fix super block buf log item UAF during force shutdown
+- xfs: wait iclog complete before tearing down AIL
+- xfs: get rid of assert from xfs_btree_islastblock
+
 * Wed Jan 04 2023 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.75.0.99
 - ext2: replace bh_submit_read() helper with bh_read()
 - ufs: replace ll_rw_block()
