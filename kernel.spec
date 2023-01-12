@@ -15,8 +15,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .76.0
-%global pkg_release         .100
+%global maintenance_release .77.0
+%global pkg_release         .101
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -918,6 +918,15 @@ fi
 %endif
 
 %changelog
+* Wed Jan 11 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.77.0.101
+- !348 Backport CVEs and fs bugfixes
+- io_uring: kill goto error handling in io_sqpoll_wait_sq()
+- misc: sgi-gru: fix use-after-free error in gru_set_context_option, gru_fault and gru_handle_user_call_os
+- ext4: fix bad checksum after online resize
+- xfs: fix use-after-free in xattr node block inactivation
+- USB: core: Fix RST error in hub.c
+- USB: core: Prevent nested device-reset calls
+
 * Fri Jan 06 2023 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.76.0.100
 - KVM: VMX: Execute IBPB on emulated VM-exit when guest has IBRS
 - bfq: fix null-ptr-deref in bfq_pd_offline
