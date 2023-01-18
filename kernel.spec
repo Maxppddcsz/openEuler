@@ -15,8 +15,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .77.0
-%global pkg_release         .101
+%global maintenance_release .78.0
+%global pkg_release         .102
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -918,6 +918,30 @@ fi
 %endif
 
 %changelog
+* Wed Jan 18 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.78.0.102
+- !357 Backport CVEs, bugfixes, performance and other
+- binder: fix UAF of alloc->vma in race with munmap()
+- io_uring: add missing item types for splice request
+- xfs: fix overfilling of reserve pool
+- xfs: always succeed at setting the reserve pool size
+- xfs: remove infinite loop when reserving free block pool
+- xfs: use current->journal_info for detecting transaction recursion
+- mm: fix unexpected changes to {failslab|fail_page_alloc}.attr
+- fix kabi broken due to may_pollfree
+- io_uring: disable polling pollfree files
+- sched: disable sched_autogroup by default
+- driver: char: delete svm.c
+- ksmbd: check nt_len to be at least CIFS_ENCPWD_SIZE in ksmbd_decode_ntlmssp_auth_blob
+- fs/ntfs3: Fix attr_punch_hole() null pointer derenference
+- tracing/osnoise: Do not unregister events twice
+- tracing/osnoise: Properly unhook events if start_per_cpu_kthreads() fails
+- mm/filemap.c: remove bogus VM_BUG_ON
+- mm: oom_kill: fix KABI broken by "oom_kill.c: futex: delay the OOM reaper to allow time for proper futex cleanup"
+- oom_kill.c: futex: delay the OOM reaper to allow time for proper futex cleanup
+- fork: Allocate a new task_struct_resvd object for fork task
+- tmpfs: fix regressions from wider use of ZERO_PAGE
+- tmpfs: do not allocate pages on read
+
 * Wed Jan 11 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.77.0.101
 - !348 Backport CVEs and fs bugfixes
 - io_uring: kill goto error handling in io_sqpoll_wait_sq()
