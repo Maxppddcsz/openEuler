@@ -1,7 +1,9 @@
 %define with_signmodules  1
 %ifarch loongarch64
 %define with_kabichk 0
+%define with_bpftool 0
 %else
+%define with_bpftool 1
 %define with_kabichk 1
 %endif
 
@@ -200,11 +202,14 @@ language to use the interface to manipulate perf events.
 # with_perf
 %endif
 
+%if 0%{?with_bpftool}
 %package -n bpftool
 Summary: Inspection and simple manipulation of eBPF programs and maps
 %description -n bpftool
 This package contains the bpftool, which allows inspection and simple
 manipulation of eBPF programs and maps.
+# with_bpftool
+%endif
 
 %package source
 Summary: the kernel source
@@ -230,9 +235,11 @@ package or when debugging this package.\
 %debuginfo_template -n kernel
 %files -n kernel-debuginfo -f debugfiles.list
 
+%if 0%{?with_bpftool}
 %debuginfo_template -n bpftool
 %files -n bpftool-debuginfo -f bpftool-debugfiles.list
 %{expand:%%global _find_debuginfo_opts %{?_find_debuginfo_opts} -p '.*%{_sbindir}/bpftool.*(\.debug)?|XXX' -o bpftool-debugfiles.list}
+%endif
 
 %debuginfo_template -n kernel-tools
 %files -n kernel-tools-debuginfo -f kernel-tools-debugfiles.list
@@ -395,10 +402,12 @@ make %{?_smp_mflags} man
 popd
 %endif
 
+%if 0%{?with_bpftool}
 # bpftool
 pushd tools/bpf/bpftool
 make
 popd
+%endif
 
 # cpupower
 chmod +x tools/power/cpupower/utils/version-gen.sh
@@ -669,10 +678,13 @@ install -pm0644 tools/kvm/kvm_stat/kvm_stat.1 %{buildroot}/%{_mandir}/man1/
 install -pm0644 tools/perf/Documentation/*.1 %{buildroot}/%{_mandir}/man1/
 %endif
 
+%if 0%{?with_bpftool}
 # bpftool
 pushd tools/bpf/bpftool
 make DESTDIR=%{buildroot} prefix=%{_prefix} bash_compdir=%{_sysconfdir}/bash_completion.d/ mandir=%{_mandir} install doc-install
 popd
+%endif
+
 # cpupower
 make -C tools/power/cpupower DESTDIR=%{buildroot} libdir=%{_libdir} mandir=%{_mandir} CPUFREQ_BENCH=false install
 rm -f %{buildroot}%{_libdir}/*.{a,la}
@@ -891,6 +903,7 @@ fi
 %{_includedir}/cpufreq.h
 %{_includedir}/cpuidle.h
 
+%if 0%{?with_bpftool}
 %files -n bpftool
 %{_sbindir}/bpftool
 %{_sysconfdir}/bash_completion.d/bpftool
@@ -908,6 +921,7 @@ fi
 %{_mandir}/man8/bpftool-struct_ops.8.gz
 %{_mandir}/man7/bpf-helpers.7.gz
 %license linux-%{KernelVer}/COPYING
+%endif
 
 %if 0%{?with_source}
 %files source
