@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .78.0
-%global pkg_release         .102
+%global maintenance_release .79.0
+%global pkg_release         .103
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,20 @@ fi
 %endif
 
 %changelog
+* Wed Feb 01 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.79.0.103
+- !369 Backport CVEs and bugfixes
+- mm/vmpressure: fix data-race with memcg->socket_pressure
+- of/fdt: Don't calculate initrd size from DT if start > end
+- lib/cmdline: avoid page fault in next_arg
+- mm/memory: return vm_fault_t result from migrate_to_ram() callback
+- net: sched: disallow noqueue for qdisc classes
+- netfilter: nft_payload: incorrect arithmetics when fetching VLAN header bits
+- xfs: Fix deadlock on xfs_inodegc_worker
+- net: sched: cbq: dont intepret cls results when asked to drop
+- net: sched: atm: dont intepret cls results when asked to drop
+- scsi: ses: fix slab-out-of-bounds in ses_enclosure_data_process
+- rndis_wlan: Prevent buffer overflow in rndis_query_oid
+
 * Wed Jan 18 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.78.0.102
 - !357 Backport CVEs, bugfixes, performance and other
 - binder: fix UAF of alloc->vma in race with munmap()
