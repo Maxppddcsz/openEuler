@@ -120,4 +120,6 @@
 
 #define EHWPOISON	133	/* Memory page has hardware error */
 
+#define ERETURNIMM	134	/* return immediately */
+
 #endif
