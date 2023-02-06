@@ -122,6 +122,15 @@ static inline pgprot_t arch_vmap_pgprot_tagged(pgprot_t prot)
 }
 #endif
 
+#ifndef arch_vmap_skip_module_region
+static inline void arch_vmap_skip_module_region(unsigned long *addr,
+						unsigned long vstart,
+						unsigned long size,
+						unsigned long align)
+{
+}
+#endif
+
 /*
  *	Highlevel APIs for driver use
  */

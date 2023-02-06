@@ -1233,6 +1233,8 @@ is_within_this_va(struct vmap_area *va, unsigned long size,
 	else
 		nva_start_addr = ALIGN(vstart, align);
 
+	arch_vmap_skip_module_region(&nva_start_addr, vstart, size, align);
+
 	/* Can be overflowed due to big size or alignment. */
 	if (nva_start_addr + size < nva_start_addr ||
 			nva_start_addr < vstart)
@@ -1519,6 +1521,8 @@ __alloc_vmap_area(struct rb_root *root, struct list_head *head,
 		nva_start_addr = ALIGN(va->va_start, align);
 	else
 		nva_start_addr = ALIGN(vstart, align);
+
+	arch_vmap_skip_module_region(&nva_start_addr, vstart, size, align);
 
 	/* Check the "vend" restriction. */
 	if (nva_start_addr + size > vend)
