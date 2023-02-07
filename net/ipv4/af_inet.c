@@ -663,6 +663,10 @@ int __inet_stream_connect(struct socket *sock, struct sockaddr *uaddr,
 		}
 
 		err = sk->sk_prot->connect(sk, uaddr, addr_len);
+		if (err == -ERETURNIMM) {
+			err = 0;
+			goto out;
+		}
 		if (err < 0)
 			goto out;
 
