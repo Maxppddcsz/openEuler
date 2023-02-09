@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .79.0
-%global pkg_release         .103
+%global maintenance_release .80.0
+%global pkg_release         .104
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,19 @@ fi
 %endif
 
 %changelog
+* Wed Feb 08 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.80.0.104
+- !386 Backport CVEs and bugfixes
+- net: sched: fix race condition in qdisc_graft()
+- macvlan: enforce a consistent minimal mtu
+- net: switch to storing KCOV handle directly in sk_buff
+- drm/i915/gvt: fix double free bug in split_2MB_gtt_entry
+- mm/memcg_memfs_info: fix potential oom_lock recursion deadlock
+- mm: memcontrol: fix potential oom_lock recursion deadlock
+- ipv6: raw: Deduct extension header length in rawv6_push_pending_frames
+- ext4: fix use-after-free in ext4_orphan_cleanup
+- ext4: fix null-ptr-deref in ext4_write_info
+- xfs: fix potential log item leak
+
 * Wed Feb 01 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.79.0.103
 - !369 Backport CVEs and bugfixes
 - mm/vmpressure: fix data-race with memcg->socket_pressure
