@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .80.0
-%global pkg_release         .104
+%global maintenance_release .81.0
+%global pkg_release         .105
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,21 @@ fi
 %endif
 
 %changelog
+* Thu Feb 16 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.81.0.105
+- !400 Backport fs and block bugfixes
+- ubi: Fix UAF wear-leveling entry in eraseblk_count_seq_show()
+- ubi: fastmap: Fix missed fm_anchor PEB in wear-leveling after disabling fastmap
+- ubifs: Re-statistic cleaned znode count if commit failed
+- ubifs: dirty_cow_znode: Fix memleak in error handling path
+- block, bfq: switch 'bfqg->ref' to use atomic refcount apis
+- cifs: sanitize multiple delimiters in prepath
+- !392 OpenEuler-22.03-LTS Fixes Some Bugs in Accelerator Disk Storage Encryption and Decryption Scenarios
+- crypto: hisilicon/sec - delete the flag CRYPTO_ALG_ALLOCATES_MEMORY
+- crypto: hisilicon/qm - prevent soft lockup in qm_poll_req_cb()'s loop
+- crypto: hisilicon/qm - modify event irq processing
+- crypto: hisilicon/qm - move alloc qm->wq to qm.c
+- crypto: hisilicon/qm - add functions for releasing resources
+
 * Wed Feb 08 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.80.0.104
 - !386 Backport CVEs and bugfixes
 - net: sched: fix race condition in qdisc_graft()
