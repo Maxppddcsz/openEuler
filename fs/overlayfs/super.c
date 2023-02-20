@@ -175,6 +175,8 @@ static struct kmem_cache *ovl_inode_cachep;
 
 static struct inode *ovl_alloc_inode(struct super_block *sb)
 {
+	int i = 0;
+
 	struct ovl_inode *oi = kmem_cache_alloc(ovl_inode_cachep, GFP_KERNEL);
 
 	if (!oi)
@@ -189,13 +191,26 @@ static struct inode *ovl_alloc_inode(struct super_block *sb)
 	oi->lowerdata = NULL;
 	mutex_init(&oi->lock);
 
+	/* init cow vars, and bitmap */
+	oi->block_count = 0;
+	oi->cow_enable = 0;
+	for (i = 0; i < BITMAP_LEN; i++) {
+		oi->bitmap[i] = 0;
+	}
+
 	return &oi->vfs_inode;
 }
 
 static void ovl_free_inode(struct inode *inode)
 {
+	int i = 0;
 	struct ovl_inode *oi = OVL_I(inode);
 
+	/* release bitmap branch mem. */
+	for (i = 0; i < BITMAP_LEN; i++) {
+		if (oi->bitmap[i])
+			kfree(oi->bitmap[i]);
+	}
 	kfree(oi->redirect);
 	mutex_destroy(&oi->lock);
 	kmem_cache_free(ovl_inode_cachep, oi);

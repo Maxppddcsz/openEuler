@@ -7,6 +7,11 @@
 
 #include <linux/kobject.h>
 
+/* const variable about ovl cow bitmap */
+#define BITMAP_LEN 1024
+#define BITMAP_SZ 1024
+#define BLK_SZ 4096
+
 struct ovl_config {
 	char *lowerdir;
 	char *upperdir;
@@ -133,6 +138,12 @@ struct ovl_inode {
 	struct inode vfs_inode;
 	struct dentry *__upperdentry;
 	struct inode *lower;
+
+	/* whether cow is enable */
+	uint8_t cow_enable;
+	loff_t block_count;
+	loff_t lens;
+	unsigned long *bitmap[BITMAP_LEN];
 
 	/* synchronize copy up and more */
 	struct mutex lock;

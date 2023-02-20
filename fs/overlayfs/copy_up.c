@@ -504,10 +504,13 @@ static int ovl_copy_up_inode(struct ovl_copy_up_ctx *c, struct dentry *temp)
 		upperpath.dentry = temp;
 
 		ovl_path_lowerdata(c->dentry, &datapath);
-		err = ovl_copy_up_data(ofs, &datapath, &upperpath,
-				       c->stat.size);
-		if (err)
-			return err;
+		/* start copy up if have cow_enable */
+		if (!OVL_I(c->dentry->d_inode)->cow_enable) {
+			err = ovl_copy_up_data(ofs, &datapath, &upperpath,
+					       c->stat.size);
+			if (err)
+				return err;
+		}
 	}
 
 	err = ovl_copy_xattr(c->dentry->d_sb, c->lowerpath.dentry, temp);
@@ -650,6 +653,7 @@ static int ovl_copy_up_tmpfile(struct ovl_copy_up_ctx *c)
 	struct dentry *temp, *upper;
 	struct ovl_cu_creds cc;
 	int err;
+	struct inode *linode;
 
 	err = ovl_prep_cu_creds(c->dentry, &cc);
 	if (err)
@@ -660,6 +664,15 @@ static int ovl_copy_up_tmpfile(struct ovl_copy_up_ctx *c)
 
 	if (IS_ERR(temp))
 		return PTR_ERR(temp);
+
+	/* set cow args. `cow_enable` will be check in `ovl_copy_up_inode` */
+	/* other fields will be used in ovl read and write, */ 
+	linode = c->dentry->d_inode;
+	OVL_I(linode)->cow_enable = 1;
+	OVL_I(linode)->lens = linode->i_size;
+	OVL_I(linode)->block_count = linode->i_size / BLK_SZ;
+	if (linode->i_size % BLK_SZ)
+		OVL_I(linode)->block_count += 1;
 
 	err = ovl_copy_up_inode(c, temp);
 	if (err)

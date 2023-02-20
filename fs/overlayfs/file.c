@@ -295,6 +295,83 @@ static void ovl_aio_rw_complete(struct kiocb *iocb, long res, long res2)
 	orig_iocb->ki_complete(orig_iocb, res, res2);
 }
 
+/* judge whether block at upperdir */
+bool block_at_upper(unsigned long *branch, long position)
+{
+	if (!branch)
+		return false;
+	return test_bit(position, branch);
+}
+
+/* read from different layer at block size */
+ssize_t block_cow_read_iter(struct kiocb *iocb, struct iov_iter *iter)
+{
+	loff_t count = iter->count;
+	loff_t pos = iocb->ki_pos;
+
+	struct file *file;
+	struct dentry *dentry;
+
+	loff_t start_blk, end_blk, cur;
+	loff_t start_offset, end_offset;
+	loff_t start_pos, end_pos;
+	loff_t once_read_count;
+	size_t readlen = 0;
+	size_t ret;
+
+	struct file *lowerfile, *upperfile;
+	struct path lowerpath, upperpath;
+
+	file = iocb->ki_filp;
+	dentry = file->f_path.dentry;
+
+	// open lower and upper file;
+	ovl_path_lowerdata(dentry, &lowerpath);
+	ovl_path_upper(dentry, &upperpath);
+
+	lowerfile = ovl_path_open(&lowerpath, O_LARGEFILE | O_RDONLY);
+	if (!lowerfile)
+		return 0;
+	upperfile = ovl_path_open(&upperpath, O_LARGEFILE | O_RDONLY);
+	if (!upperfile)
+		return 0;
+
+	/* get start block, end block, start offset, ened offset of ovl read. */
+	start_blk = pos / BLK_SZ;
+	start_offset = pos % BLK_SZ;
+	end_blk = (pos + count) / BLK_SZ;
+	end_offset = (pos + count) % BLK_SZ;
+
+	for (cur = start_blk; cur < end_blk; cur++) {
+		if (cur == start_blk) {
+			start_pos = pos;
+		} else {
+			start_pos = start_blk * BLK_SZ;
+		}
+		if (cur == end_blk) {
+			end_pos = pos + count;
+		} else {
+			end_pos = (start_blk + 1) * BLK_SZ;
+		}
+		once_read_count = end_pos - start_pos;
+		iter->count = once_read_count;
+
+		if (block_at_upper(
+			    OVL_I(dentry->d_inode)->bitmap[cur / BITMAP_SZ],
+			    cur % BITMAP_SZ)) {
+			ret = vfs_iter_read(upperfile, iter, &iocb->ki_pos,
+					    ovl_iocb_to_rwf(iocb->ki_flags));
+		} else {
+			ret = vfs_iter_read(lowerfile, iter, &iocb->ki_pos,
+					    ovl_iocb_to_rwf(iocb->ki_flags));
+		}
+		readlen += ret;
+	}
+	filp_close(lowerfile, current->files);
+	filp_close(upperfile, current->files);
+	return readlen;
+}
+
 static ssize_t ovl_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 {
 	struct file *file = iocb->ki_filp;
@@ -317,8 +394,13 @@ static ssize_t ovl_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 
 	old_cred = ovl_override_creds(file_inode(file)->i_sb);
 	if (is_sync_kiocb(iocb)) {
-		ret = vfs_iter_read(real.file, iter, &iocb->ki_pos,
-				    ovl_iocb_to_rwf(iocb->ki_flags));
+		/*  if have cow_enable, read from different layer */
+		if (OVL_I(file->f_path.dentry->d_inode)->cow_enable) {
+			ret = block_cow_read_iter(iocb, iter);
+		} else {
+			ret = vfs_iter_read(real.file, iter, &iocb->ki_pos,
+					    ovl_iocb_to_rwf(iocb->ki_flags));
+		}
 	} else {
 		struct ovl_aio_req *aio_req;
 
@@ -345,6 +427,101 @@ out_fdput:
 	fdput(real);
 
 	return ret;
+}
+
+/* read partial block from lowerdir in write procedure. */
+static void cow_write_sync(struct dentry *dentry, loff_t offset, loff_t len)
+{
+	struct file *lowerfile;
+	struct file *upperfile;
+
+	struct path lowerpath;
+	struct path upperpath;
+
+	/* block info about ovl write */
+	loff_t start_blk, end_blk, cur;
+	loff_t start_offset, end_offset;
+
+	/* partial block copy-up start_pos */
+	loff_t start_pos;
+	/* partial block copy-up len */ 
+	size_t rwlen;
+	/* return value of file read from lower layer */
+	long bytes;
+
+	/* bitmap index variable */
+	uint32_t branch;
+	uint32_t position;
+
+	offset -= len;
+
+	if (!OVL_I(dentry->d_inode)->cow_enable)
+		return;
+
+	start_blk = offset / BLK_SZ;
+	end_blk = (offset + len - 1) / BLK_SZ;
+	start_offset = offset % BLK_SZ;
+	end_offset = (offset + len - 1) % BLK_SZ;
+
+	ovl_path_lowerdata(dentry, &lowerpath);
+	ovl_path_upper(dentry, &upperpath);
+
+	lowerfile = ovl_path_open(&lowerpath, O_LARGEFILE | O_RDONLY);
+	upperfile = ovl_path_open(&upperpath, O_LARGEFILE | O_WRONLY);
+
+	/* judge the position of start partial block, if at upperdir, just go check end partial block. */
+	branch = start_blk / BITMAP_SZ;
+	position = start_blk % BITMAP_SZ;
+
+	if (OVL_I(dentry->d_inode)->bitmap[branch] != 0) {
+		if (test_bit(position,
+			     OVL_I(dentry->d_inode)->bitmap[branch])) {
+			goto end_part;
+		}
+	}
+
+	/* if start partial not in upperdir, copy-up from lowerdir. */
+	if (start_offset != 0) {
+		start_pos = start_blk * BLK_SZ;
+		rwlen = start_offset;
+		bytes = do_splice_direct(lowerfile, &start_pos, upperfile,
+					 &start_pos, rwlen, SPLICE_F_MOVE);
+		if (bytes < 0)
+			return;
+	}
+end_part:
+
+	branch = end_blk / BITMAP_SZ;
+	position = end_blk % BITMAP_SZ;
+	/* end partial block is same as start. */ 
+	if (OVL_I(dentry->d_inode)->bitmap[branch] != 0) {
+		if (test_bit(position,
+			     OVL_I(dentry->d_inode)->bitmap[branch])) {
+			goto update_bitmap;
+		}
+	}
+
+	if (end_offset != 0) {
+		start_pos = offset + len;
+		rwlen = BLK_SZ - (start_pos % BLK_SZ);
+		bytes = do_splice_direct(lowerfile, &start_pos, upperfile,
+					 &start_pos, rwlen, 0);
+		if (bytes < 0)
+			return;
+	}
+
+update_bitmap:
+
+	for (cur = start_blk; cur <= end_blk; cur++) {
+		branch = cur / BITMAP_SZ;
+		position = cur % BITMAP_SZ;
+
+		if (OVL_I(dentry->d_inode)->bitmap[branch] == 0) {
+			OVL_I(dentry->d_inode)->bitmap[branch] =
+				kzalloc(BITMAP_SZ, GFP_KERNEL);
+		}
+		set_bit(position, OVL_I(dentry->d_inode)->bitmap[branch]);
+	}
 }
 
 static ssize_t ovl_write_iter(struct kiocb *iocb, struct iov_iter *iter)
@@ -384,6 +561,9 @@ static ssize_t ovl_write_iter(struct kiocb *iocb, struct iov_iter *iter)
 		file_start_write(real.file);
 		ret = vfs_iter_write(real.file, iter, &iocb->ki_pos,
 				     ovl_iocb_to_rwf(ifl));
+		/* read partial block from lowerdir after write direct to upoperdir. */
+		cow_write_sync(file->f_path.dentry, iocb->ki_pos, ret);
+		
 		file_end_write(real.file);
 		/* Update size */
 		ovl_copyattr(ovl_inode_real(inode), inode);
