@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .81.0
-%global pkg_release         .105
+%global maintenance_release .82.0
+%global pkg_release         .106
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,29 @@ fi
 %endif
 
 %changelog
+* Thu Feb 23 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.82.0.106
+- !410 Backport CVEs and bugfixes
+- x86/kasan: Populate shadow for shared chunk of the CPU entry area
+- x86/kasan: Add helpers to align shadow addresses up and down
+- x86/kasan: Rename local CPU_ENTRY_AREA variables to shorten names
+- x86/mm: Populate KASAN shadow for entire per-CPU range of CPU entry area
+- x86/mm: Recompute physical address for every page of per-CPU CEA mapping
+- x86/kasan: Map shadow for percpu pages on demand
+- x86/mm: Randomize per-cpu entry area
+- Huawei BMA: Fix iBMA driver bug
+- mm: memcg: fix NULL pointer in mem_cgroup_track_foreign_dirty_slowpath()
+- mm,hugetlb: take hugetlb_lock before decrementing h->resv_huge_pages
+- ppp: associate skb with a device at tx
+- arm32: kaslr: Avoid using the -fpic and fno-pic parameters together
+- bpf, sockmap: fix race in sock_map_free()
+- bpf: make sure skb->len != 0 when redirecting to a tunneling device
+- cifs: Fix use-after-free in rdata->read_into_pages()
+- net: bridge: mcast: add and enforce query interval minimum
+- net: bridge: mcast: add and enforce startup query interval minimum
+- media: vivid: fix compose size exceed boundary
+- !405 kvm: arm64: fix some pvsched bugs
+- kvm: arm64: fix some pvsched bugs
+
 * Thu Feb 16 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.81.0.105
 - !400 Backport fs and block bugfixes
 - ubi: Fix UAF wear-leveling entry in eraseblk_count_seq_show()
