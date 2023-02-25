@@ -256,6 +256,8 @@ extern int proc_sp_group_state(struct seq_file *m, struct pid_namespace *ns,
 			struct pid *pid, struct task_struct *task);
 
 extern void *mg_sp_alloc(unsigned long size, unsigned long sp_flags, int spg_id);
+extern void *mg_sp_alloc_nodemask(unsigned long size, unsigned long sp_flags, int spg_id,
+		nodemask_t nodemask);
 extern int mg_sp_free(unsigned long addr, int id);
 
 extern void *mg_sp_make_share_k2u(unsigned long kva, unsigned long size,

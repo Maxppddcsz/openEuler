@@ -100,6 +100,8 @@
 #include <linux/printk.h>
 #include <linux/swapops.h>
 
+#include <linux/share_pool.h>
+
 #include <asm/tlbflush.h>
 #include <linux/uaccess.h>
 
@@ -2087,7 +2089,7 @@ int huge_node(struct vm_area_struct *vma, unsigned long addr, gfp_t gfp_flags,
 		nid = interleave_nid(*mpol, vma, addr,
 					huge_page_shift(hstate_vma(vma)));
 	} else {
-		nid = policy_node(gfp_flags, *mpol, numa_node_id());
+		nid = policy_node(gfp_flags, *mpol, sp_node_id(vma));
 		if ((*mpol)->mode == MPOL_BIND)
 			*nodemask = &(*mpol)->v.nodes;
 	}
