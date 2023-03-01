@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .82.0
-%global pkg_release         .106
+%global maintenance_release .83.0
+%global pkg_release         .107
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,59 @@ fi
 %endif
 
 %changelog
+* Wed Mar 01 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.83.0.107
+- !419 Backport CVEs and bugfixes
+- net: mpls: fix stale pointer if allocation fails during device rename
+- x86/bugs: Flush IBP in ib_prctl_set()
+- binder: Gracefully handle BINDER_TYPE_FDA objects with num_fds=0
+- binder: Address corner cases in deferred copy and fixup
+- binder: fix pointer cast warning
+- binder: defer copies of pre-patched txn data
+- binder: read pre-translated fds from sender buffer
+- binder: avoid potential data leakage when copying txn
+- ARM: 9242/1: kasan: Only map modules if CONFIG_KASAN_VMALLOC=n
+- rcu: Avoid stack overflow due to __rcu_irq_enter_check_tick() being kprobe-ed
+- net/sched: sch_taprio: do not schedule in taprio_reset()
+- net/sched: sch_taprio: fix possible use-after-free
+- nbd: fix assignment error for first_minor in nbd_dev_add
+- md/raid10: fix wrong setting of max_corr_read_errors
+- md/raid10: fix overflow in safe_delay_store
+- md/raid10: fix slab-out-of-bounds in md_bitmap_get_counter
+- fix kabi broken due to import of 5.15-stable io_uring
+- io_uring: import 5.15-stable io_uring
+- task_work: add helper for more targeted task_work canceling
+- coredump: Limit what can interrupt coredumps
+- kernel: provide create_io_thread() helper
+- fs: provide locked helper variant of close_fd_get_file()
+- kernel: remove checking for TIF_NOTIFY_SIGNAL
+- entry: Add support for TIF_NOTIFY_SIGNAL
+- signal: Add task_sigpending() helper
+- arm: add support for TIF_NOTIFY_SIGNAL
+- arm64: add support for TIF_NOTIFY_SIGNAL
+- riscv: add support for TIF_NOTIFY_SIGNAL
+- powerpc: add support for TIF_NOTIFY_SIGNAL
+- x86: Wire up TIF_NOTIFY_SIGNAL
+- iov_iter: add helper to save iov_iter state
+- perf beauty: Update copy of linux/socket.h with the kernel sources
+- perf trace beauty: Update copy of linux/socket.h with the kernel sources
+- io_uring: correct pinned_vm accounting
+- file: Rename __close_fd_get_file close_fd_get_file
+- io_uring: don't hold uring_lock when calling io_run_task_work*
+- io_uring: don't take uring_lock during iowq cancel
+- fs: make do_renameat2() take struct filename
+- net: add accept helper not installing fd
+- net: provide __sys_shutdown_sock() that takes a socket
+- fs: expose LOOKUP_CACHED through openat2() RESOLVE_CACHED
+- Make sure nd->path.mnt and nd->path.dentry are always valid pointers
+- fix handling of nd->depth on LOOKUP_CACHED failures in try_to_unlazy*
+- fs: add support for LOOKUP_CACHED
+- Revert "io_uring: fix soft lockup when call __io_remove_buffers"
+- Revert "io_uring: deduplicate failing task_work_add"
+- Revert "io_uring: don't take uring_lock during iowq cancel"
+- Revert "[Backport] io_uring: don't keep looping for more events if we can't flush overflow"
+- Revert "[Huawei] io-wq: Switch io_wqe_worker's fs before releasing request"
+- Revert "[Huawei] io_uring:drop identity before creating a private one"
+
 * Thu Feb 23 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.82.0.106
 - !410 Backport CVEs and bugfixes
 - x86/kasan: Populate shadow for shared chunk of the CPU entry area
