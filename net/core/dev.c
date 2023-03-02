@@ -6366,6 +6366,8 @@ static __latent_entropy void net_rx_action(struct softirq_action *h)
 	for (;;) {
 		struct napi_struct *n;
 
+		skb_defer_free_flush(sd);
+
 		if (list_empty(&list)) {
 			if (!sd_has_rps_ipi_waiting(sd) && list_empty(&repoll))
 				goto end;
@@ -6397,7 +6399,6 @@ static __latent_entropy void net_rx_action(struct softirq_action *h)
 	net_rps_action_and_irq_enable(sd);
 
 end:
-	skb_defer_free_flush(sd);
 	__kfree_skb_flush();
 }
 
