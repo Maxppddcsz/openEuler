@@ -666,6 +666,7 @@ static const struct hda_vendor_id hda_vendor_ids[] = {
 	{ 0x434d, "C-Media" },
 	{ 0x8086, "Intel" },
 	{ 0x8384, "SigmaTel" },
+	{ 0x0014, "Loongson" },
 	{} /* terminator */
 };
 

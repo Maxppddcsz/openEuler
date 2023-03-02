@@ -17,6 +17,7 @@
 #include <linux/threads.h>
 #include <linux/export.h>
 #include <linux/time.h>
+#include <linux/syscore_ops.h>
 #include <linux/tracepoint.h>
 #include <linux/sched/hotplug.h>
 #include <linux/sched/task_stack.h>
@@ -149,6 +150,17 @@ void loongson3_send_ipi_mask(const struct cpumask *mask, unsigned int action)
 	for_each_cpu(i, mask)
 		ipi_write_action(cpu_logical_map(i), (u32)action);
 }
+
+/*
+ * This function sends a 'reschedule' IPI to another CPU.
+ * it goes straight through and wastes no time serializing
+ * anything. Worst case is that we lose a reschedule ...
+ */
+void smp_send_reschedule(int cpu)
+{
+	loongson3_send_ipi_single(cpu, SMP_RESCHEDULE);
+}
+EXPORT_SYMBOL_GPL(smp_send_reschedule);
 
 irqreturn_t loongson3_ipi_interrupt(int irq, void *dev)
 {
