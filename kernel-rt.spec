@@ -11,8 +11,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .81.0
-%global pkg_release         .57
+%global maintenance_release .83.0
+%global pkg_release         .58
 %global rt_release          .rt62
 
 %define with_debuginfo 1
@@ -885,6 +885,12 @@ fi
 %endif
 
 %changelog
+
+* Wed Mar 6 2023 liyulei <liyulei@kylinos.cn> - 5.10.0-60.83.0.58
+- update preempt-rt kernel to 5.10.0-60.83.0
+
+
+
 * Wed Feb 22 2023 wuchunguang <wuchunguang@kylinos.cn> - 5.10.0-60.81.0.57
 - update preempt-rt kernel to 5.10.0-60.81.0
 
