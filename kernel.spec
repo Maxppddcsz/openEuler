@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .83.0
-%global pkg_release         .107
+%global maintenance_release .84.0
+%global pkg_release         .108
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,38 @@ fi
 %endif
 
 %changelog
+* Wed Mar 08 2023 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.84.0.108
+- !454 Backport CVEs and bugfixes
+- media: rc: Fix use-after-free bugs caused by ene_tx_irqsim()
+- neigh: make sure used and confirmed times are valid
+- HID: check empty report_list in bigben_probe()
+- HID: check empty report_list in hid_validate_values()
+- Documentation/hw-vuln: Fix rST warning
+- Documentation/hw-vuln: Add documentation for Cross-Thread Return Predictions
+- KVM: x86: Mitigate the cross-thread return address predictions bug
+- x86/speculation: Identify processors vulnerable to SMT RSB predictions
+- radi10: fix leak of 'r10bio->remaining' for recovery
+- md: fix soft lockup in status_resync
+- md: don't update recovery_cp when curr_resync is ACTIVE
+- md: Ensure resync is reported after it starts
+- md: Use enum for overloaded magic numbers used by mddev->curr_resync
+- raid10: fix leak of io accounting
+- tcp: Fix listen() regression in 5.15.88.
+- net/ulp: Remove redundant ->clone() test in inet_clone_ulp().
+- net/ulp: use consistent error code when blocking ULP
+- net/ulp: prevent ULP without clone op from entering the LISTEN status
+- net/tls: tls_is_tx_ready() checked list_entry
+- usb: dwc3: dwc3-qcom: Add missing platform_device_put() in dwc3_qcom_acpi_register_core
+- ntfs: fix out-of-bounds read in ntfs_attr_find()
+- splice: don't generate zero-len segement bvecs
+- rds: rds_rm_zerocopy_callback() use list_first_entry()
+- tap: tap_open(): correctly initialize socket uid
+- tun: tun_chr_open(): correctly initialize socket uid
+- net: add sock_init_data_uid()
+- ring-buffer: Handle race between rb_move_tail and rb_check_pages
+- blk-mq: use quiesced elevator switch when reinitializing queues
+- ovl: fix use inode directly in rcu-walk mode
+
 * Wed Mar 01 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.83.0.107
 - !419 Backport CVEs and bugfixes
 - net: mpls: fix stale pointer if allocation fails during device rename
