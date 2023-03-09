@@ -787,6 +787,8 @@ struct hnae3_ae_ops {
 			struct ethtool_wolinfo *wol);
 	int (*set_wol)(struct hnae3_handle *handle,
 		       struct ethtool_wolinfo *wol);
+	int (*priv_ops)(struct hnae3_handle *handle, int opcode,
+			void *data, size_t length);
 /* Notice! If the function is not for test, the definition must before
  * CONFIG_HNS3_TEST! Because RoCE will use this head file, and it won't
  * set CONFIG_HNS3_TEST, that may cause RoCE calling the wrong function.
