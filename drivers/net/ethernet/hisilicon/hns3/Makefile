@@ -26,6 +26,7 @@ HNS3_OBJS	=	hns3_enet.o \
 HNS3_OBJS_IT	=	hns3_extension/hns3_enet_it.o
 obj-$(CONFIG_HNS3_ENET) += hns3.o
 hns3-objs = $(HNS3_OBJS) $(HNS3_OBJS_IT)
+hns3-objs += hns3_ext.o
 
 hns3-$(CONFIG_HNS3_DCB) += hns3_dcbnl.o
 
@@ -44,6 +45,8 @@ HCLGE_OBJ_IT_MAIN	=	hns3_extension/hns3pf/hclge_main_it.o \
 				hns3_extension/hns3pf/hclge_sysfs.o
 obj-$(CONFIG_HNS3_HCLGE) += hclge.o
 hclge-objs := $(HCLGE_OBJ) $(HCLGE_OBJ_IT_MAIN)
+hclge-objs += hns3pf/hclge_ext.o
+
 hclge-$(CONFIG_HNS3_DCB) += hns3pf/hclge_dcb.o
 #### compile hclgevf.ko
 obj-$(CONFIG_HNS3_HCLGEVF) += hclgevf.o

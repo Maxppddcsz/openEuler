@@ -775,8 +775,6 @@ struct hnae3_ae_ops {
 	int (*send_cmdq)(struct hnae3_handle *handle, void *data, int num);
 	int (*test_cmdq)(struct hnae3_handle *handle, void *data, int *len);
 	int (*ecc_handle)(struct hnae3_ae_dev *ae_dev);
-	int (*priv_ops)(struct hnae3_handle *handle, int opcode,
-			void *data, int length);
 	void (*ext_init)(struct hnae3_handle *handle);
 	void (*ext_uninit)(struct hnae3_handle *handle);
 	void (*ext_reset_done)(struct hnae3_handle *handle);
@@ -803,6 +801,8 @@ struct hnae3_ae_ops {
 			struct ethtool_wolinfo *wol);
 	int (*set_wol)(struct hnae3_handle *handle,
 		       struct ethtool_wolinfo *wol);
+	int (*priv_ops)(struct hnae3_handle *handle, int opcode,
+			void *data, size_t length);
 #endif
 };
 
