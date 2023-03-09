@@ -766,6 +766,23 @@ struct hnae3_ae_ops {
 	int (*get_module_eeprom)(struct hnae3_handle *handle, u32 offset,
 				 u32 len, u8 *data);
 	bool (*get_cmdq_stat)(struct hnae3_handle *handle);
+<<<<<<< HEAD
+=======
+
+/* Notice! If the function is not for test, the definition must before
+ * CONFIG_HNS3_TEST! Because RoCE will use this head file, and it won't
+ * set CONFIG_HNS3_TEST, that may cause RoCE calling the wrong function.
+ */
+#ifdef CONFIG_HNS3_TEST
+	int (*send_cmdq)(struct hnae3_handle *handle, void *data, int num);
+	int (*test_cmdq)(struct hnae3_handle *handle, void *data, int *len);
+	int (*ecc_handle)(struct hnae3_ae_dev *ae_dev);
+	void (*ext_init)(struct hnae3_handle *handle);
+	void (*ext_uninit)(struct hnae3_handle *handle);
+	void (*ext_reset_done)(struct hnae3_handle *handle);
+#endif
+#ifndef __GENKSYMS__
+>>>>>>> 7d68f1627855 (net: hns3: add support customized exception handling interfaces.)
 	int (*get_phy_link_ksettings)(struct hnae3_handle *handle,
 				      struct ethtool_link_ksettings *cmd);
 	int (*set_phy_link_ksettings)(struct hnae3_handle *handle,
@@ -787,6 +804,8 @@ struct hnae3_ae_ops {
 			struct ethtool_wolinfo *wol);
 	int (*set_wol)(struct hnae3_handle *handle,
 		       struct ethtool_wolinfo *wol);
+	int (*priv_ops)(struct hnae3_handle *handle, int opcode,
+			void *data, size_t length);
 /* Notice! If the function is not for test, the definition must before
  * CONFIG_HNS3_TEST! Because RoCE will use this head file, and it won't
  * set CONFIG_HNS3_TEST, that may cause RoCE calling the wrong function.
