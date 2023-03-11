@@ -30,6 +30,7 @@
 #include <linux/vgaarb.h>
 #include <linux/nospec.h>
 #include <linux/sched/mm.h>
+#include <linux/vfio_pci_migration.h>
 
 #include "vfio_pci_private.h"
 
@@ -296,6 +297,14 @@ static int vfio_pci_enable(struct vfio_pci_device *vdev)
 
 	vfio_pci_probe_mmaps(vdev);
 
+	if (vfio_dev_migration_is_supported(pdev)) {
+		ret = vfio_pci_migration_init(vdev);
+		if (ret) {
+			dev_warn(&vdev->pdev->dev, "Failed to init vfio_pci_migration\n");
+			vfio_pci_disable(vdev);
+			return ret;
+		}
+	}
 	return 0;
 }
 
@@ -392,6 +401,7 @@ static void vfio_pci_disable(struct vfio_pci_device *vdev)
 out:
 	pci_disable_device(pdev);
 
+	vfio_pci_migration_exit(vdev);
 	vfio_pci_try_bus_reset(vdev);
 
 	if (!disable_idle_d3)
@@ -642,6 +652,41 @@ struct vfio_devices {
 	int max_index;
 };
 
+static long vfio_pci_handle_log_buf_ctl(struct vfio_pci_device *vdev,
+	const unsigned long arg)
+{
+	struct vfio_log_buf_ctl *log_buf_ctl = NULL;
+	struct vfio_log_buf_info *log_buf_info = NULL;
+	struct vf_migration_log_info migration_log_info;
+	long ret = 0;
+
+	log_buf_ctl = (struct vfio_log_buf_ctl *)arg;
+	log_buf_info = (struct vfio_log_buf_info *)log_buf_ctl->data;
+
+	switch (log_buf_ctl->flags) {
+	case VFIO_DEVICE_LOG_BUF_FLAG_START:
+		migration_log_info.dom_uuid = log_buf_info->uuid;
+		migration_log_info.buffer_size =
+			log_buf_info->buffer_size;
+		migration_log_info.sge_num = log_buf_info->addrs_size;
+		migration_log_info.sge_len = log_buf_info->frag_size;
+		migration_log_info.sgevec = log_buf_info->sgevec;
+		ret = vfio_pci_device_log_start(vdev,
+			&migration_log_info);
+		break;
+	case VFIO_DEVICE_LOG_BUF_FLAG_STOP:
+		ret = vfio_pci_device_log_stop(vdev,
+			log_buf_info->uuid);
+		break;
+	case VFIO_DEVICE_LOG_BUF_FLAG_STATUS_QUERY:
+		ret = vfio_pci_device_log_status_query(vdev);
+		break;
+	default:
+		ret = -EINVAL;
+		break;
+	}
+	return ret;
+}
 static long vfio_pci_ioctl(void *device_data,
 			   unsigned int cmd, unsigned long arg)
 {
@@ -1142,6 +1187,8 @@ hot_reset_release:
 
 		return vfio_pci_ioeventfd(vdev, ioeventfd.offset,
 					  ioeventfd.data, count, ioeventfd.fd);
+	} else if (cmd == VFIO_DEVICE_LOG_BUF_CTL) {
+		return vfio_pci_handle_log_buf_ctl(vdev, arg);
 	}
 
 	return -ENOTTY;
@@ -1566,6 +1613,9 @@ static int vfio_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		pci_set_power_state(pdev, PCI_D3hot);
 	}
 
+	if (vfio_dev_migration_is_supported(pdev))
+		ret = vfio_pci_device_init(pdev);
+
 	return ret;
 }
 
@@ -1591,6 +1641,10 @@ static void vfio_pci_remove(struct pci_dev *pdev)
 
 	if (!disable_idle_d3)
 		pci_set_power_state(pdev, PCI_D0);
+
+	if (vfio_dev_migration_is_supported(pdev)) {
+		vfio_pci_device_uninit(pdev);
+	}
 }
 
 static pci_ers_result_t vfio_pci_aer_err_detected(struct pci_dev *pdev,

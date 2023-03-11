@@ -33,12 +33,16 @@
 #include <linux/string.h>
 #include <linux/uaccess.h>
 #include <linux/vfio.h>
+#include <linux/vfio_pci_migration.h>
 #include <linux/wait.h>
 #include <linux/sched/signal.h>
 
 #define DRIVER_VERSION	"0.3"
 #define DRIVER_AUTHOR	"Alex Williamson <alex.williamson@redhat.com>"
 #define DRIVER_DESC	"VFIO - User Level meta-driver"
+
+#define LOG_BUF_FRAG_SIZE (2 * 1024 * 1024) // fix to 2M
+#define LOG_BUF_MAX_ADDRS_SIZE 128 // max vm ram size is 1T
 
 static struct vfio {
 	struct class			*class;
@@ -57,6 +61,15 @@ struct vfio_iommu_driver {
 	struct list_head			vfio_next;
 };
 
+struct vfio_device;
+struct vfio_log_buf {
+	struct vfio_log_buf_info info;
+	int fd;
+	int buffer_state;
+	int device_state;
+	unsigned long *cpu_addrs;
+};
+
 struct vfio_container {
 	struct kref			kref;
 	struct list_head		group_list;
@@ -64,6 +77,8 @@ struct vfio_container {
 	struct vfio_iommu_driver	*iommu_driver;
 	void				*iommu_data;
 	bool				noiommu;
+	struct vfio_log_buf log_buf;
+	struct list_head log_buf_device_list;
 };
 
 struct vfio_unbound_dev {
@@ -98,6 +113,7 @@ struct vfio_device {
 	const struct vfio_device_ops	*ops;
 	struct vfio_group		*group;
 	struct list_head		group_next;
+	struct list_head		log_buf_next;
 	void				*device_data;
 };
 
@@ -1158,8 +1174,441 @@ static long vfio_ioctl_set_iommu(struct vfio_container *container,
 	return ret;
 }
 
+static long vfio_log_buf_dispatch_cmd(struct vfio_container *container,
+	unsigned int cmd, unsigned long arg)
+{
+	struct vfio_device *device = NULL;
+	int have_deivce = 0;
+	int ret;
+
+	list_for_each_entry(device, &container->log_buf_device_list, log_buf_next) {
+		have_deivce = 1;
+		ret = device->ops->ioctl(device->device_data, cmd, arg);
+		if (ret) {
+			pr_err("dispatch cmd to devices failed\n");
+		}
+	}
+	if (have_deivce == 0) {
+		pr_err("no device to dispatch\n");
+		return -ENXIO;
+	}
+	return 0;
+}
+
+static long vfio_log_buf_start(struct vfio_container *container)
+{
+	struct vfio_log_buf_ctl log_buf_ctl;
+	long ret;
+
+	if (container->log_buf.buffer_state == 0) {
+		pr_err("can`t start logging before buffer setup\n");
+		return -EINVAL;
+	}
+
+	log_buf_ctl.argsz = sizeof(struct vfio_log_buf_info);
+	log_buf_ctl.flags = VFIO_DEVICE_LOG_BUF_FLAG_START;
+	log_buf_ctl.data = (void *)&container->log_buf.info;
+	ret = vfio_log_buf_dispatch_cmd(container, VFIO_DEVICE_LOG_BUF_CTL,
+		(unsigned long)&log_buf_ctl);
+	if (ret)
+		return ret;
+
+	container->log_buf.device_state = 1;
+	return 0;
+}
+
+static long vfio_log_buf_stop(struct vfio_container *container)
+{
+	struct vfio_log_buf_ctl log_buf_ctl;
+	long ret;
+
+	if (container->log_buf.device_state == 0) {
+		pr_warn("device already stopped\n");
+		return 0;
+	}
+
+	log_buf_ctl.argsz = sizeof(struct vfio_log_buf_info);
+	log_buf_ctl.flags = VFIO_DEVICE_LOG_BUF_FLAG_STOP;
+	log_buf_ctl.data = (void *)&container->log_buf.info;
+	ret = vfio_log_buf_dispatch_cmd(container, VFIO_DEVICE_LOG_BUF_CTL,
+		(unsigned long)&log_buf_ctl);
+	if (ret)
+		return ret;
+
+	container->log_buf.device_state = 0;
+	return 0;
+}
+
+static long vfio_log_buf_query(struct vfio_container *container)
+{
+	struct vfio_log_buf_ctl log_buf_ctl;
+
+	if (container->log_buf.device_state == 0) {
+		pr_err("can`t query before start logging\n");
+		return -EINVAL;
+	}
+
+	log_buf_ctl.argsz = sizeof(struct vfio_log_buf_info);
+	log_buf_ctl.flags = VFIO_DEVICE_LOG_BUF_FLAG_STATUS_QUERY;
+	log_buf_ctl.data = (void *)&container->log_buf.info;
+
+	return vfio_log_buf_dispatch_cmd(container,
+			VFIO_DEVICE_LOG_BUF_CTL, (unsigned long)&log_buf_ctl);
+}
+
+static int vfio_log_buf_fops_mmap(struct file *filep,
+	struct vm_area_struct *vma)
+{
+	struct vfio_container *container = filep->private_data;
+	struct vfio_log_buf *log_buf = &container->log_buf;
+	unsigned long frag_pg_size;
+	unsigned long frag_offset;
+	phys_addr_t pa;
+	int ret = -EINVAL;
+
+	if (!log_buf->cpu_addrs) {
+		pr_err("mmap before setup, please setup log buf first\n");
+		return ret;
+	}
+
+	if (log_buf->info.frag_size < PAGE_SIZE) {
+		pr_err("mmap frag size should not less than page size!\n");
+		return ret;
+	}
+
+	frag_pg_size = log_buf->info.frag_size / PAGE_SIZE;
+	frag_offset = vma->vm_pgoff / frag_pg_size;
+
+	if (frag_offset >= log_buf->info.addrs_size) {
+		pr_err("mmap offset out of range!\n");
+		return ret;
+	}
+
+	if (vma->vm_end - vma->vm_start != log_buf->info.frag_size) {
+		pr_err("mmap size error, should be aligned with frag size!\n");
+		return ret;
+	}
+
+	pa = virt_to_phys((void *)log_buf->cpu_addrs[frag_offset]);
+	ret = remap_pfn_range(vma, vma->vm_start,
+			pa >> PAGE_SHIFT,
+			vma->vm_end - vma->vm_start,
+			vma->vm_page_prot);
+	if (ret)
+		pr_err("remap_pfn_range error!\n");
+	return ret;
+}
+
+static void vfio_log_buf_store_dev(struct vfio_container *container)
+{
+	struct vfio_group *group = NULL;
+	struct vfio_device *device = NULL;
+
+	down_write(&container->group_lock);
+	list_for_each_entry(group, &container->group_list, container_next) {
+		mutex_lock(&group->device_lock);
+		list_for_each_entry(device, &group->device_list, group_next) {
+			list_add(&device->log_buf_next, &container->log_buf_device_list);
+		}
+		mutex_unlock(&group->device_lock);
+	}
+	up_write(&container->group_lock);
+}
+
+static void vfio_log_buf_clear_dev(struct vfio_container *container)
+{
+	struct vfio_device *device = NULL, *tmp = NULL;
+
+	list_for_each_entry_safe(device, tmp,
+				 &container->log_buf_device_list, log_buf_next) {
+		list_del(&device->log_buf_next);
+	}
+}
+
+static struct device *vfio_log_buf_get_dev(struct vfio_container *container)
+{
+	struct vfio_device *device = NULL;
+
+	list_for_each_entry(device, &container->log_buf_device_list, log_buf_next) {
+		return device->dev;
+	}
+	return NULL;
+}
+
+static void vfio_log_buf_release_dma(struct device *dev,
+	struct vfio_log_buf *log_buf)
+{
+	int i;
+
+	for (i = 0; i < log_buf->info.addrs_size; i++) {
+		if ((log_buf->cpu_addrs && log_buf->cpu_addrs[i] != 0) &&
+			(log_buf->info.sgevec &&
+			log_buf->info.sgevec[i].addr != 0)) {
+			dma_free_coherent(dev, log_buf->info.frag_size,
+				(void *)log_buf->cpu_addrs[i],
+				log_buf->info.sgevec[i].addr);
+			log_buf->cpu_addrs[i] = 0;
+			log_buf->info.sgevec[i].addr = 0;
+		}
+	}
+}
+
+static long vfio_log_buf_alloc_dma(struct vfio_log_buf_info *info,
+	struct vfio_log_buf *log_buf, struct device *dev)
+{
+	int i;
+
+	for (i = 0; i < info->addrs_size; i++) {
+		log_buf->cpu_addrs[i] = (unsigned long)dma_alloc_coherent(dev,
+			info->frag_size, &log_buf->info.sgevec[i].addr,
+			GFP_KERNEL);
+		log_buf->info.sgevec[i].len = info->frag_size;
+		if (log_buf->cpu_addrs[i] == 0 ||
+			log_buf->info.sgevec[i].addr == 0) {
+			return -ENOMEM;
+		}
+	}
+	return 0;
+}
+
+static long vfio_log_buf_alloc_addrs(struct vfio_log_buf_info *info,
+	struct vfio_log_buf *log_buf)
+{
+	log_buf->info.sgevec = kcalloc(info->addrs_size,
+		sizeof(struct vfio_log_buf_sge), GFP_KERNEL);
+	if (!log_buf->info.sgevec)
+		return -ENOMEM;
+
+	log_buf->cpu_addrs = kcalloc(info->addrs_size,
+		sizeof(unsigned long), GFP_KERNEL);
+	if (!log_buf->cpu_addrs) {
+		kfree(log_buf->info.sgevec);
+		log_buf->info.sgevec = NULL;
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+
+static long vfio_log_buf_info_valid(struct vfio_log_buf_info *info)
+{
+	if (info->addrs_size > LOG_BUF_MAX_ADDRS_SIZE ||
+		info->addrs_size == 0) {
+		pr_err("can`t support vm ram size larger than 1T or equal to 0\n");
+		return -EINVAL;
+	}
+	if (info->frag_size != LOG_BUF_FRAG_SIZE) {
+		pr_err("only support %d frag size\n", LOG_BUF_FRAG_SIZE);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static long vfio_log_buf_setup(struct vfio_container *container,
+	unsigned long data)
+{
+	struct vfio_log_buf_info info;
+	struct vfio_log_buf *log_buf = &container->log_buf;
+	struct device *dev = NULL;
+	long ret;
+
+	if (log_buf->info.sgevec) {
+		pr_warn("log buf already setup\n");
+		return 0;
+	}
+
+	if (copy_from_user(&info, (void __user *)data,
+		sizeof(struct vfio_log_buf_info)))
+		return -EFAULT;
+
+	ret = vfio_log_buf_info_valid(&info);
+	if (ret)
+		return ret;
+
+	ret = vfio_log_buf_alloc_addrs(&info, log_buf);
+	if (ret)
+		goto err_out;
+
+	dev = vfio_log_buf_get_dev(container);
+	if (!dev) {
+		pr_err("can`t get dev\n");
+		goto err_free_addrs;
+	}
+
+	ret = vfio_log_buf_alloc_dma(&info, log_buf, dev);
+	if (ret)
+		goto err_free_dma_array;
+
+	log_buf->info.uuid = info.uuid;
+	log_buf->info.buffer_size = info.buffer_size;
+	log_buf->info.frag_size = info.frag_size;
+	log_buf->info.addrs_size = info.addrs_size;
+	log_buf->buffer_state = 1;
+	return 0;
+
+err_free_dma_array:
+	vfio_log_buf_release_dma(dev, log_buf);
+err_free_addrs:
+	kfree(log_buf->cpu_addrs);
+	log_buf->cpu_addrs = NULL;
+	kfree(log_buf->info.sgevec);
+	log_buf->info.sgevec = NULL;
+err_out:
+	return -ENOMEM;
+}
+
+static long vfio_log_buf_release_buffer(struct vfio_container *container)
+{
+	struct vfio_log_buf *log_buf = &container->log_buf;
+	struct device *dev = NULL;
+
+	if (log_buf->buffer_state == 0) {
+		pr_warn("buffer already released\n");
+		return 0;
+	}
+
+	if (log_buf->device_state == 1) {
+		pr_err("should not release buffer before stop logging\n");
+		return -EINVAL;
+	}
+
+	dev = vfio_log_buf_get_dev(container);
+	if (!dev) {
+		pr_err("can`t get dev\n");
+		return -EFAULT;
+	}
+
+	vfio_log_buf_release_dma(dev, log_buf);
+
+	kfree(log_buf->cpu_addrs);
+	log_buf->cpu_addrs = NULL;
+
+	kfree(log_buf->info.sgevec);
+	log_buf->info.sgevec = NULL;
+
+	log_buf->buffer_state = 0;
+	return 0;
+}
+
+static int vfio_log_buf_release(struct inode *inode, struct file *filep)
+{
+	struct vfio_container *container = filep->private_data;
+
+	vfio_log_buf_stop(container);
+	vfio_log_buf_release_buffer(container);
+	vfio_log_buf_clear_dev(container);
+	memset(&container->log_buf, 0, sizeof(struct vfio_log_buf));
+	return 0;
+}
+
+static long vfio_ioctl_handle_log_buf_ctl(struct vfio_container *container,
+	unsigned long arg)
+{
+	struct vfio_log_buf_ctl log_buf_ctl;
+	long ret = 0;
+
+	if (copy_from_user(&log_buf_ctl, (void __user *)arg,
+		sizeof(struct vfio_log_buf_ctl)))
+		return -EFAULT;
+
+	switch (log_buf_ctl.flags) {
+	case VFIO_DEVICE_LOG_BUF_FLAG_SETUP:
+		ret = vfio_log_buf_setup(container,
+			(unsigned long)log_buf_ctl.data);
+		break;
+	case VFIO_DEVICE_LOG_BUF_FLAG_RELEASE:
+		ret = vfio_log_buf_release_buffer(container);
+		break;
+	case VFIO_DEVICE_LOG_BUF_FLAG_START:
+		ret = vfio_log_buf_start(container);
+		break;
+	case VFIO_DEVICE_LOG_BUF_FLAG_STOP:
+		ret = vfio_log_buf_stop(container);
+		break;
+	case VFIO_DEVICE_LOG_BUF_FLAG_STATUS_QUERY:
+		ret = vfio_log_buf_query(container);
+		break;
+	default:
+		pr_err("log buf control flag incorrect\n");
+		ret = -EINVAL;
+		break;
+	}
+	return ret;
+}
+
+static long vfio_log_buf_fops_unl_ioctl(struct file *filep,
+	unsigned int cmd, unsigned long arg)
+{
+	struct vfio_container *container = filep->private_data;
+	long ret = -EINVAL;
+
+	switch (cmd) {
+	case VFIO_LOG_BUF_CTL:
+		ret = vfio_ioctl_handle_log_buf_ctl(container, arg);
+		break;
+	default:
+		pr_err("log buf control cmd incorrect\n");
+		break;
+	}
+
+	return ret;
+}
+
+#ifdef CONFIG_COMPAT
+static long vfio_log_buf_fops_compat_ioctl(struct file *filep,
+	unsigned int cmd, unsigned long arg)
+{
+	arg = (unsigned long)compat_ptr(arg);
+	return vfio_log_buf_fops_unl_ioctl(filep, cmd, arg);
+}
+#endif /* CONFIG_COMPAT */
+
+static const struct file_operations vfio_log_buf_fops = {
+	.owner  = THIS_MODULE,
+	.mmap	= vfio_log_buf_fops_mmap,
+	.unlocked_ioctl	= vfio_log_buf_fops_unl_ioctl,
+	.release = vfio_log_buf_release,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl	= vfio_log_buf_fops_compat_ioctl,
+#endif
+};
+
+static int vfio_get_log_buf_fd(struct vfio_container *container,
+	unsigned long arg)
+{
+	struct file *filep = NULL;
+	int ret;
+
+	if (container->log_buf.fd > 0)
+		return container->log_buf.fd;
+
+	ret = get_unused_fd_flags(O_CLOEXEC);
+	if (ret < 0) {
+		pr_err("get_unused_fd_flags get fd failed\n");
+		return ret;
+	}
+
+	vfio_log_buf_store_dev(container);
+
+	filep = anon_inode_getfile("[vfio-log-buf]", &vfio_log_buf_fops,
+		container, O_RDWR);
+	if (IS_ERR(filep)) {
+		pr_err("anon_inode_getfile failed\n");
+		put_unused_fd(ret);
+		ret = PTR_ERR(filep);
+		return ret;
+	}
+
+	filep->f_mode |= (FMODE_READ | FMODE_WRITE | FMODE_LSEEK);
+
+	fd_install(ret, filep);
+
+	container->log_buf.fd = ret;
+	return ret;
+}
+
 static long vfio_fops_unl_ioctl(struct file *filep,
-				unsigned int cmd, unsigned long arg)
+	unsigned int cmd, unsigned long arg)
 {
 	struct vfio_container *container = filep->private_data;
 	struct vfio_iommu_driver *driver;
@@ -1178,6 +1627,9 @@ static long vfio_fops_unl_ioctl(struct file *filep,
 		break;
 	case VFIO_SET_IOMMU:
 		ret = vfio_ioctl_set_iommu(container, arg);
+		break;
+	case VFIO_GET_LOG_BUF_FD:
+		ret = vfio_get_log_buf_fd(container, arg);
 		break;
 	default:
 		driver = container->iommu_driver;
@@ -1210,7 +1662,7 @@ static int vfio_fops_open(struct inode *inode, struct file *filep)
 	INIT_LIST_HEAD(&container->group_list);
 	init_rwsem(&container->group_lock);
 	kref_init(&container->kref);
-
+	INIT_LIST_HEAD(&container->log_buf_device_list);
 	filep->private_data = container;
 
 	return 0;
@@ -1219,9 +1671,7 @@ static int vfio_fops_open(struct inode *inode, struct file *filep)
 static int vfio_fops_release(struct inode *inode, struct file *filep)
 {
 	struct vfio_container *container = filep->private_data;
-
 	filep->private_data = NULL;
-
 	vfio_container_put(container);
 
 	return 0;
