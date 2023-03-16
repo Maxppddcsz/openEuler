@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .84.0
-%global pkg_release         .108
+%global maintenance_release .85.0
+%global pkg_release         .109
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,74 @@ fi
 %endif
 
 %changelog
+* Thu Mar 16 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.85.0.109
+- !485 Backport CVEs and bugfixes
+- !491 [sync] PR-477: tools: fix compile error introduced by LoongArch commit
+- fix compile error introduced by LoongArch commit
+- scsi: cancel the inflight async device probe when remove scsi_target
+- scsi: fix use-after-free problem in scsi_remove_target
+- ring-buffer: Fix race between reset page and reading page
+- raid1, raid10: switch to precise io accounting
+- block: add precise io accouting apis
+- md/raid10: fix memleak for 'conf->bio_split'
+- sctp: fail if no bound addresses can be used for a given scope
+- ext4: fix WARNING in mb_find_extent
+- scsi: iscsi_tcp: Fix UAF during login when accessing the shost ipaddress
+- scsi: iscsi_tcp: Fix UAF during logout when accessing the shost ipaddress
+- scsi: iscsi: Move pool freeing
+- xfs: aborting inodes on shutdown may need buffer lock
+- ext4: fix incorrect options show of original mount_opt and extend mount_opt2
+- !439 openeuler: pci: workaround multiple functions can be assigned to only one VM
+- !474 [sync] PR-447: add perf loongarch support
+- tools/perf: Add basic support for LoongArch
+- perf machine: Use path__join() to compose a path instead of snprintf(dir, '/', filename)
+- !467 LoongArch: add kvm support
+- LoongArch: kvm: KVM support for 5.10
+- !472 [sync] PR-466: LoongArch: fix compile error when using make allmodconfig
+- LoongArch: fix compile error when using make allmodconfig
+- LoongArch: Export symbol for function smp_send_reschedule()
+- LoongArch: kvm: add initial kvm support
+- !453 Backport CVEs and bugfixes
+- !463 [sync] PR-444: LoongArch: some LS7a device drivers support and LoongArch bug fix
+- LoongArch: remove __ARCH_WANT_NEW_STAT
+- LoongArch: modify defconfig according to other architectures
+- LoongArch: Change definition of cpu_relax() for Loongson-3
+- drm/loongson: add kernel modesetting driver support for ls7a1000/ls7a2000
+- LoongArch: Use alternative to optimize libraries
+- LoongArch: Add alternative runtime patching mechanism
+- LoongArch: Remove the .fixup section usage
+- LoongArch: extable: Add a dedicated uaccess handler
+- LoongArch: extable: Add `type` and `data` fields
+- LoongArch: Switch to relative exception tables
+- LoongArch: Consolidate __ex_table construction
+- LoongArch: fix SECCOMP test error
+- LoongArch: fix vmlinux ld error
+- LoongArch: enable hugetlbfs support
+- LoongArch: save one instruction for arch_local_irq_{enable,disable}
+- LoongArch: optimize for syscall return
+- LoongArch: refresh usage of sync
+- LoongArch: use 40 bits address space for user
+- LoongArch: Support loader and kernel interface V40
+- LoongArch: Enhance booting and resume compatibility
+- LoongArch: Remove redudant csr save/restore
+- LoongArch: Support Power Manager
+- irqchip/loongson-liointc: Set different isr for differnt core
+- platform: Support loongson laptop generic driver
+- LoongArch: Adapted SECTION_SIZE_BITS with page size
+- ACPI: Support ACPI_MACHINE_WIDTH for 64
+- spi: loongson: Add LS7A spi driver support
+- i2c: loongson: Add LS7A i2c driver support
+- LoongArch: Call irq_find_matching_fwnode get irq domain
+- irqchip/ACPI: Introduce ACPI_IRQ_MODEL_LPIC for LoongArch
+- gpio: loongson: Add 3A/3B/3C/7A gpio dirver support
+- rtc: ls2x: Add support for the Loongson-2K/LS7A RTC
+- LoongArch: convert p v s cache to l1 l2 l3 format
+- cpufreq: Add cpufreq driver for LoongArch
+- LoongArch: Fix section mismatch due to acpi_os_ioremap()
+- LoongArch: Add vector extensions support
+- phy: tegra: xusb: Fix return value of tegra_xusb_find_port_node function
+- openeuler: pci: workaround multiple functions can be assigned to only one VM
+
 * Wed Mar 08 2023 Zheng Zengkai <zhengzengkai@huawei.com> - 5.10.0-60.84.0.108
 - !454 Backport CVEs and bugfixes
 - media: rc: Fix use-after-free bugs caused by ene_tx_irqsim()
