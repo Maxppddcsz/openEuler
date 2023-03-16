@@ -17,6 +17,22 @@ static nic_event_fn_t nic_event_call;
  */
 static DEFINE_MUTEX(hclge_nic_event_lock);
 
+static int hclge_clean_stats64(struct hclge_dev *hdev, void *data,
+			       size_t length)
+{
+	struct hnae3_knic_private_info *kinfo;
+	struct hclge_tqp *tqp;
+	int i;
+
+	kinfo = &hdev->vport[0].nic.kinfo;
+	for (i = 0; i < kinfo->num_tqps; i++) {
+		tqp = container_of(kinfo->tqp[i], struct hclge_tqp, q);
+		memset(&tqp->tqp_stats, 0, sizeof(struct hlcge_tqp_stats));
+	}
+	memset(&hdev->mac_stats, 0, sizeof(struct hclge_mac_stats));
+	return 0;
+}
+
 static int hclge_set_reset_task(struct hclge_dev *hdev, void *data,
 				size_t length)
 {
@@ -153,6 +169,7 @@ void hclge_ext_reset_end(struct hclge_dev *hdev, bool done)
 static const hclge_priv_ops_fn hclge_ext_func_arr[] = {
 	[HNAE3_EXT_OPC_RESET] = hclge_set_reset_task,
 	[HNAE3_EXT_OPC_EVENT_CALLBACK] = hclge_nic_call_event,
+	[HNAE3_EXT_OPC_CLEAN_STATS64] = hclge_clean_stats64,
 };
 
 int hclge_ext_ops_handle(struct hnae3_handle *handle, int opcode,
