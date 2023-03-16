@@ -186,3 +186,22 @@ int nic_set_notify_pkt_start(struct net_device *ndev)
 				  NULL, 0);
 }
 EXPORT_SYMBOL(nic_set_notify_pkt_start);
+
+int nic_set_torus_param(struct net_device *ndev,
+			struct hnae3_torus_param *param)
+{
+	if (!param || (param->enable != 0 && param->enable != 1))
+		return -EINVAL;
+
+	return nic_invoke_pri_ops(ndev, HNAE3_EXT_OPC_SET_TORUS_PARAM,
+				  param, sizeof(*param));
+}
+EXPORT_SYMBOL(nic_set_torus_param);
+
+int nic_get_torus_param(struct net_device *ndev,
+			struct hnae3_torus_param *param)
+{
+	return nic_invoke_pri_ops(ndev, HNAE3_EXT_OPC_GET_TORUS_PARAM,
+				  param, sizeof(*param));
+}
+EXPORT_SYMBOL(nic_get_torus_param);

@@ -204,4 +204,5 @@ void hclge_comm_free_cmd_desc(struct hclge_comm_cmq_ring *ring);
 void hclge_comm_cmd_setup_basic_desc(struct hclge_desc *desc,
 				     enum hclge_opcode_type opcode,
 				     bool is_read);
+void hclge_comm_cmd_reuse_desc(struct hclge_desc *desc, bool is_read);
 #endif
