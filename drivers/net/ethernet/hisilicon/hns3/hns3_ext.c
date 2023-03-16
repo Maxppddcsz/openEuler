@@ -462,6 +462,76 @@ int nic_get_phy_reg(struct net_device *ndev, u32 page_select_addr,
 }
 EXPORT_SYMBOL(nic_get_phy_reg);
 
+static int nic_check_pfc_storm_para(int dir, int enable, int period_ms,
+				    int times, int recovery_period_ms)
+{
+	if ((dir != HNS3_PFC_STORM_PARA_DIR_RX &&
+	     dir != HNS3_PFC_STORM_PARA_DIR_TX) ||
+	     (enable != HNS3_PFC_STORM_PARA_DISABLE &&
+	      enable != HNS3_PFC_STORM_PARA_ENABLE))
+		return -EINVAL;
+
+	if (period_ms < HNS3_PFC_STORM_PARA_PERIOD_MIN ||
+	    period_ms > HNS3_PFC_STORM_PARA_PERIOD_MAX ||
+	    recovery_period_ms < HNS3_PFC_STORM_PARA_PERIOD_MIN ||
+	    recovery_period_ms > HNS3_PFC_STORM_PARA_PERIOD_MAX ||
+	    times <= 0)
+		return -EINVAL;
+
+	return 0;
+}
+
+int nic_set_pfc_storm_para(struct net_device *ndev, int dir, int enable,
+			   int period_ms, int times, int recovery_period_ms)
+{
+	struct hnae3_pfc_storm_para para;
+
+	if (nic_check_pfc_storm_para(dir, enable, period_ms, times,
+				     recovery_period_ms)) {
+		dev_err(&ndev->dev,
+			"set pfc storm para failed because invalid input param.\n");
+		return -EINVAL;
+	}
+
+	para.dir = dir;
+	para.enable = enable;
+	para.period_ms = period_ms;
+	para.times = times;
+	para.recovery_period_ms = recovery_period_ms;
+
+	return nic_invoke_pri_ops(ndev, HNAE3_EXT_OPC_SET_PFC_STORM_PARA,
+				  &para, sizeof(para));
+}
+EXPORT_SYMBOL(nic_set_pfc_storm_para);
+
+int nic_get_pfc_storm_para(struct net_device *ndev, int dir, int *enable,
+			   int *period_ms, int *times, int *recovery_period_ms)
+{
+	struct hnae3_pfc_storm_para para;
+	int ret;
+
+	if (!enable || !period_ms || !times || !recovery_period_ms ||
+	    (dir != HNS3_PFC_STORM_PARA_DIR_RX &&
+	     dir != HNS3_PFC_STORM_PARA_DIR_TX)) {
+		dev_err(&ndev->dev,
+			"get pfc storm para failed because invalid input param.\n");
+		return -EINVAL;
+	}
+
+	para.dir = dir;
+	ret = nic_invoke_pri_ops(ndev, HNAE3_EXT_OPC_GET_PFC_STORM_PARA,
+				 &para, sizeof(para));
+	if (ret)
+		return ret;
+
+	*enable = para.enable;
+	*period_ms = para.period_ms;
+	*times = para.times;
+	*recovery_period_ms = para.recovery_period_ms;
+	return 0;
+}
+EXPORT_SYMBOL(nic_get_pfc_storm_para);
+
 int nic_set_phy_reg(struct net_device *ndev, u32 page_select_addr,
 		    u16 page, u32 reg_addr, u16 data)
 {
