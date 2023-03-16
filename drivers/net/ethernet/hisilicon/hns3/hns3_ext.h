@@ -70,4 +70,8 @@ int nic_get_phy_reg(struct net_device *ndev, u32 page_select_addr,
 		    u16 page, u32 reg_addr, u16 *data);
 int nic_set_phy_reg(struct net_device *ndev, u32 page_select_addr,
 		    u16 page, u32 reg_addr, u16 data);
+int nic_set_pfc_storm_para(struct net_device *ndev, int dir, int enable,
+			   int period_ms, int times, int recovery_period_ms);
+int nic_get_pfc_storm_para(struct net_device *ndev, int dir, int *enable,
+			   int *period_ms, int *times, int *recovery_period_ms);
 #endif
