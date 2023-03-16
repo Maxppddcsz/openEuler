@@ -170,3 +170,19 @@ err_unlock:
 	return ret;
 }
 EXPORT_SYMBOL(nic_set_cpu_affinity);
+
+int nic_set_notify_pkt_param(struct net_device *ndev,
+			     struct hnae3_notify_pkt_param *param)
+{
+	return nic_invoke_pri_ops(ndev, HNAE3_EXT_OPC_SET_NOTIFY_PARAM,
+				  param, sizeof(*param));
+}
+EXPORT_SYMBOL(nic_set_notify_pkt_param);
+
+int nic_set_notify_pkt_start(struct net_device *ndev)
+{
+	return nic_invoke_pri_ops(ndev,
+				  HNAE3_EXT_OPC_SET_NOTIFY_START,
+				  NULL, 0);
+}
+EXPORT_SYMBOL(nic_set_notify_pkt_start);
