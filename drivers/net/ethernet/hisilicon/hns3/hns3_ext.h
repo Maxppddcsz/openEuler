@@ -11,4 +11,5 @@ int nic_netdev_match_check(struct net_device *netdev);
 void nic_chip_recover_handler(struct net_device *ndev,
 			      enum hnae3_event_type_custom event_t);
 int nic_clean_stats64(struct net_device *ndev, struct rtnl_link_stats64 *stats);
+int nic_set_cpu_affinity(struct net_device *ndev, cpumask_t *affinity_mask);
 #endif
