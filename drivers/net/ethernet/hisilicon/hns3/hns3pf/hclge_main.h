@@ -943,6 +943,7 @@ struct hclge_dev {
 	cpumask_t affinity_mask;
 	struct irq_affinity_notify affinity_notify;
 	struct hclge_ptp *ptp;
+	struct hnae3_notify_pkt_param notify_param;
 };
 
 /* VPort level vlan tag configuration for TX direction */
