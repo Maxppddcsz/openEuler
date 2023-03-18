@@ -1214,9 +1214,6 @@ int mem_cgroup_scan_tasks(struct mem_cgroup *memcg,
 			break;
 		}
 	}
-#ifdef CONFIG_MEMCG_QOS
-	memcg_print_bad_task(arg, ret);
-#endif
 	return ret;
 }
 
