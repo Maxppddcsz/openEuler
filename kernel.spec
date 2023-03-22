@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .85.0
-%global pkg_release         .109
+%global maintenance_release .86.0
+%global pkg_release         .110
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,43 @@ fi
 %endif
 
 %changelog
+* Wed Mar 22 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.86.0.110
+- !512 Backport CVEs and bugfixes
+- livepatch/core: Fix hungtask against cpu hotplug on x86
+- livepatch: Narrow the scope of the 'text_mutex' lock
+- livepatch: Cleanup klp_mem_prepare()
+- seccomp: Move copy_seccomp() to no failure path.
+- media: dvb-usb: az6027: fix null-ptr-deref in az6027_i2c_xfer()
+- ftrace: Fix invalid address access in lookup_rec() when index is 0
+- mm: optimize do_wp_page() for fresh pages in local LRU pagevecs
+- mm: optimize do_wp_page() for exclusive pages in the swapcache
+- tipc: add an extra conn_get in tipc_conn_alloc
+- tipc: set con sock in tipc_conn_alloc
+- ext4: fix another off-by-one fsmap error on 1k block filesystems
+- mm/vmalloc: huge vmalloc backing pages should be split rather than compound
+- HID: asus: use spinlock to safely schedule workers
+- HID: asus: use spinlock to protect concurrent accesses
+- HID: asus: Remove check for same LED brightness on set
+- jbd2: fix data missing when reusing bh which is ready to be checkpointed
+- !502 [sync] PR-476: LoongArch: fix failed to boot
+- !498 [sync] PR-479: LoongArch: update network related default config
+- !496 [sync] PR-448: LoongArch: fix some pci problems
+- LoongArch: Initialize screen_info variable
+- LoongArch: Fixed EIOINTC structure members
+- LoongArch: Fix virtual machine startup error
+- loongarch/kvm: ls7a add iocsrw emulation
+- LoongArch: fix signal handler name changed
+- LoongArch: defconfig: update network configurations
+- LoongArch: pci root bridige set acpi companion only when not acpi_disabled.
+- pci: fix X server auto probe fail when both ast and etnaviv drm present
+- LS7A2000: PCIE: Fixup GPU card error
+- pci/quirks: ls7a2000: fix pm transition of devices under pcie port
+- LoongArch: Fixed some pcie card not scanning properly
+- pci: fix kabi error caused by pm_suspend_target_state
+- PCI: PM: Fix pcie mrrs restoring
+- PCI: Check if the pci controller can use both CFG0 and CFG1 mode to access configuration space
+- PCI: Check if entry->offset already exist for mem resource
+
 * Thu Mar 16 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.85.0.109
 - !485 Backport CVEs and bugfixes
 - !491 [sync] PR-477: tools: fix compile error introduced by LoongArch commit
