@@ -413,7 +413,7 @@ early_param("memmap", parse_memmap_opt);
 
 void __init arm64_memblock_init(void)
 {
-	const s64 linear_region_size = BIT(vabits_actual - 1);
+	const s64 linear_region_size = PAGE_END - _PAGE_OFFSET(vabits_actual);
 
 	/* Handle linux,usable-memory-range property */
 	fdt_enforce_memory_region();
