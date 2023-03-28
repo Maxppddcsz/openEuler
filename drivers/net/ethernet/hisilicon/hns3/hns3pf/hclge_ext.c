@@ -6,6 +6,7 @@
 #include "hnae3_ext.h"
 #include "hclge_cmd.h"
 #include "hclge_ext.h"
+#include "hclge_tm.h"
 
 #define HCLGE_RESET_MAX_FAIL_CNT 5
 
@@ -391,6 +392,42 @@ static int hclge_get_port_num(struct hclge_dev *hdev, void *data,
 
 	resp = (struct hclge_port_num_info_cmd *)(desc.data);
 	*(u32 *)data = le32_to_cpu(resp->port_num);
+	return 0;
+}
+
+static int hclge_set_pause_trans_time(struct hclge_dev *hdev, void *data,
+				      size_t length)
+{
+	struct hclge_cfg_pause_param_cmd *pause_param;
+	struct hclge_desc desc;
+	u16 pause_trans_time;
+	int ret;
+
+	if (length != sizeof(u16))
+		return -EINVAL;
+
+	pause_param = (struct hclge_cfg_pause_param_cmd *)desc.data;
+	ret = hclge_get_info_from_cmd(hdev, &desc, 1, HCLGE_OPC_CFG_MAC_PARA);
+	if (ret) {
+		dev_err(&hdev->pdev->dev,
+			"failed to get pause cfg info, ret = %d\n", ret);
+		return ret;
+	}
+
+	pause_trans_time = *(u16 *)data;
+	if (pause_trans_time == le16_to_cpu(pause_param->pause_trans_time))
+		return 0;
+
+	ret = hclge_pause_param_cfg(hdev, pause_param->mac_addr,
+				    pause_param->pause_trans_gap,
+				    pause_trans_time);
+	if (ret) {
+		dev_err(&hdev->pdev->dev,
+			"failed to set pause trans time, ret = %d\n", ret);
+		return ret;
+	}
+
+	hdev->tm_info.pause_time = pause_trans_time;
 	return 0;
 }
 
