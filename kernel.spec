@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .86.0
-%global pkg_release         .110
+%global maintenance_release .87.0
+%global pkg_release         .111
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,52 @@ fi
 %endif
 
 %changelog
+* Wed Mar 29 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.87.0.111
+- !529 Backport CVEs and bugfixes
+- block: fix use-after-free of q->q_usage_counter
+- block: move q_usage_counter release into blk_queue_release
+- Revert "block: fix null-deref in percpu_ref_put"
+- mm: compaction: avoid possible NULL pointer dereference in kcompactd_cpu_online
+- md/raid6: Fix the problem of repeatedly applying for memory in raid5_read_one_chunk
+- xfs, iomap: limit individual ioend chain lengths in writeback
+- net/sched: tcindex: search key must be 16 bits
+- net/sched: tcindex: update imperfect hash filters respecting rcu
+- tty: fix out-of-bounds access in tty_driver_lookup_tty()
+- fs/ntfs3: Validate resident attribute name
+- ima: Fix memory leakage in ima_store_template
+- Revert "mm/vmalloc: huge vmalloc backing pages should be split rather than compound"
+- coredump: fix kabi broken in struct coredump_params
+- coredump: Use the vma snapshot in fill_files_note
+- coredump/elf: Pass coredump_params into fill_note_info
+- coredump: Remove the WARN_ON in dump_vma_snapshot
+- coredump: Snapshot the vmas in do_coredump
+- mm/swapfile: add cond_resched() in get_swap_pages()
+- mm: slince possible data races about pgdat->kswapd
+- mm: fix null-ptr-deref in kswapd_is_running()
+- fs/ntfs3: Validate MFT flags before replaying logs
+- fs/ntfs3: Validate attribute name offset
+- bpf: Fixes possible race in update_prog_stats() for 32bit arches
+- bpf: Avoid races in __bpf_prog_run() for 32bit arches
+- ext4: make sure fs error flag setted before clear journal error
+- ext4: commit super block if fs record error when journal record without error
+- af_unix: Get user_ns from in_skb in unix_diag_get_exact().
+- net: tls: fix possible race condition between do_tls_getsockopt_conf() and do_tls_setsockopt_conf()
+- wifi: brcmfmac: slab-out-of-bounds read in brcmf_get_assoc_ies()
+- arm64: errata: Remove AES hwcap for COMPAT tasks
+- ARM: 9206/1: A9: Add ARM ERRATA 764319 workaround (Updated)
+- kernel: Initialize cpumask before parsing
+- softirq: Don't try waking ksoftirqd before it has been spawned
+- bpf: Prevent decl_tag from being referenced in func_proto arg
+- bpf: Skip task with pid=1 in send_signal_common()
+- bpf, sockmap: Fix an infinite loop error when len is 0 in tcp_bpf_recvmsg_parser()
+- !460 Backport CVEs and bugfixes
+- !517 [sync] PR-510: LoongArch: fix dual-bridge machine can not work
+- !516 [sync] PR-509: Loongson: fix 7a2000 gpu driver can not work
+- irqchip/loongson: Fix syscore ops registration
+- irqchip/loongarch: Fix some issues of irq controllers
+- drm/loongson: using hdmi hot plug status register
+- malidp: Fix NULL vs IS_ERR() checking
+
 * Wed Mar 22 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.86.0.110
 - !512 Backport CVEs and bugfixes
 - livepatch/core: Fix hungtask against cpu hotplug on x86
