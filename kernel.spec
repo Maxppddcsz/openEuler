@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .87.0
-%global pkg_release         .111
+%global maintenance_release .88.0
+%global pkg_release         .112
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,10 @@ fi
 %endif
 
 %changelog
+* Sat Apr 01 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.88.0.112
+- !541 fix CVE-2023-0266
+- ALSA: pcm: Move rwsem lock inside snd_ctl_elem_read to prevent UAF
+
 * Wed Mar 29 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.87.0.111
 - !529 Backport CVEs and bugfixes
 - block: fix use-after-free of q->q_usage_counter
