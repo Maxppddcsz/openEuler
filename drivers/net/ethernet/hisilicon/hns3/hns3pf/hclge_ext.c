@@ -590,6 +590,7 @@ static const hclge_priv_ops_fn hclge_ext_func_arr[] = {
 	[HNAE3_EXT_OPC_GET_PORT_EXT_ID_INFO] = hclge_get_extend_port_id_info,
 	[HNAE3_EXT_OPC_GET_PORT_EXT_NUM_INFO] = hclge_get_extend_port_num_info,
 	[HNAE3_EXT_OPC_GET_PORT_NUM] = hclge_get_port_num,
+	[HNAE3_EXT_OPC_SET_PFC_TIME] = hclge_set_pause_trans_time,
 };
 
 int hclge_ext_ops_handle(struct hnae3_handle *handle, int opcode,
