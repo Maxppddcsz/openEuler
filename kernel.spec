@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .88.0
-%global pkg_release         .112
+%global maintenance_release .89.0
+%global pkg_release         .113
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,30 @@ fi
 %endif
 
 %changelog
+* Tue Apr 04 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.89.0.113
+- !550 anolis: bond: broadcast ARP or ND messages to all slaves
+- !561 Backport CVEs and bugfixes
+- !560 [sync] PR-539: LoongArch: fix compile warnning of drm/loongson driver
+- net: sched: Use struct_size() helper in kvmalloc()
+- net_sched: Use struct_size() and flex_array_size() helpers
+- ext4: dio take shared inode lock when overwriting preallocated blocks
+- ext4: fix race between writepages and remount
+- clocksource/drivers/arm_arch_timer: Fix CNTPCT_LO and CNTVCT_LO value
+- kvm: initialize all of the kvm_debugregs structure before sending it to userspace
+- nvme: use nvme_cid to generate command_id in trace event
+- xfs: don't report reserved bnobt space as available
+- xfs: don't include bnobt blocks when reserving free block pool
+- xfs: set aside allocation btree blocks from block reservation
+- xfs: introduce in-core global counter of allocbt blocks
+- act_mirred: use the backlog for nested calls to mirred ingress
+- net/sched: act_mirred: better wording on protection against excessive stack growth
+- net/sched: act_mirred: refactor the handle of xmit
+- scsi: scsi_dh_alua: fix memleak for 'qdata' in alua_activate()
+- anolis: bond: broadcast ARP or ND messages to all slaves
+- !558 net: hns3: modify reset delay time to avoid configuration timeout
+- drm/loongson: fix compile warnning
+- net: hns3: modify reset delay time to avoid configuration timeout
+
 * Sat Apr 01 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.88.0.112
 - !541 fix CVE-2023-0266
 - ALSA: pcm: Move rwsem lock inside snd_ctl_elem_read to prevent UAF
