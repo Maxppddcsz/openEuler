@@ -5183,6 +5183,10 @@ static int sol_tcp_sockopt(struct sock *sk, int optname,
 		if (*optlen < 1)
 			return -EINVAL;
 		break;
+	case TCP_ULP:
+		if (getopt)
+			return -EINVAL;
+		break;
 	default:
 		if (getopt)
 			return -EINVAL;
@@ -8889,6 +8893,8 @@ static bool sock_ops_is_valid_access(int off, int size,
 		switch (off) {
 		case offsetof(struct bpf_sock_ops, reply):
 		case offsetof(struct bpf_sock_ops, sk_txhash):
+		case offsetof(struct bpf_sock_ops, remote_ip4):
+		case offsetof(struct bpf_sock_ops, remote_port):
 			if (size != size_default)
 				return false;
 			break;
@@ -10153,14 +10159,10 @@ static u32 sock_ops_convert_ctx_access(enum bpf_access_type type,
 		break;
 
 	case offsetof(struct bpf_sock_ops, remote_ip4):
-		BUILD_BUG_ON(sizeof_field(struct sock_common, skc_daddr) != 4);
-
-		*insn++ = BPF_LDX_MEM(BPF_FIELD_SIZEOF(
-						struct bpf_sock_ops_kern, sk),
-				      si->dst_reg, si->src_reg,
-				      offsetof(struct bpf_sock_ops_kern, sk));
-		*insn++ = BPF_LDX_MEM(BPF_W, si->dst_reg, si->dst_reg,
-				      offsetof(struct sock_common, skc_daddr));
+		SOCK_ADDR_LOAD_OR_STORE_NESTED_FIELD(
+				struct bpf_sock_ops_kern,
+				struct sock_common,
+				sk, skc_daddr, temp);
 		break;
 
 	case offsetof(struct bpf_sock_ops, local_ip4):
@@ -10221,15 +10223,10 @@ static u32 sock_ops_convert_ctx_access(enum bpf_access_type type,
 	case offsetof(struct bpf_sock_ops, remote_port):
 		BUILD_BUG_ON(sizeof_field(struct sock_common, skc_dport) != 2);
 
-		*insn++ = BPF_LDX_MEM(BPF_FIELD_SIZEOF(
-						struct bpf_sock_ops_kern, sk),
-				      si->dst_reg, si->src_reg,
-				      offsetof(struct bpf_sock_ops_kern, sk));
-		*insn++ = BPF_LDX_MEM(BPF_H, si->dst_reg, si->dst_reg,
-				      offsetof(struct sock_common, skc_dport));
-#ifndef __BIG_ENDIAN_BITFIELD
-		*insn++ = BPF_ALU32_IMM(BPF_LSH, si->dst_reg, 16);
-#endif
+		SOCK_ADDR_LOAD_OR_STORE_NESTED_FIELD(
+				struct bpf_sock_ops_kern,
+				struct sock_common,
+				sk, skc_dport, temp);
 		break;
 
 	case offsetof(struct bpf_sock_ops, local_port):
