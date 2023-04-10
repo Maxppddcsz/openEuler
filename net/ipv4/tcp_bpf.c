@@ -134,7 +134,8 @@ static int bpf_tcp_ingress(struct sock *sk, struct sk_psock *psock,
 	if (!ret) {
 		msg->sg.start = i;
 		sk_psock_queue_msg(psock, tmp);
-		atomic_add(tmp->sg.size, &sk->sk_rmem_alloc);
+		if(sk_psock_teststate(psock, SKPSOCK_TXENABLED))
+			atomic_add(tmp->sg.size, &sk->sk_rmem_alloc);
 		sk_psock_data_ready(sk, psock);
 	} else {
 		sk_msg_free(sk, tmp);
