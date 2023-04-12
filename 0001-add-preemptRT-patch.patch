@@ -1,6 +1,6 @@
-From 901538b74592145e6ab2b2944872f04c75e07a5b Mon Sep 17 00:00:00 2001
+From 79887df8c7bdc0711808a8362deb2a96d3a7b55c Mon Sep 17 00:00:00 2001
 From: liyulei <liyulei@kylinos.cn>
-Date: Tue, 7 Mar 2023 09:56:25 +0800
+Date: Tue, 11 Apr 2023 15:25:47 +0800
 Subject: [PATCH] add preemptRT patch
 
 ---
@@ -364,7 +364,7 @@ Subject: [PATCH] add preemptRT patch
  kernel/sched/swait.c                          |    1 +
  kernel/signal.c                               |  105 +-
  kernel/smp.c                                  |   14 +-
- kernel/softirq.c                              |  428 ++++-
+ kernel/softirq.c                              |  426 +++-
  kernel/stop_machine.c                         |   27 +-
  kernel/time/hrtimer.c                         |   30 +
  kernel/time/tick-sched.c                      |    2 +-
@@ -407,7 +407,7 @@ Subject: [PATCH] add preemptRT patch
  net/sched/sch_generic.c                       |   10 +
  net/sunrpc/svc_xprt.c                         |    4 +-
  net/xfrm/xfrm_state.c                         |    3 +-
- 403 files changed, 8993 insertions(+), 4798 deletions(-)
+ 403 files changed, 8993 insertions(+), 4796 deletions(-)
  delete mode 100644 arch/alpha/include/asm/kmap_types.h
  delete mode 100644 arch/arc/include/asm/kmap_types.h
  delete mode 100644 arch/arm/include/asm/kmap_types.h
@@ -1054,7 +1054,7 @@ index 1b9f473c6369..c79912a6b196 100644
 +	alloc_kmap_pgtable(FIXMAP_BASE);
  }
 diff --git a/arch/arm/Kconfig b/arch/arm/Kconfig
-index ba92a15196cf..caf7c6d192cf 100644
+index 0d42eaf7acb4..bddea3382f29 100644
 --- a/arch/arm/Kconfig
 +++ b/arch/arm/Kconfig
 @@ -31,6 +31,7 @@ config ARM
@@ -1090,7 +1090,7 @@ index ba92a15196cf..caf7c6d192cf 100644
  	select RTC_LIB
  	select SET_FS
  	select SYS_SUPPORTS_APM_EMULATION
-@@ -1508,6 +1511,7 @@ config HAVE_ARCH_PFN_VALID
+@@ -1519,6 +1522,7 @@ config HAVE_ARCH_PFN_VALID
  config HIGHMEM
  	bool "High Memory Support"
  	depends on MMU
@@ -1571,7 +1571,7 @@ index 187fab227b50..000000000000
 -	return (void *)vaddr;
 -}
 diff --git a/arch/arm64/Kconfig b/arch/arm64/Kconfig
-index ddbdbc7ecdd9..5954873a5377 100644
+index 3427154e218d..d1669f10dd15 100644
 --- a/arch/arm64/Kconfig
 +++ b/arch/arm64/Kconfig
 @@ -76,6 +76,7 @@ config ARM64
@@ -5053,10 +5053,10 @@ index 440eed558558..7cfc4e6b7c94 100644
  }
 +#endif
 diff --git a/arch/x86/kvm/x86.c b/arch/x86/kvm/x86.c
-index d7da4d277cdb..a0efc962f098 100644
+index d5c04a7ab45c..dad7595007dc 100644
 --- a/arch/x86/kvm/x86.c
 +++ b/arch/x86/kvm/x86.c
-@@ -8076,6 +8076,14 @@ int kvm_arch_init(void *opaque)
+@@ -8095,6 +8095,14 @@ int kvm_arch_init(void *opaque)
  		goto out;
  	}
  
@@ -5406,7 +5406,7 @@ index 673196fe862e..0735ca5e8f86 100644
  	kmap_waitqueues_init();
  }
 diff --git a/block/blk-mq.c b/block/blk-mq.c
-index bcf529b40987..b317521d6e19 100644
+index 5f8660ef8c37..ac326bc9ddb4 100644
 --- a/block/blk-mq.c
 +++ b/block/blk-mq.c
 @@ -44,7 +44,7 @@
@@ -5418,7 +5418,7 @@ index bcf529b40987..b317521d6e19 100644
  
  static void blk_mq_poll_stats_start(struct request_queue *q);
  static void blk_mq_poll_stats_fn(struct blk_stat_callback *cb);
-@@ -657,80 +657,29 @@ void blk_mq_end_request(struct request *rq, blk_status_t error)
+@@ -650,80 +650,29 @@ void blk_mq_end_request(struct request *rq, blk_status_t error)
  }
  EXPORT_SYMBOL(blk_mq_end_request);
  
@@ -5507,7 +5507,7 @@ index bcf529b40987..b317521d6e19 100644
  }
  
  static inline bool blk_mq_complete_need_ipi(struct request *rq)
-@@ -740,6 +689,14 @@ static inline bool blk_mq_complete_need_ipi(struct request *rq)
+@@ -733,6 +682,14 @@ static inline bool blk_mq_complete_need_ipi(struct request *rq)
  	if (!IS_ENABLED(CONFIG_SMP) ||
  	    !test_bit(QUEUE_FLAG_SAME_COMP, &rq->q->queue_flags))
  		return false;
@@ -5522,7 +5522,7 @@ index bcf529b40987..b317521d6e19 100644
  
  	/* same CPU or cache domain?  Complete locally */
  	if (cpu == rq->mq_ctx->cpu ||
-@@ -751,6 +708,31 @@ static inline bool blk_mq_complete_need_ipi(struct request *rq)
+@@ -744,6 +701,31 @@ static inline bool blk_mq_complete_need_ipi(struct request *rq)
  	return cpu_online(rq->mq_ctx->cpu);
  }
  
@@ -5554,7 +5554,7 @@ index bcf529b40987..b317521d6e19 100644
  bool blk_mq_complete_request_remote(struct request *rq)
  {
  	WRITE_ONCE(rq->state, MQ_RQ_COMPLETE);
-@@ -763,15 +745,15 @@ bool blk_mq_complete_request_remote(struct request *rq)
+@@ -756,15 +738,15 @@ bool blk_mq_complete_request_remote(struct request *rq)
  		return false;
  
  	if (blk_mq_complete_need_ipi(rq)) {
@@ -5577,7 +5577,7 @@ index bcf529b40987..b317521d6e19 100644
  }
  EXPORT_SYMBOL_GPL(blk_mq_complete_request_remote);
  
-@@ -1686,14 +1668,14 @@ static void __blk_mq_delay_run_hw_queue(struct blk_mq_hw_ctx *hctx, bool async,
+@@ -1679,14 +1661,14 @@ static void __blk_mq_delay_run_hw_queue(struct blk_mq_hw_ctx *hctx, bool async,
  		return;
  
  	if (!async && !(hctx->flags & BLK_MQ_F_BLOCKING)) {
@@ -5595,7 +5595,7 @@ index bcf529b40987..b317521d6e19 100644
  	}
  
  	/*
-@@ -4214,7 +4196,7 @@ static int __init blk_mq_init(void)
+@@ -4207,7 +4189,7 @@ static int __init blk_mq_init(void)
  	int i;
  
  	for_each_possible_cpu(i)
@@ -6591,7 +6591,7 @@ index ce9429ca6dde..29ccbd6acf43 100644
  	  This allows LEDs to be controlled by active CPUs. This shows
  	  the active CPUs across an array of LEDs so you can see which
 diff --git a/drivers/md/raid5.c b/drivers/md/raid5.c
-index 454d90b785b9..61bea746917e 100644
+index 27f961aa2714..02d972109a98 100644
 --- a/drivers/md/raid5.c
 +++ b/drivers/md/raid5.c
 @@ -2217,8 +2217,9 @@ static void raid_run_ops(struct stripe_head *sh, unsigned long ops_request)
@@ -6615,7 +6615,7 @@ index 454d90b785b9..61bea746917e 100644
  }
  
  static void free_stripe(struct kmem_cache *sc, struct stripe_head *sh)
-@@ -7089,6 +7091,7 @@ static int raid456_cpu_up_prepare(unsigned int cpu, struct hlist_node *node)
+@@ -7088,6 +7090,7 @@ static int raid456_cpu_up_prepare(unsigned int cpu, struct hlist_node *node)
  			__func__, cpu);
  		return -ENOMEM;
  	}
@@ -8561,7 +8561,7 @@ index b4d43a4af5f7..ac255e889462 100644
  #define __preempt_schedule() preempt_schedule()
  extern asmlinkage void preempt_schedule_notrace(void);
 diff --git a/include/linux/blkdev.h b/include/linux/blkdev.h
-index 171884608cad..03351f985871 100644
+index 9ede0a81e466..31a67de40ac3 100644
 --- a/include/linux/blkdev.h
 +++ b/include/linux/blkdev.h
 @@ -166,7 +166,7 @@ struct request {
@@ -12516,7 +12516,7 @@ index 9144e0f09a30..464d14b2aca3 100644
  
  	spinlock_t xfrm_policy_lock;
 diff --git a/include/net/sch_generic.h b/include/net/sch_generic.h
-index 73c699355470..8568edc0b633 100644
+index 8271b10bc30e..b7c99bfbb35d 100644
 --- a/include/net/sch_generic.h
 +++ b/include/net/sch_generic.h
 @@ -10,6 +10,7 @@
@@ -13158,7 +13158,7 @@ index 8989e1d1f79b..46c582d48cd5 100644
  	spin_unlock(&sighand->siglock);
  
 diff --git a/kernel/fork.c b/kernel/fork.c
-index 6cf10d791375..944716463f39 100644
+index 13db29515605..b41152b61942 100644
 --- a/kernel/fork.c
 +++ b/kernel/fork.c
 @@ -42,6 +42,7 @@
@@ -13178,7 +13178,7 @@ index 6cf10d791375..944716463f39 100644
  		return;
  	}
  #endif
-@@ -692,6 +693,19 @@ void __mmdrop(struct mm_struct *mm)
+@@ -695,6 +696,19 @@ void __mmdrop(struct mm_struct *mm)
  }
  EXPORT_SYMBOL_GPL(__mmdrop);
  
@@ -13198,7 +13198,7 @@ index 6cf10d791375..944716463f39 100644
  static void mmdrop_async_fn(struct work_struct *work)
  {
  	struct mm_struct *mm;
-@@ -733,6 +747,15 @@ void __put_task_struct(struct task_struct *tsk)
+@@ -736,6 +750,15 @@ void __put_task_struct(struct task_struct *tsk)
  	WARN_ON(refcount_read(&tsk->usage));
  	WARN_ON(tsk == current);
  
@@ -13214,7 +13214,7 @@ index 6cf10d791375..944716463f39 100644
  	io_uring_free(tsk);
  	cgroup_free(tsk);
  	task_numa_free(tsk, true);
-@@ -949,11 +972,14 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
+@@ -952,11 +975,14 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
  	tsk->task_frag.page = NULL;
  	tsk->wake_q.next = NULL;
  	tsk->pf_io_worker = NULL;
@@ -13229,7 +13229,7 @@ index 6cf10d791375..944716463f39 100644
  #ifdef CONFIG_FAULT_INJECTION
  	tsk->fail_nth = 0;
  #endif
-@@ -2050,6 +2076,7 @@ static __latent_entropy struct task_struct *copy_process(
+@@ -2053,6 +2079,7 @@ static __latent_entropy struct task_struct *copy_process(
  	spin_lock_init(&p->alloc_lock);
  
  	init_sigpending(&p->pending);
@@ -22282,7 +22282,7 @@ index 114776d0d11e..6d35929a1990 100644
  	local_irq_restore(flags);
  }
 diff --git a/kernel/softirq.c b/kernel/softirq.c
-index 09229ad82209..c9adc5c46248 100644
+index 19668d614f47..aafbb7a0f9ca 100644
 --- a/kernel/softirq.c
 +++ b/kernel/softirq.c
 @@ -13,6 +13,7 @@
@@ -22445,7 +22445,7 @@ index 09229ad82209..c9adc5c46248 100644
 +
 +	WARN_ON_ONCE(in_irq());
 +	lockdep_assert_irqs_enabled();
-+
+ 
 +	local_irq_save(flags);
 +	curcnt = __this_cpu_read(softirq_ctrl.cnt);
 +
@@ -22503,7 +22503,7 @@ index 09229ad82209..c9adc5c46248 100644
 +
 +static inline void softirq_handle_begin(void) { }
 +static inline void softirq_handle_end(void) { }
- 
++
 +static inline bool should_wake_ksoftirqd(void)
 +{
 +	return !this_cpu_read(softirq_ctrl.cnt);
@@ -22683,7 +22683,7 @@ index 09229ad82209..c9adc5c46248 100644
  }
  
  /**
-@@ -371,32 +609,6 @@ void irq_enter(void)
+@@ -371,31 +609,7 @@ void irq_enter(void)
  	irq_enter_rcu();
  }
  
@@ -22691,8 +22691,8 @@ index 09229ad82209..c9adc5c46248 100644
 -{
 -	if (ksoftirqd_running(local_softirq_pending()))
 -		return;
--
--	if (!force_irqthreads) {
+ 
+-	if (!force_irqthreads || !__this_cpu_read(ksoftirqd)) {
 -#ifdef CONFIG_HAVE_IRQ_EXIT_ON_IRQ_STACK
 -		/*
 -		 * We can safely execute softirq on the current stack if
@@ -22712,11 +22712,10 @@ index 09229ad82209..c9adc5c46248 100644
 -		wakeup_softirqd();
 -	}
 -}
--
+ 
  static inline void tick_irq_exit(void)
  {
- #ifdef CONFIG_NO_HZ_COMMON
-@@ -417,7 +629,7 @@ static inline void __irq_exit_rcu(void)
+@@ -417,7 +631,7 @@ static inline void __irq_exit_rcu(void)
  #else
  	lockdep_assert_irqs_disabled();
  #endif
@@ -22725,7 +22724,7 @@ index 09229ad82209..c9adc5c46248 100644
  	preempt_count_sub(HARDIRQ_OFFSET);
  	if (!in_interrupt() && local_softirq_pending())
  		invoke_softirq();
-@@ -466,7 +678,7 @@ inline void raise_softirq_irqoff(unsigned int nr)
+@@ -466,7 +680,7 @@ inline void raise_softirq_irqoff(unsigned int nr)
  	 * Otherwise we wake up ksoftirqd to make sure we
  	 * schedule the softirq soon.
  	 */
@@ -22734,7 +22733,7 @@ index 09229ad82209..c9adc5c46248 100644
  		wakeup_softirqd();
  }
  
-@@ -532,6 +744,16 @@ void __tasklet_hi_schedule(struct tasklet_struct *t)
+@@ -532,6 +746,16 @@ void __tasklet_hi_schedule(struct tasklet_struct *t)
  }
  EXPORT_SYMBOL(__tasklet_hi_schedule);
  
@@ -22751,7 +22750,7 @@ index 09229ad82209..c9adc5c46248 100644
  static void tasklet_action_common(struct softirq_action *a,
  				  struct tasklet_head *tl_head,
  				  unsigned int softirq_nr)
-@@ -551,8 +773,7 @@ static void tasklet_action_common(struct softirq_action *a,
+@@ -551,8 +775,7 @@ static void tasklet_action_common(struct softirq_action *a,
  
  		if (tasklet_trylock(t)) {
  			if (!atomic_read(&t->count)) {
@@ -22761,7 +22760,7 @@ index 09229ad82209..c9adc5c46248 100644
  					BUG();
  				if (t->use_callback)
  					t->callback(t);
-@@ -607,21 +828,62 @@ void tasklet_init(struct tasklet_struct *t,
+@@ -607,21 +830,62 @@ void tasklet_init(struct tasklet_struct *t,
  }
  EXPORT_SYMBOL(tasklet_init);
  
@@ -22830,7 +22829,7 @@ index 09229ad82209..c9adc5c46248 100644
  void __init softirq_init(void)
  {
  	int cpu;
-@@ -644,18 +906,18 @@ static int ksoftirqd_should_run(unsigned int cpu)
+@@ -644,18 +908,18 @@ static int ksoftirqd_should_run(unsigned int cpu)
  
  static void run_ksoftirqd(unsigned int cpu)
  {
@@ -23012,7 +23011,7 @@ index f7d3a108e27c..f24e6fed6633 100644
  		ret = try_to_del_timer_sync(timer);
  
 diff --git a/kernel/trace/trace.c b/kernel/trace/trace.c
-index 4e130e2bb566..50a2db7a791d 100644
+index 951181d5b9fb..9e4845cf65e4 100644
 --- a/kernel/trace/trace.c
 +++ b/kernel/trace/trace.c
 @@ -2592,60 +2592,43 @@ enum print_line_t trace_handle_return(struct trace_seq *s)
@@ -26254,10 +26253,10 @@ index e491b083b348..ef432cea2e10 100644
  			 struct gnet_stats_basic_cpu __percpu *cpu,
  			 struct gnet_stats_basic_packed *b)
 diff --git a/net/core/sock.c b/net/core/sock.c
-index 0609cda49612..b7688b885fbb 100644
+index bfddbdf5b981..7ce2f17e1b60 100644
 --- a/net/core/sock.c
 +++ b/net/core/sock.c
-@@ -3057,12 +3057,11 @@ void lock_sock_nested(struct sock *sk, int subclass)
+@@ -3066,12 +3066,11 @@ void lock_sock_nested(struct sock *sk, int subclass)
  	if (sk->sk_lock.owned)
  		__lock_sock(sk);
  	sk->sk_lock.owned = 1;
@@ -26271,7 +26270,7 @@ index 0609cda49612..b7688b885fbb 100644
  }
  EXPORT_SYMBOL(lock_sock_nested);
  
-@@ -3111,12 +3110,11 @@ bool lock_sock_fast(struct sock *sk)
+@@ -3120,12 +3119,11 @@ bool lock_sock_fast(struct sock *sk)
  
  	__lock_sock(sk);
  	sk->sk_lock.owned = 1;
@@ -26286,10 +26285,10 @@ index 0609cda49612..b7688b885fbb 100644
  }
  EXPORT_SYMBOL(lock_sock_fast);
 diff --git a/net/sched/sch_api.c b/net/sched/sch_api.c
-index 54e2309315eb..ca72dffaa71d 100644
+index b12a3502fca5..324f60e67e74 100644
 --- a/net/sched/sch_api.c
 +++ b/net/sched/sch_api.c
-@@ -1270,7 +1270,7 @@ static struct Qdisc *qdisc_create(struct net_device *dev,
+@@ -1271,7 +1271,7 @@ static struct Qdisc *qdisc_create(struct net_device *dev,
  		rcu_assign_pointer(sch->stab, stab);
  	}
  	if (tca[TCA_RATE]) {
