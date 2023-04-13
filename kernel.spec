@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .89.0
-%global pkg_release         .113
+%global maintenance_release .90.0
+%global pkg_release         .114
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,36 @@ fi
 %endif
 
 %changelog
+* Wed Apr 12 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.90.0.114
+- !574 Backport CVEs and bugfixes
+- driver core: Fix lockdep warning on wfs_lock
+- driver core: platform: Add extra error check in devm_platform_get_irqs_affinity()
+- 9p/xen : Fix use after free bug in xen_9pfs_front_remove due to race condition
+- ubi: Fix failure attaching when vid_hdr offset equals to (sub)page size
+- ubi: ensure that VID header offset + VID header size <= alloc, size
+- ftrace: Fix issue that 'direct->addr' not restored in modify_ftrace_direct()
+- perf/core: Fix perf_output_begin parameter is incorrectly invoked in perf_event_bpf_output
+- xirc2ps_cs: Fix use after free bug in xirc2ps_detach
+- ring-buffer: Fix race while reader and writer are on the same page
+- loop: Add parm check in loop_control_ioctl
+- ext4: Fix i_disksize exceeding i_size problem in paritally written case
+- ext4: ext4_put_super: Remove redundant checking for 'sbi->s_journal_bdev'
+- ext4: Fix reusing stale buffer heads from last failed mounting
+- btrfs: fix race between quota disable and quota assign ioctls
+- dm crypt: add cond_resched() to dmcrypt_write()
+- xfs: don't leak memory when attr fork loading fails
+- xfs: delete unnecessary NULL checks
+- xfs: replace inode fork size macros with functions
+- xfs: replace XFS_IFORK_Q with a proper predicate function
+- xfs: use XFS_IFORK_Q to determine the presence of an xattr fork
+- xfs: make inode attribute forks a permanent part of struct xfs_inode
+- xfs: convert XFS_IFORK_PTR to a static inline helper
+- xfs: don't reuse busy extents on extent trim
+- fs/xfs: convert comma to semicolon
+- xfs: xfs_ail_push_all_sync() stalls when racing with updates
+- xfs: check buffer pin state after locking in delwri_submit
+- xfs: log worker needs to start before intent/unlink recovery
+
 * Tue Apr 04 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.89.0.113
 - !550 anolis: bond: broadcast ARP or ND messages to all slaves
 - !561 Backport CVEs and bugfixes
