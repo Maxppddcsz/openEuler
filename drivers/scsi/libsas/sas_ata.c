@@ -533,7 +533,7 @@ void sas_ata_check_topology(struct asd_sas_port *port)
 
 }
 
-int sas_ata_wait_after_reset(struct domain_device *dev, unsigned long deadline)
+static int sas_ata_wait_after_reset(struct domain_device *dev, unsigned long deadline)
 {
 	struct sata_device *sata_dev = &dev->sata_dev;
 	int (*check_ready)(struct ata_link *link);
@@ -555,7 +555,6 @@ int sas_ata_wait_after_reset(struct domain_device *dev, unsigned long deadline)
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(sas_ata_wait_after_reset);
 
 static int sas_ata_hard_reset(struct ata_link *link, unsigned int *class,
 			      unsigned long deadline)
