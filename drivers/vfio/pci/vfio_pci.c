@@ -485,6 +485,9 @@ static void vfio_pci_disable(struct vfio_pci_device *vdev)
 				VFIO_IRQ_SET_ACTION_TRIGGER,
 				vdev->irq_type, 0, 0, NULL);
 
+	ret = iommu_unregister_device_fault_handler(&vdev->pdev->dev);
+	WARN_ON(ret == -EBUSY);
+
 	/* Device closed, don't need mutex here */
 	list_for_each_entry_safe(ioeventfd, ioeventfd_tmp,
 				 &vdev->ioeventfds_list, next) {
@@ -886,9 +889,8 @@ long vfio_pci_ioctl(void *device_data,
 		if (vdev->reset_works)
 			info.flags |= VFIO_DEVICE_FLAGS_RESET;
 
-		info.num_regions = VFIO_PCI_NUM_REGIONS +
-				   vdev->num_vendor_regions;
-		info.num_irqs = VFIO_PCI_NUM_IRQS + vdev->num_vendor_irqs;
+		info.num_regions = VFIO_PCI_NUM_REGIONS + vdev->num_regions;
+		info.num_irqs = VFIO_PCI_NUM_IRQS;
 
 		if (IS_ENABLED(CONFIG_VFIO_PCI_ZDEV)) {
 			int ret = vfio_pci_info_zdev_add_caps(vdev, &caps);
