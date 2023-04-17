@@ -406,11 +406,17 @@ abort:
  */
 static void select_bad_process(struct oom_control *oc)
 {
+	int ret;
 	oc->chosen_points = LONG_MIN;
 
-	if (is_memcg_oom(oc))
-		mem_cgroup_scan_tasks(oc->memcg, oom_evaluate_task, oc);
-	else {
+	if (is_memcg_oom(oc)) {
+		ret = mem_cgroup_scan_tasks(oc->memcg, oom_evaluate_task, oc);
+
+#ifdef CONFIG_MEMCG_QOS
+		memcg_print_bad_task(oc, ret);
+#endif
+
+	} else {
 		struct task_struct *p;
 
 #ifdef CONFIG_MEMCG_QOS
@@ -470,12 +476,18 @@ static int dump_task(struct task_struct *p, void *arg)
  */
 static void dump_tasks(struct oom_control *oc)
 {
+	int ret;
 	pr_info("Tasks state (memory values in pages):\n");
 	pr_info("[  pid  ]   uid  tgid total_vm      rss pgtables_bytes swapents oom_score_adj name\n");
 
-	if (is_memcg_oom(oc))
-		mem_cgroup_scan_tasks(oc->memcg, dump_task, oc);
-	else {
+	if (is_memcg_oom(oc)) {
+		ret = mem_cgroup_scan_tasks(oc->memcg, dump_task, oc);
+
+#ifdef CONFIG_MEMCG_QOS
+		memcg_print_bad_task(oc, ret);
+#endif
+
+	} else {
 		struct task_struct *p;
 
 		rcu_read_lock();
