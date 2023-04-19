@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .90.0
-%global pkg_release         .114
+%global maintenance_release .91.0
+%global pkg_release         .115
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,37 @@ fi
 %endif
 
 %changelog
+* Wed Apr 19 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.91.0.115
+- !588 [sync] PR-585:  x86/speculation: Allow enabling STIBP with legacy IBRS
+- !591 Backport CVEs and bugfixes
+- net/sched: Retire tcindex classifier
+- drm/vmwgfx: Validate the box size for the snooped cursor
+- netfilter: nf_tables: nft_parse_register can return a negative value
+- netfilter: nf_tables: validate registers coming from userspace.
+- Bluetooth: btsdio: fix use after free bug in btsdio_remove due to race condition
+- KVM: nVMX: add missing consistency checks for CR0 and CR4
+- nfc: st-nci: Fix use after free bug in ndlc_remove due to race condition
+- xfs: __percpu_counter_compare() inode count debug too expensive
+- xfs: fix memcpy fortify errors in EFI log format copying
+- xfs: fix memcpy fortify errors in RUI log format copying
+- xfs: fix memcpy fortify errors in CUI log format copying
+- xfs: fix memcpy fortify errors in BUI log format copying
+- xfs: Use struct xfs_bmdr_block instead of struct xfs_btree_block to calculate root node size
+- xfs: allow setting full range of panic tags
+- xfs: don't use BMBT btree split workers for IO completion
+- xfs: fix extent busy updating
+- xfs: get root inode correctly at bulkstat
+- xfs: invalidate xfs_bufs when allocating cow extents
+- xfs: attach dquots to inode before reading data/cow fork mappings
+- xfs: invalidate block device page cache during unmount
+- xfs: add selinux labels to whiteout inodes
+- xfs: convert buf_cancel_table allocation to kmalloc_array
+- xfs: don't leak xfs_buf_cancel structures when recovery fails
+- xfs: refactor buffer cancellation table allocation
+- xfs: fix type mismatches in the inode reclaim functions
+- xfs: don't allow log writes if the data device is readonly
+- x86/speculation: Allow enabling STIBP with legacy IBRS
+
 * Wed Apr 12 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.90.0.114
 - !574 Backport CVEs and bugfixes
 - driver core: Fix lockdep warning on wfs_lock
