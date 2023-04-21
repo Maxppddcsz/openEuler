@@ -695,6 +695,15 @@ size_t phy_speeds(unsigned int *speeds, size_t size,
 void phy_resolve_aneg_linkmode(struct phy_device *phydev);
 
 /**
+ * phy_is_started - Convenience function to check whether PHY is started
+ * @phydev: The phy_device struct
+ */
+static inline bool phy_is_started(struct phy_device *phydev)
+{
+	return phydev->state >= PHY_UP;
+}
+
+/**
  * phy_read_mmd - Convenience function for reading a register
  * from an MMD on a given PHY.
  * @phydev: The phy_device struct
