@@ -7,6 +7,18 @@
 #include "hns3_enet.h"
 #include "hnae3_ext.h"
 
+#define HNS3_PFC_STORM_PARA_DIR_RX 0
+#define HNS3_PFC_STORM_PARA_DIR_TX 1
+#define HNS3_PFC_STORM_PARA_DISABLE 0
+#define HNS3_PFC_STORM_PARA_ENABLE 1
+#define HNS3_PFC_STORM_PARA_PERIOD_MIN 5
+#define HNS3_PFC_STORM_PARA_PERIOD_MAX 2000
+
+#define nic_get_cdr_flash_status(ndev, status)	\
+	nic_get_port_fault_status(ndev, HNAE3_FAULT_TYPE_CDR_FLASH, status)
+#define nic_get_hilink_ref_los(ndev, status)	\
+	nic_get_port_fault_status(ndev, HNAE3_FAULT_TYPE_HILINK_REF_LOS, status)
+
 int nic_netdev_match_check(struct net_device *netdev);
 void nic_chip_recover_handler(struct net_device *ndev,
 			      enum hnae3_event_type_custom event_t);
@@ -39,4 +51,6 @@ int nic_disable_net_lane(struct net_device *ndev);
 int nic_get_net_lane_status(struct net_device *ndev, u32 *status);
 int nic_disable_clock(struct net_device *ndev);
 int nic_set_pfc_time_cfg(struct net_device *ndev, u16 time);
+int nic_get_port_fault_status(struct net_device *ndev,
+			      u32 fault_type, u32 *status);
 #endif
