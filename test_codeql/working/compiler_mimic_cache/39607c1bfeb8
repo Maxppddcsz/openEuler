@@ -1,0 +1,18 @@
+gnu configuration (redacted redacted)
+tries (redacted redacted)
+DESKTOP-QVL0Q3E
+/usr/bin/x86_64-linux-gnu-gcc-7
+c
+with arguments:
+-fno-strict-aliasing
+-fno-common
+-fshort-wchar
+-std=gnu89
+-mretpoline-external-thunk
+-----
+prepend --c89
+ienvironment CPATH
+ienvironment C_INCLUDE_PATH
+prepend --gcc
+prepend --gnu_version
+prepend 40000

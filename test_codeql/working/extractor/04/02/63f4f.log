@@ -1,0 +1,3 @@
+[E 10:32:44 14917] CodeQL C/C++ Extractor 2.12.6
+[E 10:32:44 14917] Current directory: /home/ubuntu1804/kernel
+[E 10:32:44 14917] Command: /home/ubuntu1804/codeql/codeql/cpp/tools/linux64/extractor --assembler --codeql-assembler-executable /usr/bin/as --64 -o .14909.tmp /tmp/cc87FXyP.s

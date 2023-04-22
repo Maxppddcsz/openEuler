@@ -1,0 +1,4 @@
+[E 10:32:20 14008] CodeQL C/C++ Extractor 2.12.6
+[E 10:32:20 14008] Current directory: /home/ubuntu1804/kernel
+[E 10:32:20 14008] Command: /home/ubuntu1804/codeql/codeql/cpp/tools/linux64/extractor --mimic /usr/bin/x86_64-linux-gnu-gcc-7 -E -x c -
+[E 10:32:20 14008] Preprocess only; exiting.

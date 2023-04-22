@@ -1,0 +1,4 @@
+[E 10:32:38 14654] CodeQL C/C++ Extractor 2.12.6
+[E 10:32:38 14654] Current directory: /home/ubuntu1804/kernel
+[E 10:32:38 14654] Command: /home/ubuntu1804/codeql/codeql/cpp/tools/linux64/extractor --linker --semmle-linker-executable /usr/bin/x86_64-linux-gnu-ld.bfd -m elf_x86_64 --build-id -v
+[E 10:32:38 14654] Introspection; exiting.

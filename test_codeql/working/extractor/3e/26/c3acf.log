@@ -1,0 +1,11 @@
+[E 10:32:40 14741] CodeQL C/C++ Extractor 2.12.6
+[E 10:32:40 14741] Current directory: /home/ubuntu1804/kernel
+[E 10:32:40 14741] Command: /home/ubuntu1804/codeql/codeql/cpp/tools/linux64/extractor --mimic /usr/bin/x86_64-linux-gnu-gcc-7 -Werror -D__KERNEL__ -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs -fno-strict-aliasing -fno-common -fshort-wchar -Werror-implicit-function-declaration -Wno-format-security -std=gnu89 -mindirect-branch=thunk-inline -mindirect-branch-register -c -x c /dev/null -o .14732.tmp
+[E 10:32:40 14741] Checking whether C compilation already happened.
+[E 10:32:40 14741] Checking for tag c-compilation-happened
+[E 10:32:40 14741] Checking CODEQL_TRACER_DB_ID 000000000000398D_0000000000000001
+[E 10:32:40 14741] Locking DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:40 14741] Locked DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:40 14741] Unlocking DB
+[E 10:32:40 14741] Unlocked DB
+[E 10:32:40 14741] Exiting as C compilation already happened.
