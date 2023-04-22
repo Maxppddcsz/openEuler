@@ -1,0 +1,31 @@
+[E 10:32:14 13756] CodeQL C/C++ Extractor 2.12.6
+[E 10:32:14 13756] Current directory: /home/ubuntu1804/kernel
+[E 10:32:14 13756] Command: /home/ubuntu1804/codeql/codeql/cpp/tools/linux64/extractor --mimic /usr/bin/x86_64-linux-gnu-gcc-7 -D__ASSEMBLY__ -fno-PIE -m64 -c -x assembler -o .13748.tmp -
+[E 10:32:14 13756] Checking whether C compilation already happened.
+[E 10:32:14 13756] Checking for tag c-compilation-happened
+[E 10:32:14 13756] Checking CODEQL_TRACER_DB_ID 00000000000035B7_0000000000000001
+[E 10:32:14 13756] Locking DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:14 13756] Locked DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:14 13756] Unlocking DB
+[E 10:32:14 13756] Unlocked DB
+[E 10:32:14 13756] Looks like C compilation didn't already happen.
+[E 10:32:14 13756] Checking whether C compilation has been attempted.
+[E 10:32:14 13756] Checking for tag c-compilation-attempted
+[E 10:32:14 13756] Checking CODEQL_TRACER_DB_ID 00000000000035B7_0000000000000001
+[E 10:32:14 13756] Locking DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:14 13756] Locked DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:14 13756] Unlocking DB
+[E 10:32:14 13756] Unlocked DB
+[E 10:32:14 13756] Marking C compilation as attempted.
+[E 10:32:14 13756] Setting tag c-compilation-attempted
+[E 10:32:14 13756] Starting from CODEQL_TRACER_DB_ID 00000000000035B7_0000000000000001
+[E 10:32:14 13756] Locking DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:14 13756] Locked DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:14 13756] Set tag for 00000000000035B7_0000000000000001
+[E 10:32:14 13756] Set tag for 00000000000035B4_0000000000000001
+[E 10:32:14 13756] Set tag for 00000000000031EF_0000000000000003
+[E 10:32:14 13756] Set tag for 00000000000031EF_0000000000000002
+[E 10:32:14 13756] Set tag for root
+[E 10:32:14 13756] Unlocking DB
+[E 10:32:14 13756] Unlocked DB
+[E 10:32:14 13756] 0 file groups; exiting.

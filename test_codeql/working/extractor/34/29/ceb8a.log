@@ -1,0 +1,32 @@
+[E 10:32:21 14039] CodeQL C/C++ Extractor 2.12.6
+[E 10:32:21 14039] Current directory: /home/ubuntu1804/kernel
+[E 10:32:21 14039] Command: /home/ubuntu1804/codeql/codeql/cpp/tools/linux64/extractor --mimic /usr/bin/x86_64-linux-gnu-gcc-7 -v
+[E 10:32:21 14039] Warning[extractor-c++]: In canonicalise_path: realpath failed
+[E 10:32:21 14039] Checking whether C compilation already happened.
+[E 10:32:21 14039] Checking for tag c-compilation-happened
+[E 10:32:21 14039] Checking CODEQL_TRACER_DB_ID 00000000000036D4_0000000000000001
+[E 10:32:21 14039] Locking DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:21 14039] Locked DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:21 14039] Unlocking DB
+[E 10:32:21 14039] Unlocked DB
+[E 10:32:21 14039] Looks like C compilation didn't already happen.
+[E 10:32:21 14039] Checking whether C compilation has been attempted.
+[E 10:32:21 14039] Checking for tag c-compilation-attempted
+[E 10:32:21 14039] Checking CODEQL_TRACER_DB_ID 00000000000036D4_0000000000000001
+[E 10:32:21 14039] Locking DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:21 14039] Locked DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:21 14039] Unlocking DB
+[E 10:32:21 14039] Unlocked DB
+[E 10:32:21 14039] Marking C compilation as attempted.
+[E 10:32:21 14039] Setting tag c-compilation-attempted
+[E 10:32:21 14039] Starting from CODEQL_TRACER_DB_ID 00000000000036D4_0000000000000001
+[E 10:32:21 14039] Locking DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:21 14039] Locked DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:21 14039] Set tag for 00000000000036D4_0000000000000001
+[E 10:32:21 14039] Set tag for 00000000000036D3_0000000000000001
+[E 10:32:21 14039] Set tag for 00000000000031EF_0000000000000003
+[E 10:32:21 14039] Set tag for 00000000000031EF_0000000000000002
+[E 10:32:21 14039] Set tag for root
+[E 10:32:21 14039] Unlocking DB
+[E 10:32:21 14039] Unlocked DB
+[E 10:32:21 14039] 0 file groups; exiting.

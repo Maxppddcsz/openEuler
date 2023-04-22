@@ -1,0 +1,5 @@
+[E 10:32:44 14927] CodeQL C/C++ Extractor 2.12.6
+[E 10:32:44 14927] Current directory: /home/ubuntu1804/kernel
+[E 10:32:44 14927] Command: /home/ubuntu1804/codeql/codeql/cpp/tools/linux64/extractor --assembler --codeql-assembler-executable /usr/bin/as --64 -o .14920.tmp -
+[E 10:32:44 14927] Warning[extractor-c++]: In canonicalise_path: realpath failed
+[E 10:32:44 14927] Warning[extractor-c++]: In canonicalise_path: realpath failed

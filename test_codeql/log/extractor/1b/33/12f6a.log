@@ -1,0 +1,54 @@
+[E 10:32:39 14730] CodeQL C/C++ Extractor 2.12.6
+[E 10:32:39 14730] Current directory: /home/ubuntu1804/kernel
+[E 10:32:39 14730] Command: /home/ubuntu1804/codeql/codeql/cpp/tools/linux64/extractor --mimic /usr/bin/x86_64-linux-gnu-gcc-7 -Werror -D__KERNEL__ -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs -fno-strict-aliasing -fno-common -fshort-wchar -Werror-implicit-function-declaration -Wno-format-security -std=gnu89 -mretpoline -c -x c /dev/null -o .14727.tmp
+[E 10:32:39 14730] Warning[extractor-c++]: In canonicalise_path: realpath failed
+[E 10:32:39 14730] Checking whether C compilation already happened.
+[E 10:32:39 14730] Checking for tag c-compilation-happened
+[E 10:32:39 14730] Checking CODEQL_TRACER_DB_ID 0000000000003988_0000000000000001
+[E 10:32:39 14730] Locking DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:39 14730] Locked DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:39 14730] Unlocking DB
+[E 10:32:39 14730] Unlocked DB
+[E 10:32:39 14730] Looks like C compilation didn't already happen.
+[E 10:32:39 14730] Checking whether C compilation has been attempted.
+[E 10:32:39 14730] Checking for tag c-compilation-attempted
+[E 10:32:39 14730] Checking CODEQL_TRACER_DB_ID 0000000000003988_0000000000000001
+[E 10:32:39 14730] Locking DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:39 14730] Locked DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:39 14730] Unlocking DB
+[E 10:32:39 14730] Unlocked DB
+[E 10:32:39 14730] Marking C compilation as attempted.
+[E 10:32:39 14730] Setting tag c-compilation-attempted
+[E 10:32:39 14730] Starting from CODEQL_TRACER_DB_ID 0000000000003988_0000000000000001
+[E 10:32:39 14730] Locking DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:39 14730] Locked DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:39 14730] Set tag for 0000000000003988_0000000000000001
+[E 10:32:39 14730] Set tag for 0000000000003987_0000000000000001
+[E 10:32:39 14730] Set tag for 0000000000003967_0000000000000001
+[E 10:32:39 14730] Set tag for 00000000000031EF_0000000000000003
+[E 10:32:39 14730] Set tag for 00000000000031EF_0000000000000002
+[E 10:32:39 14730] Set tag for root
+[E 10:32:39 14730] Unlocking DB
+[E 10:32:39 14730] Unlocked DB
+[E 10:32:39 14730] Processed command line: /home/ubuntu1804/codeql/codeql/cpp/tools/linux64/extractor --trapfolder /home/ubuntu1804/kernel/test_codeql/trap/cpp --src_archive /home/ubuntu1804/kernel/test_codeql/src --mimic_config /home/ubuntu1804/kernel/test_codeql/working/compiler_mimic_cache/2e4a1f2360f0 --object_filename .14727.tmp -w --error_limit 1000 --disable_system_macros --variadic_macros --c89 --gcc --gnu_version 40000 -D__KERNEL__ -- /dev/null
+[E 10:32:39 14730] Starting compilation TRAP /home/ubuntu1804/kernel/test_codeql/trap/cpp/compilations/51/46445003_0.trap.br
+[E 10:32:39 14730] Already archived /home/ubuntu1804/kernel/test_codeql/src/dev/null
+[E 10:32:39 14730] Creating trap tarball /home/ubuntu1804/kernel/test_codeql/trap/cpp/tarballs/dev/null.54d84835_4.trap.tar.br
+[E 10:32:39 14730] Emitting trap files for /dev/null
+[E 10:32:39 14730] Opening existencedb in /home/ubuntu1804/kernel/test_codeql/working/existencedb/db
+[E 10:32:39 14730] Warning[extractor-c++]: In canonicalise_path: realpath failed
+[E 10:32:39 14730] Wrote 0 files to /home/ubuntu1804/kernel/test_codeql/trap/cpp/tarballs/dev/null.54d84835_4.trap.tar.br
+[E 10:32:39 14730] Finished compilation TRAP /home/ubuntu1804/kernel/test_codeql/trap/cpp/compilations/51/46445003_0.trap.br
+[E 10:32:39 14730] Marking C compilation as happened.
+[E 10:32:39 14730] Setting tag c-compilation-happened
+[E 10:32:39 14730] Starting from CODEQL_TRACER_DB_ID 0000000000003988_0000000000000001
+[E 10:32:39 14730] Locking DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:39 14730] Locked DB /home/ubuntu1804/kernel/test_codeql/working/tags.db
+[E 10:32:39 14730] Set tag for 0000000000003988_0000000000000001
+[E 10:32:39 14730] Set tag for 0000000000003987_0000000000000001
+[E 10:32:39 14730] Set tag for 0000000000003967_0000000000000001
+[E 10:32:39 14730] Set tag for 00000000000031EF_0000000000000003
+[E 10:32:39 14730] Set tag for 00000000000031EF_0000000000000002
+[E 10:32:39 14730] Set tag for root
+[E 10:32:39 14730] Unlocking DB
+[E 10:32:39 14730] Unlocked DB
