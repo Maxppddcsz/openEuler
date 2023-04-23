@@ -1250,11 +1250,17 @@ struct hclge_phy_link_ksetting_1_cmd {
 	u8 rsv[22];
 };
 
+#define HCLGE_PHY_RW_DIRECTLY	0
+#define HCLGE_PHY_RW_WITH_PAGE	1
 struct hclge_phy_reg_cmd {
 	__le16 reg_addr;
 	u8 rsv0[2];
 	__le16 reg_val;
-	u8 rsv1[18];
+	u8 rsv1[2];
+	u8 type;
+	u8 dev_addr;
+	__le16 page;
+	u8 rsv2[12];
 };
 
 /* capabilities bits map between imp firmware and local driver */
