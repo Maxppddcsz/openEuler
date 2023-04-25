@@ -619,6 +619,7 @@ static int io_wqe_worker(void *data)
 
 	snprintf(buf, sizeof(buf), "iou-wrk-%d", wq->task->pid);
 	set_task_comm(current, buf);
+	ignore_signals(current);
 
 	while (!test_bit(IO_WQ_BIT_EXIT, &wq->state)) {
 		long ret;
@@ -646,6 +647,8 @@ loop:
 		if (signal_pending(current)) {
 			struct ksignal ksig;
 
+			if (signal_group_exit(current->signal))
+				break;
 			if (!get_signal(&ksig))
 				continue;
 			break;
