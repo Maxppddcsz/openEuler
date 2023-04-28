@@ -66,6 +66,12 @@ void *dma_direct_alloc(struct device *dev, size_t size, dma_addr_t *dma_handle,
 	struct page *page = NULL;
 	void *ret;
 
+#if defined(CONFIG_X86) && defined(CONFIG_PCI)
+	nodemask_t nodemask;
+
+	nodes_clear(nodemask);
+#endif
+
 	/* we always manually zero the memory once we are done: */
 	gfp &= ~__GFP_ZERO;
 
@@ -85,9 +91,28 @@ again:
 			page = NULL;
 		}
 	}
-	if (!page)
+	if (!page) {
+#if defined(CONFIG_X86) && defined(CONFIG_PCI)
+		if (zhaoxin_p2cw_patch_en == true) {
+			if (dev_to_node(dev) == NUMA_NO_NODE) {
+				page = __alloc_pages_nodemask(gfp, page_order,
+					numa_mem_id(), NULL);
+			} else {
+				if (!(gfp & (GFP_DMA | GFP_DMA32))) {
+					node_set(dev_to_node(dev), nodemask);
+					page = __alloc_pages_nodemask(gfp | __GFP_HIGH, page_order,
+						dev_to_node(dev), &nodemask);
+				} else
+					page = __alloc_pages_nodemask(gfp | __GFP_HIGH, page_order,
+						dev_to_node(dev), NULL);
+			}
+			goto check_alloc;
+		}
+#endif
 		page = alloc_pages_node(dev_to_node(dev), gfp, page_order);
+	}
 
+check_alloc:
 	if (page && !dma_coherent_ok(dev, page_to_phys(page), size)) {
 		__free_pages(page, page_order);
 		page = NULL;
