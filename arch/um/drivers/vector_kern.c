@@ -453,13 +453,14 @@ static int vector_send(struct vector_queue *qi)
 
 static void destroy_queue(struct vector_queue *qi)
 {
+	if (qi == NULL)
+	return;
+
 	int i;
 	struct iovec *iov;
 	struct vector_private *vp = netdev_priv(qi->dev);
 	struct mmsghdr *mmsg_vector;
 
-	if (qi == NULL)
-		return;
 	/* deallocate any skbuffs - we rely on any unused to be
 	 * set to NULL.
 	 */
