@@ -55,6 +55,9 @@ enum dc_edid_status dm_helpers_parse_edid_caps(
 		const struct dc_edid *edid,
 		struct dc_edid_caps *edid_caps)
 {
+    if (!edid_caps || !edid)
+		return EDID_BAD_INPUT;
+
 	struct edid *edid_buf = (struct edid *) edid->raw_edid;
 	struct cea_sad *sads;
 	int sad_count = -1;
@@ -64,9 +67,6 @@ enum dc_edid_status dm_helpers_parse_edid_caps(
 	uint8_t *sadb = NULL;
 
 	enum dc_edid_status result = EDID_OK;
-
-	if (!edid_caps || !edid)
-		return EDID_BAD_INPUT;
 
 	if (!drm_edid_is_valid(edid_buf))
 		result = EDID_BAD_CHECKSUM;
