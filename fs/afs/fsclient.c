@@ -2105,7 +2105,8 @@ static int afs_deliver_fs_fetch_status(struct afs_call *call)
 	if (ret < 0)
 		return ret;
 
-	_enter("{%x:%u}", vnode->fid.vid, vnode->fid.vnode);
+	if(vnode)
+		_enter("{%x:%u}", vnode->fid.vid, vnode->fid.vnode);
 
 	/* unmarshall the reply once we've received all of it */
 	bp = call->buffer;
