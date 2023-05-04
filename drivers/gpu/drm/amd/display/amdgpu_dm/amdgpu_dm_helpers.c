@@ -66,9 +66,9 @@ enum dc_edid_status dm_helpers_parse_edid_caps(
         enum dc_edid_status result = EDID_OK;
     
         if (!edid_caps || !edid)
-            return EDID_BAD_INPUT;
+                return EDID_BAD_INPUT;
         else
-            edid_buf = (struct edid *) edid->raw_edid;
+                edid_buf = (struct edid *) edid->raw_edid;
 	
 	if (!drm_edid_is_valid(edid_buf))
 		result = EDID_BAD_CHECKSUM;
