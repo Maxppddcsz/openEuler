@@ -690,7 +690,7 @@ static int vmw_resources_validate(struct vmw_sw_context *sw_context)
  * @sw_context: Pointer to the software context.
  * @id_loc: Pointer to where the id that needs translation is located.
  * @res: Valid pointer to a struct vmw_resource.
- * @p_val: If non null, a pointer to the struct vmw_resource_validate_node
+ * @p_val:A pointer to the struct vmw_resource_validate_node
  * used for this resource is returned here.
  */
 static int vmw_cmd_res_reloc_add(struct vmw_private *dev_priv,
@@ -702,7 +702,6 @@ static int vmw_cmd_res_reloc_add(struct vmw_private *dev_priv,
 	int ret;
 	struct vmw_resource_val_node *node;
 
-	*p_val = NULL;
 	ret = vmw_resource_relocation_add(&sw_context->res_relocations,
 					  res,
 					  vmw_ptr_diff(sw_context->buf_start,
@@ -715,8 +714,7 @@ static int vmw_cmd_res_reloc_add(struct vmw_private *dev_priv,
 	if (unlikely(ret != 0))
 		return ret;
 
-	if (p_val)
-		*p_val = node;
+	*p_val = node;
 
 	return 0;
 }
