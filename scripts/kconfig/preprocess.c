@@ -381,7 +381,7 @@ static char *eval_clause(const char *str, size_t len, int argc, char *argv[])
 	while (*p) {
 		if (nest == 0 && *p == ',') {
 			*p = 0;
-			if (new_argc >= FUNCTION_MAX_ARGS)
+			if (new_argc >= FUNCTION_MAX_ARGS - 1)
 				pperror("too many function arguments");
 			new_argv[new_argc++] = prev;
 			prev = p + 1;
