@@ -698,7 +698,7 @@ static int smu8_start_smu(struct pp_hwmgr *hwmgr)
 {
 	int ret = 0;
 	uint32_t fw_to_check = 0;
-	struct amdgpu_device *adev = hwmgr->adev;
+	struct amdgpu_device *adev;
 
 	uint32_t index = SMN_MP1_SRAM_START_ADDR +
 			 SMU8_FIRMWARE_HEADER_LOCATION +
@@ -707,6 +707,8 @@ static int smu8_start_smu(struct pp_hwmgr *hwmgr)
 
 	if (hwmgr == NULL || hwmgr->device == NULL)
 		return -EINVAL;
+	else
+		adev = hwmgr->adev;
 
 	cgs_write_register(hwmgr->device, mmMP0PUB_IND_INDEX, index);
 	hwmgr->smu_version = cgs_read_register(hwmgr->device, mmMP0PUB_IND_DATA);
