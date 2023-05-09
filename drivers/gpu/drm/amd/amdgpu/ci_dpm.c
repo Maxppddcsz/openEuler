@@ -3938,6 +3938,10 @@ static int ci_apply_disp_minimum_voltage_request(struct amdgpu_device *adev)
 		return -EINVAL;
 	if (!disp_voltage_table->count)
 		return -EINVAL;
+	if (vddc_table == NULL)
+		return -EINVAL;
+	if (!vddc_table->count)
+		return -EINVAL;
 
 	for (i = 0; i < disp_voltage_table->count; i++) {
 		if (adev->clock.current_dispclk == disp_voltage_table->entries[i].clk)
