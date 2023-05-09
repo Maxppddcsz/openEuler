@@ -1010,8 +1010,8 @@ int hostif_data_request(struct ks_wlan_private *priv, struct sk_buff *skb)
 	struct ethhdr *eth;
 	size_t size;
 	int ret;
-
-	skb_len = skb->len;
+    if (skb)
+		skb_len = skb->len;
 	if (skb_len > ETH_FRAME_LEN) {
 		netdev_err(priv->net_dev, "bad length skb_len=%d\n", skb_len);
 		ret = -EOVERFLOW;
@@ -1023,8 +1023,7 @@ int hostif_data_request(struct ks_wlan_private *priv, struct sk_buff *skb)
 	    priv->wpa.mic_failure.stop) {
 		if (netif_queue_stopped(priv->net_dev))
 			netif_wake_queue(priv->net_dev);
-		if (skb)
-			dev_kfree_skb(skb);
+		dev_kfree_skb(skb);
 
 		return 0;
 	}
