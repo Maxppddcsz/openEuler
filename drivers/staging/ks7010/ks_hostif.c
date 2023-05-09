@@ -1010,7 +1010,7 @@ int hostif_data_request(struct ks_wlan_private *priv, struct sk_buff *skb)
 	struct ethhdr *eth;
 	size_t size;
 	int ret;
-    if (skb)
+    	if (skb)
 		skb_len = skb->len;
 	if (skb_len > ETH_FRAME_LEN) {
 		netdev_err(priv->net_dev, "bad length skb_len=%d\n", skb_len);
