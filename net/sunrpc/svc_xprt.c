@@ -653,11 +653,11 @@ static int svc_alloc_arg(struct svc_rqst *rqstp)
 		pages = RPCSVC_MAXPAGES;
 	}
 
-    for (filled = 0; filled < pages; filled = ret) {
-        ret = alloc_pages_bulk_array(GFP_KERNEL, pages, rqstp->rq_pages);
-        if (ret > filled)
-            /* Made progress, don't sleep yet */
-            continue;
+	for (filled = 0; filled < pages; filled = ret) {
+		ret = alloc_pages_bulk_array(GFP_KERNEL, pages, rqstp->rq_pages);
+		if (ret > filled)
+			/* Made progress, don't sleep yet */
+			continue;
 
 		set_current_state(TASK_INTERRUPTIBLE);
 		if (signalled() || kthread_should_stop()) {
