@@ -25,9 +25,10 @@ union br_ptr {
  */
 void pcireg_control_bit_clr(struct pcibus_info *pcibus_info, u64 bits)
 {
-	union br_ptr __iomem *ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
+	union br_ptr __iomem *ptr;
 
 	if (pcibus_info) {
+		ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
 		switch (pcibus_info->pbi_bridge_type) {
 		case PCIBR_BRIDGETYPE_TIOCP:
 			__sn_clrq_relaxed(&ptr->tio.cp_control, bits);
@@ -45,9 +46,10 @@ void pcireg_control_bit_clr(struct pcibus_info *pcibus_info, u64 bits)
 
 void pcireg_control_bit_set(struct pcibus_info *pcibus_info, u64 bits)
 {
-	union br_ptr __iomem *ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
+	union br_ptr __iomem *ptr;
 
 	if (pcibus_info) {
+		ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
 		switch (pcibus_info->pbi_bridge_type) {
 		case PCIBR_BRIDGETYPE_TIOCP:
 			__sn_setq_relaxed(&ptr->tio.cp_control, bits);
@@ -68,10 +70,11 @@ void pcireg_control_bit_set(struct pcibus_info *pcibus_info, u64 bits)
  */
 u64 pcireg_tflush_get(struct pcibus_info *pcibus_info)
 {
-	union br_ptr __iomem *ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
+	union br_ptr __iomem *ptr;
 	u64 ret = 0;
 
 	if (pcibus_info) {
+		ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
 		switch (pcibus_info->pbi_bridge_type) {
 		case PCIBR_BRIDGETYPE_TIOCP:
 			ret = __sn_readq_relaxed(&ptr->tio.cp_tflush);
@@ -98,10 +101,11 @@ u64 pcireg_tflush_get(struct pcibus_info *pcibus_info)
  */
 u64 pcireg_intr_status_get(struct pcibus_info * pcibus_info)
 {
-	union br_ptr __iomem *ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
+	union br_ptr __iomem *ptr;
 	u64 ret = 0;
 
 	if (pcibus_info) {
+		ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
 		switch (pcibus_info->pbi_bridge_type) {
 		case PCIBR_BRIDGETYPE_TIOCP:
 			ret = __sn_readq_relaxed(&ptr->tio.cp_int_status);
@@ -123,9 +127,10 @@ u64 pcireg_intr_status_get(struct pcibus_info * pcibus_info)
  */
 void pcireg_intr_enable_bit_clr(struct pcibus_info *pcibus_info, u64 bits)
 {
-	union br_ptr __iomem *ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
+	union br_ptr __iomem *ptr;
 
 	if (pcibus_info) {
+		ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
 		switch (pcibus_info->pbi_bridge_type) {
 		case PCIBR_BRIDGETYPE_TIOCP:
 			__sn_clrq_relaxed(&ptr->tio.cp_int_enable, bits);
@@ -143,9 +148,10 @@ void pcireg_intr_enable_bit_clr(struct pcibus_info *pcibus_info, u64 bits)
 
 void pcireg_intr_enable_bit_set(struct pcibus_info *pcibus_info, u64 bits)
 {
-	union br_ptr __iomem *ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
+	union br_ptr __iomem *ptr;
 
 	if (pcibus_info) {
+		ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
 		switch (pcibus_info->pbi_bridge_type) {
 		case PCIBR_BRIDGETYPE_TIOCP:
 			__sn_setq_relaxed(&ptr->tio.cp_int_enable, bits);
@@ -167,9 +173,10 @@ void pcireg_intr_enable_bit_set(struct pcibus_info *pcibus_info, u64 bits)
 void pcireg_intr_addr_addr_set(struct pcibus_info *pcibus_info, int int_n,
 			       u64 addr)
 {
-	union br_ptr __iomem *ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
+	union br_ptr __iomem *ptr;
 
 	if (pcibus_info) {
+		ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
 		switch (pcibus_info->pbi_bridge_type) {
 		case PCIBR_BRIDGETYPE_TIOCP:
 			__sn_clrq_relaxed(&ptr->tio.cp_int_addr[int_n],
@@ -196,9 +203,10 @@ void pcireg_intr_addr_addr_set(struct pcibus_info *pcibus_info, int int_n,
  */
 void pcireg_force_intr_set(struct pcibus_info *pcibus_info, int int_n)
 {
-	union br_ptr __iomem *ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
+	union br_ptr __iomem *ptr;
 
 	if (pcibus_info) {
+		ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
 		switch (pcibus_info->pbi_bridge_type) {
 		case PCIBR_BRIDGETYPE_TIOCP:
 			writeq(1, &ptr->tio.cp_force_pin[int_n]);
@@ -219,10 +227,11 @@ void pcireg_force_intr_set(struct pcibus_info *pcibus_info, int int_n)
  */
 u64 pcireg_wrb_flush_get(struct pcibus_info *pcibus_info, int device)
 {
-	union br_ptr __iomem *ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
+	union br_ptr __iomem *ptr;
 	u64 ret = 0;
 
 	if (pcibus_info) {
+		ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
 		switch (pcibus_info->pbi_bridge_type) {
 		case PCIBR_BRIDGETYPE_TIOCP:
 			ret =
@@ -244,9 +253,10 @@ u64 pcireg_wrb_flush_get(struct pcibus_info *pcibus_info, int device)
 void pcireg_int_ate_set(struct pcibus_info *pcibus_info, int ate_index,
 			u64 val)
 {
-	union br_ptr __iomem *ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
+	union br_ptr __iomem *ptr;
 
 	if (pcibus_info) {
+		ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
 		switch (pcibus_info->pbi_bridge_type) {
 		case PCIBR_BRIDGETYPE_TIOCP:
 			writeq(val, &ptr->tio.cp_int_ate_ram[ate_index]);
@@ -264,10 +274,11 @@ void pcireg_int_ate_set(struct pcibus_info *pcibus_info, int ate_index,
 
 u64 __iomem *pcireg_int_ate_addr(struct pcibus_info *pcibus_info, int ate_index)
 {
-	union br_ptr __iomem *ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
+	union br_ptr __iomem *ptr;
 	u64 __iomem *ret = NULL;
 
 	if (pcibus_info) {
+		ptr = (union br_ptr __iomem *)pcibus_info->pbi_buscommon.bs_base;
 		switch (pcibus_info->pbi_bridge_type) {
 		case PCIBR_BRIDGETYPE_TIOCP:
 			ret = &ptr->tio.cp_int_ate_ram[ate_index];
