@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .92.0
-%global pkg_release         .116
+%global maintenance_release .93.0
+%global pkg_release         .117
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,28 @@ fi
 %endif
 
 %changelog
+* Wed May 10 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.93.0.117
+- !723 Backport CVEs and bugfixes
+- USB: gadgetfs: Fix race between mounting and unmounting
+- prlimit: do_prlimit needs to have a speculation check
+- ext4: check iomap type only if ext4_iomap_begin() does not fail
+- dm ioctl: fix nested locking in table_clear() to remove deadlock concern
+- net: qcom/emac: Fix use after free bug in emac_remove due to race condition
+- net: sched: sch_qfq: prevent slab-out-of-bounds in qfq_activate_agg
+- i2c: xgene-slimpro: Fix out-of-bounds bug in xgene_slimpro_i2c_xfer()
+- ext4: only update i_reserved_data_blocks on successful block allocation
+- can: af_can: fix NULL pointer dereference in can_rcv_filter
+- RDMA/core: Refactor rdma_bind_addr
+- RDMA/cma: Ensure rdma_addr_cancel() happens before issuing more requests
+- scsi: dpt_i2o: Remove obsolete driver
+- writeback, cgroup: fix null-ptr-deref write in bdi_split_work_to_wbs
+- bpf, sockmap: Fix an infinite loop error when len is 0 in tcp_bpf_recvmsg_parser()
+- bpf, sockmap: Fix double bpf_prog_put on error case in map_link
+- bpf, sockmap: Re-evaluate proto ops when psock is removed from sockmap
+- bpf, sockmap: Attach map progs to psock early for feature probes
+- bpf, sockmap: Fix return codes from tcp_bpf_recvmsg_parser()
+- bpf, sockmap: Fix race in ingress receive verdict with redirect to self
+
 * Wed Apr 26 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.92.0.116
 - !632 Backport CVEs and bugfixes
 - bonding: Fix memory leak when changing bond type to Ethernet
