@@ -55,7 +55,8 @@
 #define HCLGE_COMM_NIC_SW_RST_RDY		BIT(HCLGE_COMM_NIC_SW_RST_RDY_B)
 #define HCLGE_COMM_NIC_CMQ_DESC_NUM_S		3
 #define HCLGE_COMM_NIC_CMQ_DESC_NUM		1024
-#define HCLGE_COMM_CMDQ_TX_TIMEOUT		30000
+#define HCLGE_COMM_CMDQ_TX_TIMEOUT_DEFAULT	30000
+#define HCLGE_COMM_CMDQ_TX_TIMEOUT_500MS	500000
 
 enum hclge_opcode_type;
 
@@ -113,6 +114,11 @@ enum hclge_comm_opcode_type {
 struct hclge_comm_caps_bit_map {
 	u16 imp_bit;
 	u16 local_bit;
+};
+
+struct hclge_cmdq_tx_timeout_map {
+	u32 opcode;
+	u32 tx_timeout;
 };
 
 struct hclge_comm_firmware_compat_cmd {
