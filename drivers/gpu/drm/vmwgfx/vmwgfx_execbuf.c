@@ -702,7 +702,8 @@ static int vmw_cmd_res_reloc_add(struct vmw_private *dev_priv,
 	int ret;
 	struct vmw_resource_val_node *node;
 
-	*p_val = NULL;
+	if (p_val)
+	    *p_val = NULL;
 	ret = vmw_resource_relocation_add(&sw_context->res_relocations,
 					  res,
 					  vmw_ptr_diff(sw_context->buf_start,
