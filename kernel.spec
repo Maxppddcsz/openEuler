@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .93.0
-%global pkg_release         .117
+%global maintenance_release .94.0
+%global pkg_release         .118
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,26 @@ fi
 %endif
 
 %changelog
+* Tue May 16 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.94.0.118
+- !775 Backport CVEs and bugfixes
+- filemap: Correct the conditions for marking a folio as accessed
+- Revert "filemap: Correct the conditions for marking a folio as accessed"
+- netrom: Fix use-after-free caused by accept on already connected socket
+- bluetooth: Perform careful capability checks in hci_sock_ioctl()
+- fs/ntfs3: Delete duplicate condition in ntfs_read_mft()
+- fs/ntfs3: Fix slab-out-of-bounds read in run_unpack
+- fs/ntfs3: Validate data run offset
+- xfs: buffer pins need to hold a buffer reference
+- ovl: get_acl: Fix null pointer dereference at realinode in rcu-walk mode
+- fix kabi broken due to import new inode operation get_inode_acl
+- ovl: enable RCU'd ->get_acl()
+- vfs: add rcu argument to ->get_acl() callback
+- bpf: add missing header file include
+- uaccess: Add speculation barrier to copy_from_user()
+- !684 [sync] PR-675: driver/hifc&hinic: Fix compile error in allyesconfigs
+- scsi/hifc: Fix compile error in allyesconfigs
+- net/hinic: Fix compile error in allyesconfigs
+
 * Wed May 10 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.93.0.117
 - !723 Backport CVEs and bugfixes
 - USB: gadgetfs: Fix race between mounting and unmounting
