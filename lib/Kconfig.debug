@@ -439,6 +439,43 @@ config DEBUG_FORCE_WEAK_PER_CPU
 	  To ensure that generic code follows the above rules, this
 	  option forces all percpu variables to be defined as weak.
 
+config LTO_MENU
+	bool "Enable compiler Link Time Optimization (EXPERIMENTAL)"
+	default n
+	help
+	  Menu for Enable LTO kernel.
+
+config LTO
+	bool
+	help
+	  Selected if the kernel will be built using the compiler's LTO feature.
+
+config ARCH_SUPPORTS_LTO_GCC
+	bool
+	help
+	  Use this option to control whether this feature is enabled on a
+	  certain platform.
+
+config LTO_GCC
+	bool "Enable GCC LTO"
+	depends on LTO_MENU
+	depends on ARCH_SUPPORTS_LTO_GCC
+	depends on !DEBUG_INFO_BTF
+	select LTO
+	default y
+	help
+	  Enable GCC LTO so that all the different compilation units that make
+	  up a single executable can be optimized as a single module.
+
+config LTO_CP_CLONE
+	bool "Allow aggressive cloning for function specialization"
+	depends on LTO_GCC
+	default n
+	help
+	  Allow the compiler to clone and specialize functions for specific
+	  arguments when it determines these arguments are commonly
+	  called.  Experimential. Will increase text size.
+
 endmenu # "Compiler options"
 
 menu "Generic Kernel Debugging Instruments"

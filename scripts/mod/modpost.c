@@ -80,14 +80,6 @@ modpost_log(enum loglevel loglevel, const char *fmt, ...)
 		exit(1);
 }
 
-static inline bool strends(const char *str, const char *postfix)
-{
-	if (strlen(str) < strlen(postfix))
-		return false;
-
-	return strcmp(str + strlen(str) - strlen(postfix), postfix) == 0;
-}
-
 void *do_nofail(void *ptr, const char *expr)
 {
 	if (!ptr)
@@ -1585,6 +1577,20 @@ static void report_sec_mismatch(const char *modname,
 	fprintf(stderr, "\n");
 }
 
+/* For checks remove .lto_priv.0 which is added randomly by gcc LTO */
+
+static char *cleansym(const char *sym)
+{
+	char *nsym = strdup(sym);
+	char *p;
+	if (!nsym)
+		exit(ENOMEM);
+	p = strstr(nsym, ".lto_priv.0");
+	if (p && p[11] == 0)
+		*p = 0;
+	return nsym;
+}
+
 static void default_mismatch_handler(const char *modname, struct elf_info *elf,
 				     const struct sectioncheck* const mismatch,
 				     Elf_Rela *r, Elf_Sym *sym, const char *fromsec)
@@ -1594,6 +1600,7 @@ static void default_mismatch_handler(const char *modname, struct elf_info *elf,
 	Elf_Sym *from;
 	const char *tosym;
 	const char *fromsym;
+	char *fromsym_clean, *tosym_clean;
 
 	from = find_elf_symbol2(elf, r->r_offset, fromsec);
 	fromsym = sym_name(elf, from);
@@ -1605,14 +1612,19 @@ static void default_mismatch_handler(const char *modname, struct elf_info *elf,
 	to = find_elf_symbol(elf, r->r_addend, sym);
 	tosym = sym_name(elf, to);
 
+	fromsym_clean = cleansym(fromsym);
+	tosym_clean = cleansym(tosym);
+
 	/* check whitelist - we may ignore it */
 	if (secref_whitelist(mismatch,
-			     fromsec, fromsym, tosec, tosym)) {
+			     fromsec, fromsym_clean, tosec, tosym_clean)) {
 		report_sec_mismatch(modname, mismatch,
 				    fromsec, r->r_offset, fromsym,
 				    is_function(from), tosec, tosym,
 				    is_function(to));
 	}
+	free(fromsym_clean);
+	free(tosym_clean);
 }
 
 static int is_executable_section(struct elf_info* elf, unsigned int section_index)
@@ -2000,6 +2012,10 @@ static char *remove_dot(char *s)
 		size_t m = strspn(s + n + 1, "0123456789");
 		if (m && (s[n + m + 1] == '.' || s[n + m + 1] == 0))
 			s[n] = 0;
+
+		/* strip trailing .lto */
+		if (strends(s, ".lto"))
+			s[strlen(s) - 4] = '\0';
 	}
 	return s;
 }
@@ -2023,6 +2039,9 @@ static void read_symbols(const char *modname)
 		/* strip trailing .o */
 		tmp = NOFAIL(strdup(modname));
 		tmp[strlen(tmp) - 2] = '\0';
+		/* strip trailing .lto */
+		if (strends(tmp, ".lto"))
+			tmp[strlen(tmp) - 4] = '\0';
 		mod = new_module(tmp);
 		free(tmp);
 	}

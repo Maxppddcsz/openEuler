@@ -2,7 +2,9 @@
 #
 # Makefile for Kernel-based Virtual Machine module
 #
-
+ifeq ($(CONFIG_LTO_GCC), y)
+KBUILD_CFLAGS += $(DISABLE_LTO_GCC)
+endif
 ccflags-y += -I $(srctree)/$(src)
 
 KVM=../../../virt/kvm

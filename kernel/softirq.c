@@ -431,6 +431,9 @@ static inline void __irq_exit_rcu(void)
  *
  * Also processes softirqs if needed and possible.
  */
+#ifdef CONFIG_LTO_GCC
+__visible
+#endif
 void irq_exit_rcu(void)
 {
 	__irq_exit_rcu();

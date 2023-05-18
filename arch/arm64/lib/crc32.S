@@ -85,6 +85,7 @@ CPU_BE(	rev16		w3, w3		)
 	.endm
 
 	.align		5
+#ifndef CONFIG_LTO_GCC
 SYM_FUNC_START(crc32_le)
 alternative_if_not ARM64_HAS_CRC32
 	b		crc32_le_base
@@ -99,3 +100,4 @@ alternative_if_not ARM64_HAS_CRC32
 alternative_else_nop_endif
 	__crc32		c
 SYM_FUNC_END(__crc32c_le)
+#endif

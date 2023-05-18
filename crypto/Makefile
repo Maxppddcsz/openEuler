@@ -2,6 +2,9 @@
 #
 # Cryptographic API
 #
+ifeq ($(CONFIG_LTO_GCC), y)
+KBUILD_CFLAGS += $(DISABLE_LTO_GCC)
+endif
 
 obj-$(CONFIG_CRYPTO) += crypto.o
 crypto-y := api.o cipher.o compress.o

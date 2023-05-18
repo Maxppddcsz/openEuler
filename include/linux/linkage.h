@@ -22,6 +22,21 @@
 #define asmlinkage CPP_ASMLINKAGE
 #endif
 
+#ifdef CONFIG_LTO_GCC
+#ifndef cond_syscall
+#define cond_syscall(x)	\
+	extern long x(void) __attribute__((alias("sys_ni_syscall"), weak));
+#endif
+
+#ifndef SYSCALL_ALIAS
+#define SYSCALL_ALIAS(a, name) \
+	long a(void) __attribute__((alias(__stringify(name))))
+#define SYSCALL_ALIAS_PROTO(a, name) \
+	typeof(a) a __attribute__((alias(__stringify(name))))
+#else
+#define SYSCALL_ALIAS_PROTO(a, name) SYSCALL_ALIAS(a, name)
+#endif
+#else
 #ifndef cond_syscall
 #define cond_syscall(x)	asm(				\
 	".weak " __stringify(x) "\n\t"			\
@@ -35,6 +50,7 @@
 	".set   " __stringify(alias) ","		\
 		  __stringify(name))
 #endif
+#endif /* CONFIG_LTO_GCC */
 
 #define __page_aligned_data	__section(".data..page_aligned") __aligned(PAGE_SIZE)
 #define __page_aligned_bss	__section(".bss..page_aligned") __aligned(PAGE_SIZE)

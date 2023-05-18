@@ -7,6 +7,7 @@ always-y		+= empty.o
 modpost-objs	:= modpost.o file2alias.o sumversion.o
 
 devicetable-offsets-file := devicetable-offsets.h
+$(obj)/devicetable-offsets.s: KBUILD_CFLAGS += $(DISABLE_LTO_GCC)
 
 $(obj)/$(devicetable-offsets-file): $(obj)/devicetable-offsets.s FORCE
 	$(call filechk,offsets,__DEVICETABLE_OFFSETS_H__)

@@ -150,6 +150,23 @@ extern int static_call_text_reserved(void *start, void *end);
 
 extern long __static_call_return0(void);
 
+#ifdef CONFIG_LTO_GCC
+#define __DEFINE_STATIC_CALL(name, _func, _func_init)			\
+	DECLARE_STATIC_CALL(name, _func);				\
+	__visible struct static_call_key STATIC_CALL_KEY(name) = {	\
+		.func = _func_init,					\
+		.type = 1,						\
+	};								\
+	ARCH_DEFINE_STATIC_CALL_TRAMP(name, _func_init)
+
+#define DEFINE_STATIC_CALL_NULL(name, _func)				\
+	DECLARE_STATIC_CALL(name, _func);				\
+	__visible struct static_call_key STATIC_CALL_KEY(name) = {	\
+		.func = NULL,						\
+		.type = 1,						\
+	};								\
+	ARCH_DEFINE_STATIC_CALL_NULL_TRAMP(name)
+#else
 #define __DEFINE_STATIC_CALL(name, _func, _func_init)			\
 	DECLARE_STATIC_CALL(name, _func);				\
 	struct static_call_key STATIC_CALL_KEY(name) = {		\
@@ -165,6 +182,7 @@ extern long __static_call_return0(void);
 		.type = 1,						\
 	};								\
 	ARCH_DEFINE_STATIC_CALL_NULL_TRAMP(name)
+#endif
 
 #define static_call_cond(name)	(void)__static_call(name)
 
@@ -191,9 +209,24 @@ struct static_call_key {
 	void *func;
 };
 
+#ifdef CONFIG_LTO_GCC
 #define __DEFINE_STATIC_CALL(name, _func, _func_init)			\
 	DECLARE_STATIC_CALL(name, _func);				\
-	struct static_call_key STATIC_CALL_KEY(name) = {		\
+	__visible struct static_call_key STATIC_CALL_KEY(name) = {	\
+		.func = _func_init,					\
+	};								\
+	ARCH_DEFINE_STATIC_CALL_TRAMP(name, _func_init)
+
+#define DEFINE_STATIC_CALL_NULL(name, _func)				\
+	DECLARE_STATIC_CALL(name, _func);				\
+	__visible struct static_call_key STATIC_CALL_KEY(name) = {	\
+		.func = NULL,						\
+	};								\
+	ARCH_DEFINE_STATIC_CALL_NULL_TRAMP(name)
+#else
+#define __DEFINE_STATIC_CALL(name, _func, _func_init)			\
+	DECLARE_STATIC_CALL(name, _func);				\
+	struct static_call_key STATIC_CALL_KEY(name) = {	\
 		.func = _func_init,					\
 	};								\
 	ARCH_DEFINE_STATIC_CALL_TRAMP(name, _func_init)
@@ -204,6 +237,7 @@ struct static_call_key {
 		.func = NULL,						\
 	};								\
 	ARCH_DEFINE_STATIC_CALL_NULL_TRAMP(name)
+#endif
 
 #define static_call_cond(name)	(void)__static_call(name)
 
@@ -252,6 +286,19 @@ static inline long __static_call_return0(void)
 	return 0;
 }
 
+#ifdef CONFIG_LTO_GCC
+#define __DEFINE_STATIC_CALL(name, _func, _func_init)			\
+	DECLARE_STATIC_CALL(name, _func);				\
+	__visible struct static_call_key STATIC_CALL_KEY(name) = {	\
+		.func = _func_init,					\
+	}
+
+#define DEFINE_STATIC_CALL_NULL(name, _func)				\
+	DECLARE_STATIC_CALL(name, _func);				\
+	__visible struct static_call_key STATIC_CALL_KEY(name) = {	\
+		.func = NULL,						\
+	}
+#else
 #define __DEFINE_STATIC_CALL(name, _func, _func_init)			\
 	DECLARE_STATIC_CALL(name, _func);				\
 	struct static_call_key STATIC_CALL_KEY(name) = {		\
@@ -263,6 +310,7 @@ static inline long __static_call_return0(void)
 	struct static_call_key STATIC_CALL_KEY(name) = {		\
 		.func = NULL,						\
 	}
+#endif /* CONFIG_LTO_GCC */
 
 static inline void __static_call_nop(void) { }
 
