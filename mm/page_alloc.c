@@ -77,6 +77,7 @@
 #include <asm/sections.h>
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
+#include <linux/fault_event.h>
 #include "internal.h"
 #include "shuffle.h"
 #include "page_reporting.h"
@@ -4037,6 +4038,8 @@ void warn_alloc(gfp_t gfp_mask, nodemask_t *nodemask, const char *fmt, ...)
 	     ((gfp_mask & __GFP_DMA) && !has_managed_dma()))
 		return;
 
+	report_fault_event(smp_processor_id(), current,
+                        NORMAL_FAULT, FE_ALLOCFAIL, NULL);
 	va_start(args, fmt);
 	vaf.fmt = fmt;
 	vaf.va = &args;

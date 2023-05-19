@@ -42,6 +42,7 @@
 #include <linux/psi.h>
 #include <linux/sched/sysctl.h>
 #include <linux/blk-crypto.h>
+#include <linux/fault_event.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/block.h>
@@ -228,6 +229,9 @@ int blk_status_to_errno(blk_status_t status)
 
 	if (WARN_ON_ONCE(idx >= ARRAY_SIZE(blk_errors)))
 		return -EIO;
+	report_fault_event(smp_processor_id(), current,
+                       FATAL_FAULT, FE_IO_ERR, NULL);
+
 	return blk_errors[idx].errno;
 }
 EXPORT_SYMBOL_GPL(blk_status_to_errno);

@@ -60,6 +60,7 @@
 #include <linux/vmalloc.h>
 #include <linux/mm.h>
 #include <linux/kasan.h>
+#include <linux/fault_event.h>
 #include "../time/tick-internal.h"
 
 #include "tree.h"
