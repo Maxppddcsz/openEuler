@@ -188,6 +188,10 @@ F:	drivers/ubus
 F:	drivers/vfio/ubus
 F:	net/ubl
 
+LTO
+M:	Yancheng Li <liyancheng@huawei.com>
+S:	Maintained
+
 THE REST
 M:	xiexiuqi@huawei.com
 M:	zhengzengkai@huawei.com

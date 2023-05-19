@@ -184,6 +184,53 @@ extern bool initcall_debug;
  * as KEEP() in the linker script.
  */
 
+#ifdef CONFIG_LTO_GCC
+/* Format: <modname>__<counter>_<line>_<fn> */
+#define __initcall_id(fn)					\
+	__PASTE(__KBUILD_MODNAME,				\
+	__PASTE(__,						\
+	__PASTE(__COUNTER__,					\
+	__PASTE(_,						\
+	__PASTE(__LINE__,					\
+	__PASTE(_, fn))))))
+
+/* Format: __<prefix>__<iid><id> */
+#define __initcall_name(prefix, __iid, id)			\
+	__PASTE(__,						\
+	__PASTE(prefix,						\
+	__PASTE(__,						\
+	__PASTE(__iid, id))))
+
+#define __initcall_section(__sec, __iid)			\
+	#__sec ".init"
+
+#define __initcall_stub(fn, __iid, id)	fn
+
+#define __define_initcall_stub(__stub, fn)			\
+	__ADDRESSABLE(fn)
+
+#ifdef CONFIG_HAVE_ARCH_PREL32_RELOCATIONS
+#define ____define_initcall(fn, __stub, __name, __sec)		\
+	__define_initcall_stub(__stub, fn)			\
+	asm(".section	\"" __sec "\", \"a\"		\n"	\
+	    __stringify(__name) ":			\n"	\
+	    ".long	" __stringify(__stub) " - .	\n"	\
+	    ".previous					\n");
+#else
+#define ____define_initcall(fn, __unused, __name, __sec)	\
+	static initcall_t __name __used __noreorder 		\
+		__attribute__((__section__(__sec))) = fn;
+#endif
+
+#define __unique_initcall(fn, id, __sec, __iid)			\
+	____define_initcall(fn,					\
+		__initcall_stub(fn, __iid, id),			\
+		__initcall_name(initcall, __iid, id),		\
+		__initcall_section(__sec, __iid))
+
+#define ___define_initcall(fn, id, __sec)			\
+	__unique_initcall(fn, id, __sec, __initcall_id(fn))
+#else
 #ifdef CONFIG_HAVE_ARCH_PREL32_RELOCATIONS
 #define ___define_initcall(fn, id, __sec)			\
 	__ADDRESSABLE(fn)					\
@@ -196,6 +243,7 @@ extern bool initcall_debug;
 	static initcall_t __initcall_##fn##id __used \
 		__attribute__((__section__(#__sec ".init"))) = fn;
 #endif
+#endif /* CONFIG_LTO_GCC */
 
 #define __define_initcall(fn, id) ___define_initcall(fn, id, .initcall##id)
 
@@ -236,7 +284,11 @@ extern bool initcall_debug;
 #define __exitcall(fn)						\
 	static exitcall_t __exitcall_##fn __exit_call = fn
 
+#ifdef CONFIG_LTO_GCC
+#define console_initcall(fn)	___define_initcall(fn, con, .con_initcall)
+#else
 #define console_initcall(fn)	___define_initcall(fn,, .con_initcall)
+#endif
 
 struct obs_kernel_param {
 	const char *str;
@@ -250,6 +302,15 @@ struct obs_kernel_param {
  * Force the alignment so the compiler doesn't space elements of the
  * obs_kernel_param "array" too far apart in .init.setup.
  */
+#ifdef CONFIG_LTO_GCC
+#define __setup_param(str, unique_id, fn, early)			\
+	static const char __setup_str_##unique_id[] __initconst		\
+		__aligned(1) = str; 					\
+	static struct obs_kernel_param __setup_##unique_id		\
+		__used __section(".init.setup")				\
+		__aligned(__alignof__(struct obs_kernel_param))		\
+		= { __setup_str_##unique_id, fn, early }
+#else
 #define __setup_param(str, unique_id, fn, early)			\
 	static const char __setup_str_##unique_id[] __initconst		\
 		__aligned(1) = str; 					\
@@ -257,6 +318,7 @@ struct obs_kernel_param {
 		__used __section(".init.setup")				\
 		__attribute__((aligned((sizeof(long)))))		\
 		= { __setup_str_##unique_id, fn, early }
+#endif
 
 #define __setup(str, fn)						\
 	__setup_param(str, fn, fn, 0)
@@ -268,6 +330,25 @@ struct obs_kernel_param {
 #define early_param(str, fn)						\
 	__setup_param(str, fn, fn, 1)
 
+#ifdef CONFIG_LTO_GCC
+#define early_param_on_off(str_on, str_off, var, config)		\
+									\
+	int var = IS_ENABLED(config);					\
+									\
+	static int __init parse_##var##_on(char *arg)			\
+	{								\
+		var = 1;						\
+		return 0;						\
+	}								\
+	early_param(str_on, parse_##var##_on);				\
+									\
+	static int __init parse_##var##_off(char *arg)			\
+	{								\
+		var = 0;						\
+		return 0;						\
+	}								\
+	early_param(str_off, parse_##var##_off)
+#else
 #define early_param_on_off(str_on, str_off, var, config)		\
 									\
 	int var = IS_ENABLED(config);					\
@@ -285,6 +366,7 @@ struct obs_kernel_param {
 		return 0;						\
 	}								\
 	__setup_param(str_off, parse_##var##_off, parse_##var##_off, 1)
+#endif
 
 /* Relies on boot_command_line being set */
 void __init parse_early_param(void);

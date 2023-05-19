@@ -9,6 +9,7 @@ bounds-file := include/generated/bounds.h
 
 always-y := $(bounds-file)
 targets := kernel/bounds.s
+kernel/bounds.s: KBUILD_CFLAGS += $(DISABLE_LTO_GCC)
 
 $(bounds-file): kernel/bounds.s FORCE
 	$(call filechk,offsets,__LINUX_BOUNDS_H__)

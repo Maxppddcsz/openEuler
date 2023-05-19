@@ -30,10 +30,6 @@
 # Error out on error
 set -e
 
-LD="$1"
-KBUILD_LDFLAGS="$2"
-LDFLAGS_vmlinux="$3"
-
 # Nice output in kbuild format
 # Will be supressed by "make -s"
 info()
@@ -43,11 +39,37 @@ info()
 	fi
 }
 
+# Generate a linker script to ensure correct ordering of initcalls.
+gen_initcalls()
+{
+	info GEN .tmp_initcalls.lds
+
+	${PYTHON} ${srctree}/scripts/jobserver-exec		\
+	${PERL} ${srctree}/scripts/generate_initcall_order.pl	\
+		${KBUILD_VMLINUX_OBJS} ${KBUILD_VMLINUX_LIBS}	\
+		> .tmp_initcalls.lds
+}
+
+# If CONFIG_LTO is selected, collect generated symbol versions into
+# .tmp_symversions.lds
+gen_symversions()
+{
+	info GEN .tmp_symversions.lds
+	rm -f .tmp_symversions.lds
+
+	for o in ${KBUILD_VMLINUX_OBJS} ${KBUILD_VMLINUX_LIBS}; do
+		if [ -f ${o}.symversions ]; then
+			cat ${o}.symversions >> .tmp_symversions.lds
+		fi
+	done
+}
+
 # Link of vmlinux.o used for section mismatch analysis
 # ${1} output file
 modpost_link()
 {
 	local objects
+	local lds=""
 
 	objects="--whole-archive				\
 		${KBUILD_VMLINUX_OBJS}				\
@@ -56,35 +78,97 @@ modpost_link()
 		${KBUILD_VMLINUX_LIBS}				\
 		--end-group"
 
-	${LD} ${KBUILD_LDFLAGS} -r -o ${1} ${objects}
+	if [ -n "${CONFIG_LTO_GCC}" ]; then
+		lds=""
+
+		if [ -n "${CONFIG_MODVERSIONS}" ]; then
+			gen_symversions
+			lds="${lds} -T .tmp_symversions.lds"
+		fi
+
+		# This might take a while, so indicate that we're doing
+		# an LTO link
+		info LTO ${1}
+		${LDFINAL} ${KBUILD_LDFLAGS} -r -o ${1} ${lds} ${objects}
+	else
+		${LD} ${KBUILD_LDFLAGS} -r -o ${1} ${objects}
+	fi
 }
 
 objtool_link()
 {
+	local objtoolcmd;
 	local objtoolopt;
 
-	if [ -n "${CONFIG_VMLINUX_VALIDATION}" ]; then
-		objtoolopt="check"
-		if [ -n "${CONFIG_CPU_UNRET_ENTRY}" ]; then
-			objtoolopt="${objtoolopt} --unret"
+	if [ -n "${CONFIG_LTO_GCC}" ]; then
+		if [ "${CONFIG_LTO} ${CONFIG_STACK_VALIDATION}" = "y y" ] ; then
+			# Don't perform vmlinux validation unless explicitly requested,
+			# but run objtool on vmlinux.o now that we have an object file.
+			if [ -n "${CONFIG_UNWINDER_ORC}" ]; then
+				objtoolcmd="orc generate"
+			fi
+
+			objtoolopt="${objtoolopt} --duplicate"
+
+			if [ -n "${CONFIG_FTRACE_MCOUNT_USE_OBJTOOL}" ]; then
+				objtoolopt="${objtoolopt} --mcount"
+			fi
 		fi
-		if [ -z "${CONFIG_FRAME_POINTER}" ]; then
-			objtoolopt="${objtoolopt} --no-fp"
+
+		if [ -n "${CONFIG_VMLINUX_VALIDATION}" ]; then
+			objtoolopt="${objtoolopt} --noinstr"
 		fi
-		if [ -n "${CONFIG_GCOV_KERNEL}" ]; then
-			objtoolopt="${objtoolopt} --no-unreachable"
+
+		if [ -n "${objtoolopt}" ]; then
+			if [ -z "${objtoolcmd}" ]; then
+				objtoolcmd="check"
+			fi
+			objtoolopt="${objtoolopt} --vmlinux"
+			if [ -n "${CONFIG_CPU_UNRET_ENTRY}" ]; then
+				objtoolopt="${objtoolopt} --unret"
+			fi
+			if [ -z "${CONFIG_FRAME_POINTER}" ]; then
+				objtoolopt="${objtoolopt} --no-fp"
+			fi
+			if [ -n "${CONFIG_GCOV_KERNEL}" ] || [ -n "${CONFIG_LTO}" ]; then
+				objtoolopt="${objtoolopt} --no-unreachable"
+			fi
+			if [ -n "${CONFIG_RETPOLINE}" ]; then
+				objtoolopt="${objtoolopt} --retpoline"
+			fi
+			if [ -n "${CONFIG_X86_SMAP}" ]; then
+				objtoolopt="${objtoolopt} --uaccess"
+			fi
+			if [ -n "${CONFIG_SLS}" ]; then
+				objtoolopt="${objtoolopt} --sls"
+			fi
+			info OBJTOOL ${1}
+			tools/objtool/objtool ${objtoolcmd} ${objtoolopt} ${1}
 		fi
-		if [ -n "${CONFIG_RETPOLINE}" ]; then
-			objtoolopt="${objtoolopt} --retpoline"
+	else
+		if [ -n "${CONFIG_VMLINUX_VALIDATION}" ]; then
+			objtoolopt="check"
+			if [ -n "${CONFIG_CPU_UNRET_ENTRY}" ]; then
+				objtoolopt="${objtoolopt} --unret"
+			fi
+			if [ -z "${CONFIG_FRAME_POINTER}" ]; then
+				objtoolopt="${objtoolopt} --no-fp"
+			fi
+			if [ -n "${CONFIG_GCOV_KERNEL}" ]; then
+				objtoolopt="${objtoolopt} --no-unreachable"
+			fi
+			if [ -n "${CONFIG_RETPOLINE}" ]; then
+				objtoolopt="${objtoolopt} --retpoline"
+			fi
+			if [ -n "${CONFIG_X86_SMAP}" ]; then
+				objtoolopt="${objtoolopt} --uaccess"
+			fi
+			if [ -n "${CONFIG_SLS}" ]; then
+				objtoolopt="${objtoolopt} --sls"
+			fi
+			info OBJTOOL ${1}
+			tools/objtool/objtool ${objtoolopt} ${1}
 		fi
-		if [ -n "${CONFIG_X86_SMAP}" ]; then
-			objtoolopt="${objtoolopt} --uaccess"
-		fi
-		if [ -n "${CONFIG_SLS}" ]; then
-			objtoolopt="${objtoolopt} --sls"
-		fi
-		info OBJTOOL ${1}
-		tools/objtool/objtool ${objtoolopt} ${1}
 	fi
 }
 
@@ -109,13 +193,22 @@ vmlinux_link()
 	fi
 
 	if [ "${SRCARCH}" != "um" ]; then
-		objects="--whole-archive			\
-			${KBUILD_VMLINUX_OBJS}			\
-			--no-whole-archive			\
-			--start-group				\
-			${KBUILD_VMLINUX_LIBS}			\
-			--end-group				\
-			${@}"
+		if [ -n "${CONFIG_LTO}" ]; then
+			# Use vmlinux.o instead of performing the slow LTO
+			# link again.
+			objects="--whole-archive		\
+				vmlinux.o 			\
+				--no-whole-archive		\
+				${@}"
+		else
+			objects="--whole-archive		\
+				${KBUILD_VMLINUX_OBJS}		\
+				--no-whole-archive		\
+				--start-group			\
+				${KBUILD_VMLINUX_LIBS}		\
+				--end-group			\
+				${@}"
+		fi
 
 		${LD} ${KBUILD_LDFLAGS} ${LDFLAGS_vmlinux}	\
 			${strip_debug#-Wl,}			\
@@ -231,6 +324,8 @@ cleanup()
 {
 	rm -f .btf.*
 	rm -f .tmp_System.map
+	rm -f .tmp_initcalls.lds
+	rm -f .tmp_symversions.lds
 	rm -f .tmp_vmlinux*
 	rm -f System.map
 	rm -f vmlinux
@@ -265,6 +360,17 @@ fi
 
 # We need access to CONFIG_ symbols
 . include/config/auto.conf
+
+if [ -n "${CONFIG_LTO_GCC}" ]; then
+LD="$1"
+LDFINAL="$2"
+KBUILD_LDFLAGS="$3"
+LDFLAGS_vmlinux="$4"
+else
+LD="$1"
+KBUILD_LDFLAGS="$2"
+LDFLAGS_vmlinux="$3"
+fi
 
 # Update version
 info GEN .version

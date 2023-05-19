@@ -94,6 +94,22 @@ struct kernel_symbol {
  * section flag requires it. Use '%progbits' instead of '@progbits' since the
  * former apparently works on all arches according to the binutils source.
  */
+#ifdef CONFIG_LTO_GCC
+#define ___EXPORT_SYMBOL(sym, sec, ns)						\
+	extern typeof(sym) sym;							\
+	extern const char __visible __kstrtab_##sym[];				\
+	extern const char __visible __kstrtabns_##sym[];			\
+	__CRC_SYMBOL(sym, sec);							\
+	asm("	.section \"__ksymtab_strings\",\"aMS\",%progbits,1	\n"	\
+	    "   .globl __kstrtab_" #sym	"				\n"	\
+	    "__kstrtab_" #sym ":					\n"	\
+	    "	.asciz 	\"" #sym "\"					\n"	\
+	    "   .globl __kstrtabns_" #sym "				\n"	\
+	    "__kstrtabns_" #sym ":					\n"	\
+	    "	.asciz 	\"" ns "\"					\n"	\
+	    "	.previous						\n");	\
+	__KSYMTAB_ENTRY(sym, sec)
+#else
 #define ___EXPORT_SYMBOL(sym, sec, ns)						\
 	extern typeof(sym) sym;							\
 	extern const char __kstrtab_##sym[];					\
@@ -106,7 +122,7 @@ struct kernel_symbol {
 	    "	.asciz 	\"" ns "\"					\n"	\
 	    "	.previous						\n");	\
 	__KSYMTAB_ENTRY(sym, sec)
-
+#endif /* CONFIG_LTO_GCC */
 #endif
 
 #if !defined(CONFIG_MODULES) || defined(__DISABLE_EXPORTS)

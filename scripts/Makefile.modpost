@@ -42,6 +42,7 @@ __modpost:
 
 include include/config/auto.conf
 include scripts/Kbuild.include
+include scripts/Makefile.lib
 
 MODPOST = scripts/mod/modpost								\
 	$(if $(CONFIG_MODVERSIONS),-m)							\
@@ -65,6 +66,9 @@ else
 ifeq ($(KBUILD_EXTMOD),)
 
 input-symdump := vmlinux.symvers
+ifdef CONFIG_LTO_GCC
+output-symdump := Module.symvers
+else
 output-symdump := modules-only.symvers
 
 quiet_cmd_cat = GEN     $@
@@ -78,6 +82,7 @@ Module.symvers: vmlinux.symvers modules-only.symvers FORCE
 
 targets += Module.symvers
 
+endif
 endif
 
 else
@@ -114,12 +119,35 @@ $(input-symdump):
 	@echo >&2 'WARNING: Symbol version dump "$@" is missing.'
 	@echo >&2 '         Modules may not have dependencies or modversions.'
 
+ifdef CONFIG_LTO
+# With CONFIG_LTO, .o files might be LLVM bitcode, so we need to run
+# LTO to compile them into native code before running modpost
+prelink-ext := .lto
+
+quiet_cmd_cc_lto_link_modules = LTO [M] $@
+cmd_cc_lto_link_modules =						\
+	$(LDFINAL) $(ld_flags) -r -o $@					\
+		$(shell [ -s $(@:.lto.o=.o.symversions) ] &&		\
+			echo -T $(@:.lto.o=.o.symversions))		\
+		--whole-archive $^
+
+%.lto.o: %.o
+	$(call if_changed,cc_lto_link_modules)
+modules := $(sort $(shell cat $(MODORDER)))
+endif
+
 # Read out modules.order to pass in modpost.
 # Otherwise, allmodconfig would fail with "Argument list too long".
 quiet_cmd_modpost = MODPOST $@
+ifdef CONFIG_LTO_GCC
+      cmd_modpost = sed 's/\.ko$$/$(prelink-ext)\.o/' $< | $(MODPOST) -T -
+
+$(output-symdump): $(MODORDER) $(input-symdump) $(modules:.ko=$(prelink-ext).o) FORCE
+else
       cmd_modpost = sed 's/ko$$/o/' $< | $(MODPOST) -T -
 
 $(output-symdump): $(MODORDER) $(input-symdump) FORCE
+endif
 	$(call if_changed,modpost)
 
 targets += $(output-symdump)

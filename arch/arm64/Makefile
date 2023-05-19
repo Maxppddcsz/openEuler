@@ -116,7 +116,12 @@ else
 KBUILD_CPPFLAGS	+= -mlittle-endian
 CHECKFLAGS	+= -D__AARCH64EL__
 # Same as above, prefer ELF but fall back to linux target if needed.
+ifeq ($(CONFIG_LTO_GCC), y)
+KBUILD_LDFLAGS	+= -EL $(call ld-option, -z norelro)
+else
 KBUILD_LDFLAGS	+= -EL $(call ld-option, -maarch64elf, -maarch64linux -z norelro)
+endif
+
 UTS_MACHINE	:= aarch64
 endif
 
