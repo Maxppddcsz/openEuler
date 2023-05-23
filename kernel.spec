@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .94.0
-%global pkg_release         .118
+%global maintenance_release .95.0
+%global pkg_release         .119
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,11 @@ fi
 %endif
 
 %changelog
+* Tue May 23 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.95.0.119
+- !800 Backport CVEs
+- netfilter: nf_tables: deactivate anonymous set from preparation phase
+- xfs: verify buffer contents when we skip log replay
+
 * Tue May 16 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.94.0.118
 - !775 Backport CVEs and bugfixes
 - filemap: Correct the conditions for marking a folio as accessed
