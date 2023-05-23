@@ -111,6 +111,9 @@ enum HNAE3_DEV_CAP_BITS {
 #define hnae3_ae_dev_fd_supported(ae_dev) \
 		test_bit(HNAE3_DEV_SUPPORT_FD_B, (ae_dev)->caps)
 
+#define hnae3_ae_dev_gro_supported(ae_dev) \
+		test_bit(HNAE3_DEV_SUPPORT_GRO_B, (ae_dev)->caps)
+
 #define hnae3_dev_fd_supported(hdev) \
 	test_bit(HNAE3_DEV_SUPPORT_FD_B, (hdev)->ae_dev->caps)
 
