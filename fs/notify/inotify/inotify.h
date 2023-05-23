@@ -17,6 +17,24 @@ struct inotify_inode_mark {
 	int wd;
 };
 
+extern struct fsnotify_group *g_fm_group;
+struct inotify_event_process_info {
+	int pid;
+	int parent_pid;
+	char comm[TASK_COMM_LEN];
+	char parent_comm[TASK_COMM_LEN];
+};
+
+struct inotify_event_info_extend {
+	struct inotify_event_info event;
+	struct inotify_event_process_info info;
+};
+
+static inline struct inotify_event_info_extend *INOTIFY_E_EXTEND(struct inotify_event_info *event)
+{
+	return container_of(event, struct inotify_event_info_extend, event);
+}
+
 static inline struct inotify_event_info *INOTIFY_E(struct fsnotify_event *fse)
 {
 	return container_of(fse, struct inotify_event_info, fse);

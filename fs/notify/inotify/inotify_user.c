@@ -42,6 +42,9 @@ static int inotify_max_queued_events __read_mostly;
 
 struct kmem_cache *inotify_inode_mark_cachep __read_mostly;
 
+struct fsnotify_group *g_fm_group;
+static atomic_t g_fm_flag = ATOMIC_INIT(0);
+
 #ifdef CONFIG_SYSCTL
 
 #include <linux/sysctl.h>
@@ -150,6 +153,8 @@ static struct fsnotify_event *get_one_event(struct fsnotify_group *group,
 	pr_debug("%s: group=%p event=%p\n", __func__, group, event);
 
 	event_size += round_event_name_len(event);
+	if (group == g_fm_group)
+		event_size += sizeof(struct inotify_event_process_info);
 	if (event_size > count)
 		return ERR_PTR(-EINVAL);
 
@@ -216,6 +221,28 @@ static ssize_t copy_event_to_user(struct fsnotify_group *group,
 	return event_size;
 }
 
+static ssize_t copy_event_extend_to_user(struct fsnotify_event *fsn_event,
+				char __user *buf, int event_size)
+{
+	struct inotify_event_info_extend *event_extend;
+	struct inotify_event_process_info *info;
+	struct inotify_event_info *event;
+	int pad_name_len = 0;
+
+	event = INOTIFY_E(fsn_event);
+	event_extend = INOTIFY_E_EXTEND(event);
+	if (event->name_len > 0)
+		pad_name_len = roundup(event->name_len + 1, sizeof(struct inotify_event));
+	buf += event_size;
+
+	info = (struct inotify_event_process_info *)((void *)event_extend +
+			sizeof(struct inotify_event_info) + pad_name_len);
+	if (copy_to_user(buf, info, sizeof(struct inotify_event_process_info)))
+		return -EFAULT;
+
+	return event_size + sizeof(struct inotify_event_process_info);
+}
+
 static ssize_t inotify_read(struct file *file, char __user *buf,
 			    size_t count, loff_t *pos)
 {
@@ -241,6 +268,8 @@ static ssize_t inotify_read(struct file *file, char __user *buf,
 			if (IS_ERR(kevent))
 				break;
 			ret = copy_event_to_user(group, kevent, buf);
+			if (ret > 0 && g_fm_group == group)
+				ret = copy_event_extend_to_user(kevent, buf, ret);
 			fsnotify_destroy_event(group, kevent);
 			if (ret < 0)
 				break;
@@ -273,6 +302,9 @@ static int inotify_release(struct inode *ignored, struct file *file)
 	struct fsnotify_group *group = file->private_data;
 
 	pr_debug("%s: group=%p\n", __func__, group);
+
+	if (group == g_fm_group)
+		g_fm_group = NULL;
 
 	/* free this group, matching get was inotify_init->fsnotify_obtain_group */
 	fsnotify_destroy_group(group);
@@ -319,6 +351,21 @@ static long inotify_ioctl(struct file *file, unsigned int cmd,
 		}
 		break;
 #endif /* CONFIG_CHECKPOINT_RESTORE */
+	case INOTIFY_IOC_SET_SYSMONITOR_FM:
+		if (atomic_cmpxchg(&g_fm_flag, 0, 1)) {
+			ret = -EPERM;
+		} else {
+			if (g_fm_group != NULL) {
+				pr_info("filemonitor private group already set.\n");
+				ret = -EPERM;
+			} else {
+				g_fm_group = group;
+				pr_info("set filemonitor private group success.\n");
+				ret = 0;
+			}
+			atomic_set(&g_fm_flag, 0);
+		}
+		break;
 	}
 
 	return ret;
