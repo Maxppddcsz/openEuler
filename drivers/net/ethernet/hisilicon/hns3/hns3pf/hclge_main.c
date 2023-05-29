@@ -10942,8 +10942,12 @@ int hclge_cfg_flowctrl(struct hclge_dev *hdev)
 	u32 rx_pause, tx_pause;
 	u8 flowctl;
 
-	if (!phydev->link || !phydev->autoneg)
+	if (!phydev->link)
 		return 0;
+
+	if (!phydev->autoneg)
+		return hclge_mac_pause_setup_hw(hdev);
+
 #ifdef HAS_LINK_MODE_OPS
 	local_advertising = linkmode_adv_to_lcl_adv_t(phydev->advertising);
 #else
