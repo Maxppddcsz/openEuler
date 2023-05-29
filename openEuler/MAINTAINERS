@@ -100,6 +100,13 @@ S:	Maintained
 F:	Documentation/scsi/sssraid.rst
 F:	drivers/scsi/sssraid/
 
+ZHAOXIN GMI SM3&SM4 Drivers
+M:  LeoLiu-oc <leoliu-oc@zhaoxin.com>
+L:  kernel@openeuler.org
+S:  Maintained
+F:  drivers/crypto/zhaoxin-gmi-sm3.c
+F:  drivers/crypto/zhaoxin-gmi-sm4.c
+
 THE REST
 M:	xiexiuqi@huawei.com
 M:	zhengzengkai@huawei.com
