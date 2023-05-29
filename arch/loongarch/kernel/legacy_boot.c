@@ -113,13 +113,15 @@ static int bad_pch_pic(unsigned long address)
 
 void register_default_pic(int id, u32 address, u32 irq_base)
 {
-	int idx, entries;
+	int j, idx, entries, cores;
 	unsigned long addr;
+	u64 node_map = 0;
 
 	if (bad_pch_pic(address))
 		return;
 
 	idx = nr_io_pics;
+	cores = (cpu_has_hypervisor ? MAX_CORES_PER_EIO_NODE : CORES_PER_EIO_NODE);
 
 	pchpic_default[idx].address = address;
 	if (idx)
@@ -138,14 +140,27 @@ void register_default_pic(int id, u32 address, u32 irq_base)
 	pchmsi_default[idx].start = entries;
 	pchmsi_default[idx].count = MSI_MSG_DEFAULT_COUNT;
 
-	eiointc_default[idx].cascade = 3;
+	for_each_possible_cpu(j) {
+		int node = cpu_logical_map(j) / cores;
+		node_map |= (1 << node);
+	}
+	eiointc_default[idx].cascade = 3 + idx;
 	eiointc_default[idx].node = id;
-	eiointc_default[idx].node_map = 1;
+	eiointc_default[idx].node_map = node_map;
 
 	if (idx) {
-		eiointc_default[idx].cascade = 0x4;
-		eiointc_default[0].node_map = 0x1DF;
-		eiointc_default[idx].node_map = 0xFE20;
+		int i;
+
+		for (i = 0; i < idx + 1; i++) {
+			node_map = 0;
+
+			for_each_possible_cpu(j) {
+				int node = cpu_logical_map(j) / cores;
+				if (((node & 7) < 4) ? !i : i)
+					node_map |= (1 << node);
+			}
+			eiointc_default[i].node_map = node_map;
+		}
 	}
 
 	acpi_pchpic[idx] = &pchpic_default[idx];
@@ -239,7 +254,11 @@ int setup_legacy_IRQ(void)
 		printk("CPU domain init eror!\n");
 		return -1;
 	}
-	cpu_domain = get_cpudomain();
+	cpu_domain = irq_find_matching_fwnode(cpuintc_handle, DOMAIN_BUS_ANY);
+	if (!cpu_domain) {
+		printk("CPU domain error!\n");
+		return -1;
+	}
 	ret = liointc_acpi_init(cpu_domain, acpi_liointc);
 	if (ret) {
 		printk("Liointc domain init eror!\n");
@@ -269,8 +288,12 @@ int setup_legacy_IRQ(void)
 		pch_msi_parse_madt((union acpi_subtable_headers *)acpi_pchmsi[0], 0);
 	}
 
-	pic_domain = get_pchpic_irq_domain();
-	if (pic_domain)
+	pic_domain = irq_find_matching_fwnode(pch_pic_handle[0], DOMAIN_BUS_ANY);
+	if (!pic_domain) {
+		printk("Pic domain error!\n");
+		return -1;
+	}
+	if (pic_domain && !cpu_has_hypervisor)
 		pch_lpc_acpi_init(pic_domain, acpi_pchlpc);
 
 	return 0;
@@ -280,79 +303,9 @@ int setup_legacy_IRQ(void)
  * Manage initrd
  */
 #ifdef CONFIG_BLK_DEV_INITRD
-static unsigned long init_initrd(unsigned long ps, unsigned long z)
-{
-	static int initalized;
-
-	if (!ps || !z)
-		return 0;
-
-	initrd_start = (unsigned long)__va(ps);
-	initrd_end = initrd_start + z;
-	/*
-	 * Board specific code or command line parser should have
-	 * already set up initrd_start and initrd_end. In these cases
-	 * perfom sanity checks and use them if all looks good.
-	 */
-	if (initrd_start < PAGE_OFFSET || initrd_end <= initrd_start) {
-		pr_err("initrd start load address error!");
-		goto disable;
-	}
-
-	if (initrd_start & ~PAGE_MASK) {
-		pr_err("initrd start must be page aligned\n");
-		goto disable;
-	}
-
-	memblock_reserve(__pa(initrd_start), z);
-	initrd_below_start_ok = 1;
-
-	if (!initalized)
-		pr_info("Initial ramdisk at: 0x%lx (%lu bytes)\n",
-				initrd_start, z);
-	initalized = 1;
-
-	return 0;
-disable:
-	printk(KERN_CONT " - disabling initrd\n");
-	initrd_start = 0;
-	initrd_end = 0;
-	return 0;
-}
-
-static int early_initrd(char *p)
-{
-	unsigned long start, size;
-	char *endp;
-
-	if (!efi_bp)
-		return 0;
-	start = memparse(p, &endp);
-	if (*endp == ',')
-		size = memparse(endp + 1, NULL);
-
-	if (start + size > PFN_PHYS(max_low_pfn)) {
-		pr_err(KERN_INFO "Initrd physical address is out of memory!");
-		return 0;
-	}
-
-	init_initrd(start, size);
-
-	return 0;
-}
-early_param("initrd", early_initrd);
-
 static int rd_start_early(char *p)
 {
-	unsigned long start;
-
-	if (!efi_bp)
-		return 0;
-
-	start = memparse(p, &p);
-	initrd_start = start;
-	initrd_end += start;
-	init_initrd(__pa(start), initrd_end - start);
+	phys_initrd_start = __pa(memparse(p, &p));
 
 	return 0;
 }
@@ -360,24 +313,21 @@ early_param("rd_start", rd_start_early);
 
 static int rd_size_early(char *p)
 {
-	unsigned long size;
+	phys_initrd_size = memparse(p, &p);
 
-	if (!efi_bp)
-		return 0;
-	size = memparse(p, &p);
-	initrd_end += size;
-
-	init_initrd(__pa(initrd_start), size);
 	return 0;
 }
 early_param("rd_size", rd_size_early);
-
-#else  /* !CONFIG_BLK_DEV_INITRD */
-static unsigned long init_initrd(void)
-{
-	return 0;
-}
 #endif
+
+void __init loongarch_reserve_initrd_mem(void)
+{
+	/* The small fdt method should be skipped directly to avoid two reserved operations. */
+	if (!fw_arg2)
+		return;
+
+	reserve_initrd_mem();
+}
 
 void fw_init_cmdline(unsigned long argc, unsigned long cmdp)
 {
@@ -394,6 +344,7 @@ void fw_init_cmdline(unsigned long argc, unsigned long cmdp)
 	}
 	strlcat(boot_command_line, arcs_cmdline, COMMAND_LINE_SIZE);
 }
+EXPORT_SYMBOL_GPL(fw_init_cmdline);
 
 static u8 ext_listhdr_checksum(u8 *buffer, u32 length)
 {
@@ -517,14 +468,17 @@ unsigned long legacy_boot_init(unsigned long argc, unsigned long cmdptr, unsigne
 {
 	int ret;
 
-	if (!bpi)
+	if (!bpi || (argc < 2))
 		return -1;
 	efi_bp = (struct boot_params *)bpi;
 	bpi_version = get_bpi_version(&efi_bp->signature);
 	pr_info("BPI%d with boot flags %llx.\n", bpi_version, efi_bp->flags);
-	if (bpi_version == BPI_VERSION_NONE)
-		panic("Fatal error, bpi ver BONE!\n");
-	else if (bpi_version == BPI_VERSION_V2)
+	if (bpi_version == BPI_VERSION_NONE) {
+		if (cpu_has_hypervisor)
+			pr_err("Fatal error, bpi ver BONE!\n");
+		else
+			panic("Fatal error, bpi ver BONE!\n");
+	} else if (bpi_version == BPI_VERSION_V2)
 		parse_bpi_flags();
 
 	fw_init_cmdline(argc, cmdptr);

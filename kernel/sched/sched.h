@@ -650,6 +650,12 @@ struct cfs_rq {
 	unsigned int		forceidle_seq;
 	KABI_FILL_HOLE(unsigned int kabi_hole)
 	u64			min_vruntime_fi;
+#elif defined CONFIG_QOS_SCHED_SMT_EXPELLER && !defined(__GENKSYMS__)
+	union {
+		unsigned int            qos_idle_h_nr_running; /* qos_level：-1 */
+		unsigned long           qos_idle_h_nr_running_padding;
+	};
+	KABI_FILL_HOLE(unsigned long kabi_hole)
 #else
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
@@ -1136,8 +1142,12 @@ struct rq {
 	unsigned int		core_forceidle_seq;
 #endif
 
+#if defined(CONFIG_QOS_SCHED_PRIO_LB) && !defined(__GENKSYMS__)
+	struct list_head cfs_offline_tasks;
+#else
 	KABI_RESERVE(1)
 	KABI_RESERVE(2)
+#endif
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
 	KABI_RESERVE(5)
@@ -1681,6 +1691,12 @@ this_rq_lock_irq(struct rq_flags *rf)
 	return rq;
 }
 
+#ifdef CONFIG_SCHED_CLUSTER
+extern void set_sched_cluster(void);
+#else
+static inline void set_sched_cluster(void) { }
+#endif
+
 #ifdef CONFIG_NUMA
 #ifdef CONFIG_SCHED_STEAL
 extern struct static_key_true sched_steal_allow;
@@ -1797,11 +1813,14 @@ static inline struct sched_domain *lowest_flag_domain(int cpu, int flag)
 DECLARE_PER_CPU(struct sched_domain __rcu *, sd_llc);
 DECLARE_PER_CPU(int, sd_llc_size);
 DECLARE_PER_CPU(int, sd_llc_id);
+DECLARE_PER_CPU(int, sd_lowest_cache_id);
 DECLARE_PER_CPU(struct sched_domain_shared __rcu *, sd_llc_shared);
+DECLARE_PER_CPU(struct sched_domain __rcu *, sd_cluster);
 DECLARE_PER_CPU(struct sched_domain __rcu *, sd_numa);
 DECLARE_PER_CPU(struct sched_domain __rcu *, sd_asym_packing);
 DECLARE_PER_CPU(struct sched_domain __rcu *, sd_asym_cpucapacity);
 extern struct static_key_false sched_asym_cpucapacity;
+extern struct static_key_false sched_cluster_active;
 
 struct sched_group_capacity {
 	atomic_t		ref;
@@ -3012,6 +3031,20 @@ static inline bool is_per_cpu_kthread(struct task_struct *p)
 		return false;
 
 	return true;
+}
+#endif
+
+#ifdef CONFIG_QOS_SCHED
+static inline int qos_idle_policy(int policy)
+{
+	return policy == QOS_LEVEL_OFFLINE;
+}
+#endif
+
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+static inline int task_has_qos_idle_policy(struct task_struct *p)
+{
+	return qos_idle_policy(task_group(p)->qos_level) && p->policy == SCHED_IDLE;
 }
 #endif
 

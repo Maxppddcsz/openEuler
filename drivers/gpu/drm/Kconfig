@@ -30,6 +30,7 @@ menuconfig DRM
 config DRM_MIPI_DBI
 	tristate
 	depends on DRM
+	select DRM_KMS_HELPER
 
 config DRM_MIPI_DSI
 	bool
@@ -311,6 +312,8 @@ source "drivers/gpu/drm/gma500/Kconfig"
 source "drivers/gpu/drm/udl/Kconfig"
 
 source "drivers/gpu/drm/ast/Kconfig"
+
+source "drivers/gpu/drm/loongson/Kconfig"
 
 source "drivers/gpu/drm/mgag200/Kconfig"
 

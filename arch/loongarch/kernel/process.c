@@ -105,8 +105,14 @@ int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)
 	 */
 	preempt_disable();
 
-	if (is_fpu_owner())
-		save_fp(current);
+	if (is_fpu_owner()) {
+		if (is_lasx_enabled())
+			save_lasx(current);
+		else if (is_lsx_enabled())
+			save_lsx(current);
+		else
+			save_fp(current);
+	}
 
 	preempt_enable();
 
@@ -150,7 +156,7 @@ int copy_thread(unsigned long clone_flags, unsigned long usp,
 		childregs->csr_crmd = p->thread.csr_crmd;
 		childregs->csr_prmd = p->thread.csr_prmd;
 		childregs->csr_ecfg = p->thread.csr_ecfg;
-		return 0;
+		goto out;
 	}
 
 	/* user thread */
@@ -169,13 +175,14 @@ int copy_thread(unsigned long clone_flags, unsigned long usp,
 	 */
 	childregs->csr_euen = 0;
 
+	if (clone_flags & CLONE_SETTLS)
+		childregs->regs[2] = tls;
+
+out:
 	clear_tsk_thread_flag(p, TIF_USEDFPU);
 	clear_tsk_thread_flag(p, TIF_USEDSIMD);
 	clear_tsk_thread_flag(p, TIF_LSX_CTX_LIVE);
 	clear_tsk_thread_flag(p, TIF_LASX_CTX_LIVE);
-
-	if (clone_flags & CLONE_SETTLS)
-		childregs->regs[2] = tls;
 
 	return 0;
 }

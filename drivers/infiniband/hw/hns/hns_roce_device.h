@@ -59,6 +59,7 @@
 
 #define HNS_ROCE_CEQ				0
 #define HNS_ROCE_AEQ				1
+#define HNS_ROCE_IS_RESETTING			1
 
 #define HNS_ROCE_CEQE_SIZE 0x4
 #define HNS_ROCE_AEQE_SIZE 0x10
@@ -142,8 +143,7 @@ enum hns_roce_qp_create_flags {
 enum {
 	HNS_ROCE_CAP_FLAG_REREG_MR		= BIT(0),
 	HNS_ROCE_CAP_FLAG_ROCE_V1_V2		= BIT(1),
-	/* discard this bit, reserved for compatibility */
-	HNS_ROCE_CAP_FLAG_DISCARD		= BIT(2),
+	HNS_ROCE_CAP_FLAG_RQ_INLINE		= BIT(2),
 	HNS_ROCE_CAP_FLAG_CQ_RECORD_DB		= BIT(3),
 	HNS_ROCE_CAP_FLAG_QP_RECORD_DB		= BIT(4),
 	HNS_ROCE_CAP_FLAG_SRQ			= BIT(5),
@@ -153,11 +153,11 @@ enum {
 	HNS_ROCE_CAP_FLAG_QP_FLOW_CTRL		= BIT(9),
 	HNS_ROCE_CAP_FLAG_ATOMIC		= BIT(10),
 	HNS_ROCE_CAP_FLAG_DIRECT_WQE		= BIT(12),
+	HNS_ROCE_CAP_FLAG_SVE_DIRECT_WQE	= BIT(13),
 	HNS_ROCE_CAP_FLAG_SDI_MODE		= BIT(14),
 	HNS_ROCE_CAP_FLAG_DCA_MODE		= BIT(15),
 	HNS_ROCE_CAP_FLAG_STASH			= BIT(17),
 	HNS_ROCE_CAP_FLAG_CQE_INLINE		= BIT(19),
-	HNS_ROCE_CAP_FLAG_RQ_INLINE		= BIT(20),
 	HNS_ROCE_CAP_FLAG_BOND			= BIT(21),
 };
 
@@ -206,6 +206,7 @@ enum hns_roce_mmap_type {
 	HNS_ROCE_MMAP_TYPE_DB = 1,
 	HNS_ROCE_MMAP_TYPE_DWQE,
 	HNS_ROCE_MMAP_TYPE_DCA,
+	HNS_ROCE_MMAP_TYPE_RESET,
 };
 
 struct hns_user_mmap_entry {
@@ -248,6 +249,7 @@ struct hns_roce_ucontext {
 	struct list_head	page_list;
 	struct mutex		page_mutex;
 	struct hns_user_mmap_entry *db_mmap_entry;
+	struct hns_user_mmap_entry *reset_mmap_entry;
 	u32			config;
 	struct hns_roce_dca_ctx	dca_ctx;
 	void *dca_dbgfs;
@@ -651,6 +653,7 @@ struct hns_roce_qp {
 	struct hns_roce_db	rdb;
 	struct hns_roce_db	sdb;
 	unsigned long		en_flags;
+	unsigned long		congest_type;
 	u32			doorbell_qpn;
 	enum ib_sig_type	sq_signal_bits;
 	struct hns_roce_wq	sq;
@@ -764,11 +767,19 @@ struct hns_roce_eq_table {
 	struct hns_roce_eq	*eq;
 };
 
-enum cong_type {
-	CONG_TYPE_DCQCN,
-	CONG_TYPE_LDCP,
-	CONG_TYPE_HC3,
-	CONG_TYPE_DIP,
+enum hns_roce_scc_algo {
+	HNS_ROCE_SCC_ALGO_DCQCN = 0,
+	HNS_ROCE_SCC_ALGO_LDCP,
+	HNS_ROCE_SCC_ALGO_HC3,
+	HNS_ROCE_SCC_ALGO_DIP,
+	HNS_ROCE_SCC_ALGO_TOTAL,
+};
+
+enum congest_type {
+	HNS_ROCE_CONGEST_TYPE_DCQCN = 1 << HNS_ROCE_SCC_ALGO_DCQCN,
+	HNS_ROCE_CONGEST_TYPE_LDCP = 1 << HNS_ROCE_SCC_ALGO_LDCP,
+	HNS_ROCE_CONGEST_TYPE_HC3 = 1 << HNS_ROCE_SCC_ALGO_HC3,
+	HNS_ROCE_CONGEST_TYPE_DIP = 1 << HNS_ROCE_SCC_ALGO_DIP,
 };
 
 struct hns_roce_caps {
@@ -902,13 +913,61 @@ struct hns_roce_caps {
 	u16		default_aeq_period;
 	u16		default_aeq_arm_st;
 	u16		default_ceq_arm_st;
-	enum cong_type	cong_type;
+	u8		congest_type;
+	u8		default_congest_type;
 };
 
 enum hns_roce_device_state {
 	HNS_ROCE_DEVICE_STATE_INITED,
 	HNS_ROCE_DEVICE_STATE_RST_DOWN,
 	HNS_ROCE_DEVICE_STATE_UNINIT,
+};
+
+enum hns_roce_hw_pkt_stat_index {
+	HNS_ROCE_HW_RX_RC_PKT_CNT,
+	HNS_ROCE_HW_RX_UC_PKT_CNT,
+	HNS_ROCE_HW_RX_UD_PKT_CNT,
+	HNS_ROCE_HW_RX_XRC_PKT_CNT,
+	HNS_ROCE_HW_RX_PKT_CNT,
+	HNS_ROCE_HW_RX_ERR_PKT_CNT,
+	HNS_ROCE_HW_RX_CNP_PKT_CNT,
+	HNS_ROCE_HW_TX_RC_PKT_CNT,
+	HNS_ROCE_HW_TX_UC_PKT_CNT,
+	HNS_ROCE_HW_TX_UD_PKT_CNT,
+	HNS_ROCE_HW_TX_XRC_PKT_CNT,
+	HNS_ROCE_HW_TX_PKT_CNT,
+	HNS_ROCE_HW_TX_ERR_PKT_CNT,
+	HNS_ROCE_HW_TX_CNP_PKT_CNT,
+	HNS_ROCE_HW_TRP_GET_MPT_ERR_PKT_CNT,
+	HNS_ROCE_HW_TRP_GET_IRRL_ERR_PKT_CNT,
+	HNS_ROCE_HW_ECN_DB_CNT,
+	HNS_ROCE_HW_RX_BUF_CNT,
+	HNS_ROCE_HW_TRP_RX_SOF_CNT,
+	HNS_ROCE_HW_CQ_CQE_CNT,
+	HNS_ROCE_HW_CQ_POE_CNT,
+	HNS_ROCE_HW_CQ_NOTIFY_CNT,
+	HNS_ROCE_HW_CNT_TOTAL,
+};
+
+enum hns_roce_hw_dfx_stat_index {
+	HNS_ROCE_DFX_AEQE_CNT,
+	HNS_ROCE_DFX_CEQE_CNT,
+	HNS_ROCE_DFX_CMDS_CNT,
+	HNS_ROCE_DFX_CMDS_ERR_CNT,
+	HNS_ROCE_DFX_MBX_POSTED_CNT,
+	HNS_ROCE_DFX_MBX_POLLED_CNT,
+	HNS_ROCE_DFX_MBX_EVENT_CNT,
+	HNS_ROCE_DFX_QP_CREATE_ERR_CNT,
+	HNS_ROCE_DFX_QP_MODIFY_ERR_CNT,
+	HNS_ROCE_DFX_CQ_CREATE_ERR_CNT,
+	HNS_ROCE_DFX_SRQ_CREATE_ERR_CNT,
+	HNS_ROCE_DFX_XRCD_ALLOC_ERR_CNT,
+	HNS_ROCE_DFX_MR_REG_ERR_CNT,
+	HNS_ROCE_DFX_MR_REREG_ERR_CNT,
+	HNS_ROCE_DFX_AH_CREATE_ERR_CNT,
+	HNS_ROCE_DFX_MMAP_ERR_CNT,
+	HNS_ROCE_DFX_UCTX_ALLOC_ERR_CNT,
+	HNS_ROCE_DFX_CNT_TOTAL
 };
 
 struct hns_roce_hw {
@@ -959,11 +1018,35 @@ struct hns_roce_hw {
 	int (*query_mpt)(struct hns_roce_dev *hr_dev, u32 key, void *buffer);
 	int (*get_dscp)(struct hns_roce_dev *hr_dev, u8 dscp,
 			u8 *tc_mode, u8 *priority);
+	int (*query_hw_counter)(struct hns_roce_dev *hr_dev,
+				u64 *stats, u32 port, int *hw_counters);
 	const struct ib_device_ops *hns_roce_dev_ops;
 	const struct ib_device_ops *hns_roce_dev_srq_ops;
 	int (*bond_init)(struct hns_roce_dev *hr_dev);
 	bool (*bond_is_active)(struct hns_roce_dev *hr_dev);
 	struct net_device *(*get_bond_netdev)(struct hns_roce_dev *hr_dev);
+	int (*config_scc_param)(struct hns_roce_dev *hr_dev, u8 port_num,
+				enum hns_roce_scc_algo algo);
+	int (*query_scc_param)(struct hns_roce_dev *hr_dev, u8 port_num,
+			       enum hns_roce_scc_algo alog);
+};
+
+#define HNS_ROCE_SCC_PARAM_SIZE 4
+struct hns_roce_scc_param {
+	__le32 param[HNS_ROCE_SCC_PARAM_SIZE];
+	u32 lifespan;
+	unsigned long timestamp;
+	enum hns_roce_scc_algo algo_type;
+	struct delayed_work scc_cfg_dwork;
+	struct hns_roce_dev *hr_dev;
+	u8 port_num;
+};
+
+struct hns_roce_port {
+	struct hns_roce_dev *hr_dev;
+	u8 port_num;
+	struct kobject kobj;
+	struct hns_roce_scc_param *scc_param;
 };
 
 struct hns_roce_dev {
@@ -1027,19 +1110,20 @@ struct hns_roce_dev {
 	int			loop_idc;
 	u32			sdb_offset;
 	u32			odb_offset;
+	struct page		*reset_page; /* store reset state */
+	void			*reset_kaddr; /* addr of reset page */
 	const struct hns_roce_hw *hw;
 	void			*priv;
 	struct workqueue_struct *irq_workq;
 	struct work_struct ecc_work;
 	u32 func_num;
 	u32 is_vf;
-	u32 cong_algo_tmpl_id;
+	u32 congest_algo_tmpl_id;
 	u64 dwqe_page;
 
 	struct notifier_block bond_nb;
-	struct delayed_work bond_work;
-	struct hns_roce_bond_group *bond_grp;
-	struct netdev_lag_lower_state_info slave_state;
+	struct hns_roce_port port_data[HNS_ROCE_MAX_PORTS];
+	atomic64_t *dfx_cnt;
 };
 
 static inline struct hns_roce_dev *to_hr_dev(struct ib_device *ib_dev)
@@ -1313,7 +1397,7 @@ void hns_roce_srq_event(struct hns_roce_dev *hr_dev, u32 srqn, int event_type);
 u8 hns_get_gid_index(struct hns_roce_dev *hr_dev, u8 port, int gid_index);
 void hns_roce_handle_device_err(struct hns_roce_dev *hr_dev);
 int hns_roce_init(struct hns_roce_dev *hr_dev);
-void hns_roce_exit(struct hns_roce_dev *hr_dev);
+void hns_roce_exit(struct hns_roce_dev *hr_dev, bool bond_cleanup);
 int hns_roce_fill_res_cq_entry(struct sk_buff *msg, struct ib_cq *ib_cq);
 int hns_roce_fill_res_cq_entry_raw(struct sk_buff *msg, struct ib_cq *ib_cq);
 int hns_roce_fill_res_qp_entry(struct sk_buff *msg, struct ib_qp *ib_qp);
@@ -1324,4 +1408,7 @@ struct hns_user_mmap_entry *
 hns_roce_user_mmap_entry_insert(struct ib_ucontext *ucontext, u64 address,
 				size_t length,
 				enum hns_roce_mmap_type mmap_type);
+int hns_roce_create_port_files(struct ib_device *ibdev, u8 port_num,
+			       struct kobject *kobj);
+void hns_roce_unregister_sysfs(struct hns_roce_dev *hr_dev);
 #endif /* _HNS_ROCE_DEVICE_H */
