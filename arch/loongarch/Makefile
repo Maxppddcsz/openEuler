@@ -54,12 +54,18 @@ LDFLAGS_vmlinux			+= -G0 -static -n -nostdlib
 # upgrade the compiler or downgrade the assembler.
 ifdef CONFIG_AS_HAS_EXPLICIT_RELOCS
 cflags-y			+= -mexplicit-relocs
+KBUILD_CFLAGS_KERNEL		+= -mdirect-extern-access
 else
 cflags-y			+= $(call cc-option,-mno-explicit-relocs)
 KBUILD_AFLAGS_KERNEL		+= -Wa,-mla-global-with-pcrel
 KBUILD_CFLAGS_KERNEL		+= -Wa,-mla-global-with-pcrel
 KBUILD_AFLAGS_MODULE		+= -Wa,-mla-global-with-abs
 KBUILD_CFLAGS_MODULE		+= -fplt -Wa,-mla-global-with-abs,-mla-local-with-abs
+endif
+
+ifeq ($(CONFIG_RELOCATABLE),y)
+KBUILD_CFLAGS_KERNEL		+= -fPIE
+LDFLAGS_vmlinux			+= -static -pie --no-dynamic-linker -z notext
 endif
 
 cflags-y += -ffreestanding
@@ -96,8 +102,12 @@ endif
 head-y := arch/loongarch/kernel/head.o
 
 core-y += arch/loongarch/
+
 libs-y += arch/loongarch/lib/
 libs-$(CONFIG_EFI_STUB) += $(objtree)/drivers/firmware/efi/libstub/lib.a
+
+# suspend and hibernation support
+drivers-$(CONFIG_PM)	+= arch/loongarch/power/
 
 ifeq ($(KBUILD_EXTMOD),)
 prepare: vdso_prepare

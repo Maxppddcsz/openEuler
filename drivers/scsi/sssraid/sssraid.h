@@ -12,7 +12,7 @@
 #define SSSRAID_DRIVER_NAME	"sssraid"
 
 #define SSSRAID_NAME_LENGTH 32
-
+#define BSG_NAME_SIZE 15
 /*
  * SSSRAID Vendor ID and Device IDs
  */
@@ -58,7 +58,8 @@
 #define SSSRAID_ADM_QUEUE_NUM 1
 #define SSSRAID_PTCMDS_PERQ 1
 #define SSSRAID_IO_BLK_MQ_DEPTH (sdioc->scsi_qd)
-#define SSSRAID_NR_IOQ_PTCMDS (SSSRAID_PTCMDS_PERQ * sdioc->shost->nr_hw_queues)
+#define SSSRAID_NR_HW_QUEUES (sdioc->init_done_queue_cnt - 1)
+#define SSSRAID_NR_IOQ_PTCMDS (SSSRAID_PTCMDS_PERQ * SSSRAID_NR_HW_QUEUES)
 
 #define FUA_MASK 0x08
 #define SSSRAID_MINORS BIT(MINORBITS)
@@ -91,6 +92,13 @@ extern u32 admin_tmout;
 #define SSSRAID_WAIT_ABNL_CMD_TIMEOUT	6
 
 #define SSSRAID_DMA_MSK_BIT_MAX	64
+
+enum {
+	SCSI_6_BYTE_CDB_LEN = 6,
+	SCSI_10_BYTE_CDB_LEN = 10,
+	SCSI_12_BYTE_CDB_LEN = 12,
+	SCSI_16_BYTE_CDB_LEN = 16,
+};
 
 enum {
 	SSSRAID_SGL_FMT_DATA_DESC     = 0x00,

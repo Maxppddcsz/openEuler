@@ -187,6 +187,7 @@ DEFINE_EVENT(xfs_fs_class, name,					\
 	TP_PROTO(struct xfs_mount *mp, void *caller_ip), \
 	TP_ARGS(mp, caller_ip))
 DEFINE_FS_EVENT(xfs_inodegc_flush);
+DEFINE_FS_EVENT(xfs_inodegc_push);
 DEFINE_FS_EVENT(xfs_inodegc_start);
 DEFINE_FS_EVENT(xfs_inodegc_stop);
 DEFINE_FS_EVENT(xfs_inodegc_queue);
@@ -2124,7 +2125,7 @@ DECLARE_EVENT_CLASS(xfs_swap_extent_class,
 		__entry->format = ip->i_df.if_format;
 		__entry->nex = ip->i_df.if_nextents;
 		__entry->broot_size = ip->i_df.if_broot_bytes;
-		__entry->fork_off = XFS_IFORK_BOFF(ip);
+		__entry->fork_off = xfs_inode_fork_boff(ip);
 	),
 	TP_printk("dev %d:%d ino 0x%llx (%s), %s format, num_extents %d, "
 		  "broot size %d, fork offset %d",
@@ -3962,7 +3963,7 @@ DECLARE_EVENT_CLASS(xfs_icwalk_class,
 		__field(uint32_t, gid)
 		__field(prid_t, prid)
 		__field(__u64, min_file_size)
-		__field(int, scan_limit)
+		__field(long, scan_limit)
 		__field(unsigned long, caller_ip)
 	),
 	TP_fast_assign(
@@ -3977,7 +3978,7 @@ DECLARE_EVENT_CLASS(xfs_icwalk_class,
 		__entry->scan_limit = icw ? icw->icw_scan_limit : 0;
 		__entry->caller_ip = caller_ip;
 	),
-	TP_printk("dev %d:%d flags 0x%x uid %u gid %u prid %u minsize %llu scan_limit %d caller %pS",
+	TP_printk("dev %d:%d flags 0x%x uid %u gid %u prid %u minsize %llu scan_limit %ld caller %pS",
 		  MAJOR(__entry->dev), MINOR(__entry->dev),
 		  __entry->flags,
 		  __entry->uid,
@@ -4010,6 +4011,7 @@ DECLARE_EVENT_CLASS(xlog_iclog_class,
 		__field(uint32_t, state)
 		__field(int32_t, refcount)
 		__field(uint32_t, offset)
+		__field(uint32_t, flags)
 		__field(unsigned long long, lsn)
 		__field(unsigned long, caller_ip)
 	),
@@ -4018,15 +4020,17 @@ DECLARE_EVENT_CLASS(xlog_iclog_class,
 		__entry->state = iclog->ic_state;
 		__entry->refcount = atomic_read(&iclog->ic_refcnt);
 		__entry->offset = iclog->ic_offset;
+		__entry->flags = iclog->ic_flags;
 		__entry->lsn = be64_to_cpu(iclog->ic_header.h_lsn);
 		__entry->caller_ip = caller_ip;
 	),
-	TP_printk("dev %d:%d state %s refcnt %d offset %u lsn 0x%llx caller %pS",
+	TP_printk("dev %d:%d state %s refcnt %d offset %u lsn 0x%llx flags %s caller %pS",
 		  MAJOR(__entry->dev), MINOR(__entry->dev),
 		  __print_symbolic(__entry->state, XLOG_STATE_STRINGS),
 		  __entry->refcount,
 		  __entry->offset,
 		  __entry->lsn,
+		  __print_flags(__entry->flags, "|", XLOG_ICL_STRINGS),
 		  (char *)__entry->caller_ip)
 
 );

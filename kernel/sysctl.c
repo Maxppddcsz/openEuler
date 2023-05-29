@@ -2718,6 +2718,28 @@ static struct ctl_table kern_table[] = {
 		.extra2		= &one_thousand,
 	},
 #endif
+#ifdef CONFIG_QOS_SCHED_PRIO_LB
+	{
+		.procname	= "sched_prio_load_balance_enabled",
+		.data		= &sysctl_sched_prio_load_balance_enabled,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_ONE,
+	},
+#endif
+#ifdef CONFIG_QOS_SCHED_DYNAMIC_AFFINITY
+	{
+		.procname       = "sched_util_low_pct",
+		.data           = &sysctl_sched_util_low_pct,
+		.maxlen         = sizeof(sysctl_sched_util_low_pct),
+		.mode           = 0644,
+		.proc_handler   = proc_dointvec_minmax,
+		.extra1         = SYSCTL_ZERO,
+		.extra2		= &one_hundred,
+	},
+#endif
 	{ }
 };
 

@@ -96,6 +96,42 @@ static int __init get_ipi_irq(void)
 	return -EINVAL;
 }
 
+#ifdef CONFIG_HOTPLUG_CPU
+static void handle_irq_affinity(void)
+{
+	struct irq_desc *desc;
+	struct irq_chip *chip;
+	unsigned int irq;
+	unsigned long flags;
+	struct cpumask *affinity;
+
+	for_each_active_irq(irq) {
+		desc = irq_to_desc(irq);
+		if (!desc)
+			continue;
+
+		raw_spin_lock_irqsave(&desc->lock, flags);
+
+		affinity = desc->irq_data.common->affinity;
+		if (!cpumask_intersects(affinity, cpu_online_mask))
+			cpumask_copy(affinity, cpu_online_mask);
+
+		chip = irq_data_get_irq_chip(&desc->irq_data);
+		if (chip && chip->irq_set_affinity)
+			chip->irq_set_affinity(&desc->irq_data,
+					desc->irq_data.common->affinity, true);
+		raw_spin_unlock_irqrestore(&desc->lock, flags);
+	}
+}
+
+void fixup_irqs(void)
+{
+	handle_irq_affinity();
+	irq_cpu_offline();
+	clear_csr_ecfg(ECFG0_IM);
+}
+#endif
+
 void __init init_IRQ(void)
 {
 	int i, ret;
@@ -105,6 +141,13 @@ void __init init_IRQ(void)
 #endif
 	unsigned int order = get_order(IRQ_STACK_SIZE);
 	struct page *page;
+
+	u64 node;
+	if (!acpi_gbl_reduced_hardware)
+		for_each_node(node)
+			writel(0x40000000 | (node << 12),
+				(volatile void __iomem *)(((node << 44)
+				| 0x80000EFDFB000000ULL) + 0x274));
 
 	clear_csr_ecfg(ECFG0_IM);
 	clear_csr_estat(ESTATF_IP);

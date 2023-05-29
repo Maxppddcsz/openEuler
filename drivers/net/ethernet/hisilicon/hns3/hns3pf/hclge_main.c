@@ -18,6 +18,7 @@
 #include <net/vxlan.h>
 #include "hclge_cmd.h"
 #include "hclge_dcb.h"
+#include "hclge_ext.h"
 #include "hclge_main.h"
 #include "hclge_mbx.h"
 #include "hclge_mdio.h"
@@ -36,7 +37,6 @@
 #define BUF_MAX_PERCENT		100
 #define BUF_RESERVE_PERCENT	90
 
-#define HCLGE_RESET_MAX_FAIL_CNT	5
 #define HCLGE_RESET_SYNC_TIME		100
 #define HCLGE_PF_RESET_SYNC_TIME	20
 #define HCLGE_PF_RESET_SYNC_CNT		1500
@@ -72,6 +72,7 @@ static void hclge_sync_mac_table(struct hclge_dev *hdev);
 static void hclge_restore_hw_table(struct hclge_dev *hdev);
 static void hclge_sync_promisc_mode(struct hclge_dev *hdev);
 static void hclge_sync_fd_table(struct hclge_dev *hdev);
+static void hclge_reset_end(struct hnae3_handle *handle, bool done);
 
 static struct hnae3_ae_algo ae_algo;
 
@@ -2866,12 +2867,28 @@ static void hclge_get_fec(struct hnae3_handle *handle, u8 *fec_ability,
 	if (fec_mode)
 		*fec_mode = mac->fec_mode;
 }
+
+static void hclge_roh_convert_mac_addr(struct hclge_dev *hdev)
+{
+#define HCLGE_ROH_EID_MASK_BYTE		3
+
+	struct hclge_vport *vport = &hdev->vport[0];
+	struct hnae3_handle *handle = &vport->nic;
+
+	if (hnae3_check_roh_mac_type(handle)) {
+		if (!is_valid_ether_addr(hdev->hw.mac.mac_addr))
+			random_ether_addr(hdev->hw.mac.mac_addr);
+		memset(hdev->hw.mac.mac_addr, 0, HCLGE_ROH_EID_MASK_BYTE);
+	}
+}
+
 static int hclge_mac_init(struct hclge_dev *hdev)
 {
 	struct hclge_mac *mac = &hdev->hw.mac;
 	int ret;
 
 	hclge_mac_type_init(hdev);
+	hclge_roh_convert_mac_addr(hdev);
 
 	hdev->support_sfp_query = true;
 	hdev->hw.mac.duplex = HCLGE_MAC_FULL;
@@ -2922,7 +2939,7 @@ static void hclge_mbx_task_schedule(struct hclge_dev *hdev)
 	}
 }
 
-static void hclge_reset_task_schedule(struct hclge_dev *hdev)
+void hclge_reset_task_schedule(struct hclge_dev *hdev)
 {
 	if (!test_bit(HCLGE_STATE_REMOVING, &hdev->state) &&
 	    test_bit(HCLGE_STATE_SERVICE_INITED, &hdev->state) &&
@@ -4139,7 +4156,7 @@ static void hclge_show_rst_info(struct hclge_dev *hdev)
 
 static bool hclge_reset_err_handle(struct hclge_dev *hdev)
 {
-#define MAX_RESET_FAIL_CNT 5
+	struct hnae3_handle *handle = &hdev->vport[0].nic;
 
 	if (hdev->reset_pending) {
 		dev_info(&hdev->pdev->dev, "Reset pending %lu\n",
@@ -4151,7 +4168,7 @@ static bool hclge_reset_err_handle(struct hclge_dev *hdev)
 			 "reset failed because new reset interrupt\n");
 		hclge_clear_reset_cause(hdev);
 		return false;
-	} else if (hdev->rst_stats.reset_fail_cnt < MAX_RESET_FAIL_CNT) {
+	} else if (hdev->rst_stats.reset_fail_cnt < HCLGE_RESET_MAX_FAIL_CNT) {
 		hdev->rst_stats.reset_fail_cnt++;
 		set_bit(hdev->reset_type, &hdev->reset_pending);
 		dev_info(&hdev->pdev->dev,
@@ -4165,7 +4182,7 @@ static bool hclge_reset_err_handle(struct hclge_dev *hdev)
 	/* recover the handshake status when reset fail */
 	hclge_reset_handshake(hdev, true);
 
-	dev_err(&hdev->pdev->dev, "Reset fail!\n");
+	hclge_reset_end(handle, false);
 
 	hclge_show_rst_info(hdev);
 
@@ -4286,6 +4303,7 @@ static int hclge_reset_prepare(struct hclge_dev *hdev)
 
 static int hclge_reset_rebuild(struct hclge_dev *hdev)
 {
+	struct hnae3_handle *handle = &hdev->vport[0].nic;
 	int ret;
 
 	hdev->rst_stats.hw_reset_done_cnt++;
@@ -4347,6 +4365,8 @@ static int hclge_reset_rebuild(struct hclge_dev *hdev)
 
 	hclge_update_reset_level(hdev);
 
+	hclge_reset_end(handle, true);
+
 	return 0;
 }
 
@@ -4368,10 +4388,11 @@ err_reset:
 		hclge_reset_task_schedule(hdev);
 }
 
-static void hclge_reset_event(struct pci_dev *pdev, struct hnae3_handle *handle)
+void hclge_reset_event(struct pci_dev *pdev, struct hnae3_handle *handle)
 {
 	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(pdev);
 	struct hclge_dev *hdev = ae_dev->priv;
+	int ret;
 
 	/* We might end up getting called broadly because of 2 below cases:
 	 * 1. Recoverable error was conveyed through APEI and only way to bring
@@ -4405,9 +4426,12 @@ static void hclge_reset_event(struct pci_dev *pdev, struct hnae3_handle *handle)
 	dev_info(&hdev->pdev->dev, "received reset event, reset type is %d\n",
 		 hdev->reset_level);
 
-	/* request reset & schedule reset task */
-	set_bit(hdev->reset_level, &hdev->reset_request);
-	hclge_reset_task_schedule(hdev);
+	ret = hclge_ext_call_event(hdev, hdev->reset_level);
+	if (ret) {
+		/* request reset & schedule reset task */
+		set_bit(hdev->reset_level, &hdev->reset_request);
+		hclge_reset_task_schedule(hdev);
+	}
 
 	if (hdev->reset_level < HNAE3_GLOBAL_RESET)
 		hdev->reset_level++;
@@ -4433,7 +4457,15 @@ static void hclge_reset_timer(struct timer_list *t)
 
 	dev_info(&hdev->pdev->dev,
 		 "triggering reset in reset timer\n");
-	hclge_reset_event(hdev->pdev, NULL);
+	hclge_reset_event(hdev->pdev, &hdev->vport[0].nic);
+}
+
+static void hclge_reset_end(struct hnae3_handle *handle, bool done)
+{
+	struct hclge_vport *vport = hclge_get_vport(handle);
+	struct hclge_dev *hdev = vport->back;
+
+	hclge_ext_reset_end(hdev, done);
 }
 
 static void hclge_reset_subtask(struct hclge_dev *hdev)
@@ -4473,8 +4505,8 @@ static void hclge_handle_err_reset_request(struct hclge_dev *hdev)
 		hclge_set_def_reset_request(ae_dev, reset_type);
 	}
 
-	if (hdev->default_reset_request && ae_dev->ops->reset_event)
-		ae_dev->ops->reset_event(hdev->pdev, NULL);
+	if (hdev->default_reset_request)
+		hclge_reset_event(hdev->pdev, &hdev->vport[0].nic);
 
 	/* enable interrupt after error handling complete */
 	hclge_enable_vector(&hdev->misc_vector, true);
@@ -7961,7 +7993,7 @@ static void hclge_enable_fd(struct hnae3_handle *handle, bool enable)
 	hclge_task_schedule(hdev, 0);
 }
 
-static void hclge_cfg_mac_mode(struct hclge_dev *hdev, bool enable)
+int hclge_cfg_mac_mode(struct hclge_dev *hdev, bool enable)
 {
 	struct hclge_desc desc;
 	struct hclge_config_mac_mode_cmd *req =
@@ -7988,8 +8020,10 @@ static void hclge_cfg_mac_mode(struct hclge_dev *hdev, bool enable)
 
 	ret = hclge_cmd_send(&hdev->hw, &desc, 1);
 	if (ret)
-		dev_err(&hdev->pdev->dev,
-			"mac enable fail, ret =%d.\n", ret);
+		dev_err(&hdev->pdev->dev, "failed to %s mac, ret = %d.\n",
+			enable ? "enable" : "disable", ret);
+
+	return ret;
 }
 
 static int hclge_config_switch_param(struct hclge_dev *hdev, int vfid,
@@ -8449,12 +8483,15 @@ static void hclge_ae_stop(struct hnae3_handle *handle)
 	/* If it is not PF reset or FLR, the firmware will disable the MAC,
 	 * so it only need to stop phy here.
 	 */
-	if (test_bit(HCLGE_STATE_RST_HANDLING, &hdev->state) &&
-	    hdev->reset_type != HNAE3_FUNC_RESET &&
-	    hdev->reset_type != HNAE3_FLR_RESET) {
-		hclge_mac_stop_phy(hdev);
-		hclge_update_link_status(hdev);
-		return;
+	if (test_bit(HCLGE_STATE_RST_HANDLING, &hdev->state)) {
+		hclge_pfc_pause_en_cfg(hdev, HCLGE_PFC_TX_RX_DISABLE,
+				       HCLGE_PFC_DISABLE);
+		if (hdev->reset_type != HNAE3_FUNC_RESET &&
+		    hdev->reset_type != HNAE3_FLR_RESET) {
+			hclge_mac_stop_phy(hdev);
+			hclge_update_link_status(hdev);
+			return;
+		}
 	}
 
 	hclge_reset_tqp(handle);
@@ -11474,8 +11511,8 @@ static void hclge_get_ksettings_an_result(struct hnae3_handle *handle,
 		*auto_neg = hdev->hw.mac.autoneg;
 }
 
-static void hclge_get_media_type(struct hnae3_handle *handle, u8 *media_type,
-				 u8 *module_type)
+void hclge_get_media_type(struct hnae3_handle *handle, u8 *media_type,
+			  u8 *module_type)
 {
 	struct hclge_vport *vport = hclge_get_vport(handle);
 	struct hclge_dev *hdev = vport->back;
@@ -12030,69 +12067,15 @@ static void hclge_uninit_rxd_adv_layout(struct hclge_dev *hdev)
 		hclge_write_dev(&hdev->hw, HCLGE_RXD_ADV_LAYOUT_EN_REG, 0);
 }
 
-static __u32 hclge_wol_mode_to_ethtool(u32 mode)
+static struct hclge_wol_info *hclge_get_wol_info(struct hnae3_handle *handle)
 {
-	__u32 ret = 0;
+	struct hclge_vport *vport = hclge_get_vport(handle);
 
-	if (mode & HCLGE_WOL_PHY)
-		ret |= WAKE_PHY;
-
-	if (mode & HCLGE_WOL_UNICAST)
-		ret |= WAKE_UCAST;
-
-	if (mode & HCLGE_WOL_MULTICAST)
-		ret |= WAKE_MCAST;
-
-	if (mode & HCLGE_WOL_BROADCAST)
-		ret |= WAKE_BCAST;
-
-	if (mode & HCLGE_WOL_ARP)
-		ret |= WAKE_ARP;
-
-	if (mode & HCLGE_WOL_MAGIC)
-		ret |= WAKE_MAGIC;
-
-	if (mode & HCLGE_WOL_MAGICSECURED)
-		ret |= WAKE_MAGICSECURE;
-
-	if (mode & HCLGE_WOL_FILTER)
-		ret |= WAKE_FILTER;
-
-	return ret;
+	return &vport->back->hw.mac.wol;
 }
 
-static u32 hclge_wol_mode_from_ethtool(__u32 mode)
-{
-	u32 ret = HCLGE_WOL_DISABLE;
-
-	if (mode & WAKE_PHY)
-		ret |= HCLGE_WOL_PHY;
-
-	if (mode & WAKE_UCAST)
-		ret |= HCLGE_WOL_UNICAST;
-
-	if (mode & WAKE_MCAST)
-		ret |= HCLGE_WOL_MULTICAST;
-
-	if (mode & WAKE_BCAST)
-		ret |= HCLGE_WOL_BROADCAST;
-
-	if (mode & WAKE_ARP)
-		ret |= HCLGE_WOL_ARP;
-
-	if (mode & WAKE_MAGIC)
-		ret |= HCLGE_WOL_MAGIC;
-
-	if (mode & WAKE_MAGICSECURE)
-		ret |= HCLGE_WOL_MAGICSECURED;
-
-	if (mode & WAKE_FILTER)
-		ret |= HCLGE_WOL_FILTER;
-
-	return ret;
-}
-
-int hclge_get_wol_supported_mode(struct hclge_dev *hdev, u32 *wol_supported)
+int hclge_get_wol_supported_mode(struct hclge_dev *hdev,
+				 u32 *wol_supported)
 {
 	struct hclge_query_wol_supported_cmd *wol_supported_cmd;
 	struct hclge_desc desc;
@@ -12177,7 +12160,7 @@ static int hclge_init_wol(struct hclge_dev *hdev)
 	ret = hclge_get_wol_supported_mode(hdev,
 					   &wol_info->wol_support_mode);
 	if (ret) {
-		wol_info->wol_support_mode = HCLGE_WOL_DISABLE;
+		wol_info->wol_support_mode = 0;
 		return ret;
 	}
 
@@ -12187,38 +12170,39 @@ static int hclge_init_wol(struct hclge_dev *hdev)
 static void hclge_get_wol(struct hnae3_handle *handle,
 			  struct ethtool_wolinfo *wol)
 {
-	struct hclge_vport *vport = hclge_get_vport(handle);
-	struct hclge_dev *hdev = vport->back;
-	struct hclge_wol_info *wol_info = &hdev->hw.mac.wol;
+	struct hclge_wol_info *wol_info = hclge_get_wol_info(handle);
 
-	wol->supported = hclge_wol_mode_to_ethtool(wol_info->wol_support_mode);
-	wol->wolopts =
-		hclge_wol_mode_to_ethtool(wol_info->wol_current_mode);
-	if (wol_info->wol_current_mode & HCLGE_WOL_MAGICSECURED)
-		memcpy(&wol->sopass, wol_info->wol_sopass, SOPASS_MAX);
+	wol->supported = wol_info->wol_support_mode;
+	wol->wolopts = wol_info->wol_current_mode;
+	if (wol_info->wol_current_mode & WAKE_MAGICSECURE)
+		memcpy(wol->sopass, wol_info->wol_sopass, SOPASS_MAX);
 }
 
 static int hclge_set_wol(struct hnae3_handle *handle,
 			 struct ethtool_wolinfo *wol)
 {
+	struct hclge_wol_info *wol_info = hclge_get_wol_info(handle);
 	struct hclge_vport *vport = hclge_get_vport(handle);
-	struct hclge_dev *hdev = vport->back;
-	struct hclge_wol_info *wol_info = &hdev->hw.mac.wol;
 	u32 wol_mode;
+	int ret;
 
-	wol_mode = hclge_wol_mode_from_ethtool(wol->wolopts);
+	wol_mode = wol->wolopts;
 	if (wol_mode & ~wol_info->wol_support_mode)
 		return -EINVAL;
 
 	wol_info->wol_current_mode = wol_mode;
-	if (wol_mode & HCLGE_WOL_MAGICSECURED) {
-		memcpy(wol_info->wol_sopass, &wol->sopass, SOPASS_MAX);
+	if (wol_mode & WAKE_MAGICSECURE) {
+		memcpy(wol_info->wol_sopass, wol->sopass, SOPASS_MAX);
 		wol_info->wol_sopass_size = SOPASS_MAX;
 	} else {
 		wol_info->wol_sopass_size = 0;
 	}
 
-	return hclge_set_wol_cfg(hdev, wol_info);
+	ret = hclge_set_wol_cfg(vport->back, wol_info);
+	if (ret)
+		wol_info->wol_current_mode = 0;
+
+	return ret;
 }
 
 static int hclge_init_ae_dev(struct hnae3_ae_dev *ae_dev)
@@ -13753,7 +13737,7 @@ static int hclge_get_dscp_prio(struct hnae3_handle *h, u8 dscp, u8 *tc_mode,
 	return 0;
 }
 
-static const struct hnae3_ae_ops hclge_ops = {
+struct hnae3_ae_ops hclge_ops = {
 	.init_ae_dev = hclge_init_ae_dev,
 	.uninit_ae_dev = hclge_uninit_ae_dev,
 	.reset_prepare = hclge_reset_prepare_general,
@@ -13860,6 +13844,7 @@ static const struct hnae3_ae_ops hclge_ops = {
 	.get_dscp_prio = hclge_get_dscp_prio,
 	.get_wol = hclge_get_wol,
 	.set_wol = hclge_set_wol,
+	.priv_ops = hclge_ext_ops_handle,
 };
 
 static struct hnae3_ae_algo ae_algo = {
