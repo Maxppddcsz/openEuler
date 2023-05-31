@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .95.0
-%global pkg_release         .119
+%global maintenance_release .96.0
+%global pkg_release         .120
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,62 @@ fi
 %endif
 
 %changelog
+* Wed May 31 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.96.0.120
+- !862 Backport CVEs and bugfixes
+- cgroup: Stop task iteration when rebinding subsystem
+- drm/virtio: Fix error code in virtio_gpu_object_shmem_init()
+- drm/virtio: Correct drm_gem_shmem_get_sg_table() error handling
+- drm/virtio: Fix NULL vs IS_ERR checking in virtio_gpu_object_shmem_init
+- sched/topology: Fix exceptional memory access in sd_llc_free_all()
+- block: Fix the partition start may overflow in add_partition()
+- ext4: avoid a potential slab-out-of-bounds in ext4_group_desc_csum
+- iomap: don't invalidate folios after writeback errors
+- iomap: Don't create iomap_page objects in iomap_page_mkwrite_actor
+- iomap: Don't create iomap_page objects for inline files
+- iomap: Permit pages without an iop to enter writeback
+- md: fix kabi broken in struct mddev
+- md: use interruptible apis in idle/frozen_sync_thread
+- md: wake up 'resync_wait' at last in md_reap_sync_thread()
+- md: refactor idle/frozen_sync_thread()
+- md: add a mutex to synchronize idle and frozen in action_store()
+- md: refactor action_store() for 'idle' and 'frozen'
+- Revert "md: unlock mddev before reap sync_thread in action_store"
+- md: unlock mddev before reap sync_thread in action_store
+- block: fix wrong mode for blkdev_put() from disk_scan_partitions()
+- block: fix scan partition for exclusively open device again
+- block: merge disk_scan_partitions and blkdev_reread_part
+- !812 [sync] PR-761: net: stmmac: fix potential double free of dma descriptor resources
+- net: stmmac: fix potential double free of dma descriptor resources
+- !806 [sync] PR-760: LoongArch: kvm: fix bug of kvm's hugepage
+- !669 [sync] PR-564: usb: disable soft retry for EJ188 controller
+- !796 [sync] PR-765: LoongArch: fix some stability issues
+- !784 [sync] PR-766: LoongArch: add kexec&kdump support
+- LoongArch: kvm: fix bug of kvm's hugepage
+- LoongArch: defconfig: enable CONFIG_CACHEFILES
+- i2c: loongson: fix irq not freed when remove module
+- LoongArch: Set _PAGE_DIRTY only if _PAGE_MODIFIED is set in {pmd,pte}_mkwrite()
+- LoongArch: Set _PAGE_DIRTY only if _PAGE_WRITE is set in {pmd,pte}_mkdirty()
+- LoongArch: Clear FPU/SIMD thread info flags for kernel thread
+- LoongArch: Remove generic irq migration
+- LoongArch: Fix secondary bridge routing errors
+- LoongArch: Fix kdump failure on v40 interface specification
+- LoongArch: configs: Enable kexec/kdump
+- LoongArch: kdump: Add crashkernel=YM handling
+- LoongArch: kdump: Add single kernel image implementation
+- LoongArch: Add support for kernel address space layout randomization (KASLR)
+- LoongArch: Add support for kernel relocation
+- LoongArch: Add la_abs macro implementation
+- LoongArch: Add JUMP_VIRT_ADDR macro implementation to avoid using la.abs
+- LoongArch: Use la.pcrel instead of la.abs when it's trivially possible
+- LoongArch: efistub: Modify the address where efistub jumps to the main kernel
+- LoongArch: kdump: Add memory reservation for old kernel
+- LoongArch: Integrate initrd operation
+- LoongArch: kexec: Add compatibility with old interfaces
+- LoongArch: Flush TLB earlier at initialization
+- LoongArch: Add kdump support
+- LoongArch: Add kexec support
+- usb: xhci: add XHCI_NO_SOFT_RETRY quirk for EJ188
+
 * Tue May 23 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.95.0.119
 - !800 Backport CVEs
 - netfilter: nf_tables: deactivate anonymous set from preparation phase
