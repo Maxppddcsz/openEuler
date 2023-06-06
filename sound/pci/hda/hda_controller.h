@@ -38,7 +38,7 @@
 #define AZX_DCAPS_NO_ALIGN_BUFSIZE (1 << 21)	/* no buffer size alignment */
 /* 22 unused */
 #define AZX_DCAPS_4K_BDLE_BOUNDARY (1 << 23)	/* BDLE in 4k boundary */
-/* 24 unused */
+#define AZX_DCAPS_LOONGSON_HDA_WORKAROUND (1 << 24)	/* Loongson HDA controller workaround */
 #define AZX_DCAPS_COUNT_LPIB_DELAY  (1 << 25)	/* Take LPIB as delay */
 #define AZX_DCAPS_PM_RUNTIME	(1 << 26)	/* runtime PM support */
 #define AZX_DCAPS_RETRY_PROBE	(1 << 27)	/* retry probe if no codec is configured */
@@ -64,6 +64,9 @@ struct azx_dev {
 	 *  when link position is not greater than FIFO size
 	 */
 	unsigned int insufficient:1;
+
+	/* For Loongson */
+	unsigned int fix_prvpos;
 };
 
 #define azx_stream(dev)		(&(dev)->core)
