@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .96.0
-%global pkg_release         .120
+%global maintenance_release .97.0
+%global pkg_release         .121
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,64 @@ fi
 %endif
 
 %changelog
+* Wed Jun 07 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.97.0.121
+- !904 [sync] PR-903: backport block bugfix
+- !962 [sync] PR-937:  tcp: restrict net.ipv4.tcp_app_win
+- !959 [sync] PR-925:  tcp: prohibit TCP_REPAIR_OPTIONS if data was already sent
+- !955 [sync] PR-938:  config: Disable CONFIG_EULER_FS by default
+- tcp: restrict net.ipv4.tcp_app_win
+- tcp: prohibit TCP_REPAIR_OPTIONS if data was already sent
+- config: Disable CONFIG_EULER_FS by default
+- !930  xfs: missing lts patchs
+- !935 [sync] PR-922:  jbd2: fix checkpoint inconsistent
+- !917 [sync] PR-880: LoongArch: kdump: Add high memory reservation
+- !916 [sync] PR-868: LoongArch: fix compile error caused by __ffs not defined
+- !915 [sync] PR-792: LoongArch: add ls2k500 bmc support
+- jbd2: remove t_checkpoint_io_list
+- jbd2: recheck chechpointing non-dirty buffer
+- xfs: validate inode fork size against fork format
+- xfs: reorder iunlink remove operation in xfs_ifree
+- !912 [sync] PR-906:  ipv6: Add lwtunnel encap size of all siblings in nexthop calculation
+- LoongArch: kdump: Add high memory reservation
+- LoongArch: fix __ffs not defined compile error
+- LoongArch: fix ls2k500 bmc not work when installing iso
+- LoongArch: defconfig: enable CONFIG_FB_LS2K500=m.
+- ipmi: add ls2k500 bmc ipmi support.
+- fbdev: add ls2k500sfb driver for ls2k500 bmc.
+- ipv6: Add lwtunnel encap size of all siblings in nexthop calculation
+- md/raid10: fix incorrect done of recovery
+- md/raid10: fix null-ptr-deref in raid10_sync_request
+- block/badblocks: fix badblocks loss when badblocks combine
+- block/badblocks: fix the bug of reverse order
+- md: fix unexpected changes of return value in rdev_set_badblocks
+- md/raid10: fix io hung in md_wait_for_blocked_rdev()
+- block: Only set bb->changed when badblocks changes
+- md/raid10: fix incorrect counting of rdev->nr_pending
+- md/raid10: remove WANR_ON_ONCE in raid10_end_write_request
+- md/raid10: fix uaf if replacement replaces rdev
+- md/raid10: fix null-ptr-deref of mreplace in raid10_sync_request
+- md/raid10: fix io loss while replacement replace rdev
+- md/raid10: prioritize adding disk to 'removed' mirror
+- md: fix io loss when remove rdev fail
+- md/raid10: fix a race between removing rdev and access conf->mirrors[i].rdev
+- md/raid10: fix taks hung in raid10d
+- md/raid10: factor out code from wait_barrier() to stop_waiting_barrier()
+- md/raid10: fix softlockup in raid10_unplug
+- md/raid1: stop mdx_raid1 thread when raid1 array run failed
+- md: fix sysfs duplicate file while adding rdev
+- md: replace invalid function flush_rdev_wq() with flush_workqueue()
+- md: Flush workqueue md_rdev_misc_wq in md_alloc()
+- block: don't allow the same type rq_qos add more than once
+- blk-iocost: use spin_lock_irqsave in adjust_inuse_and_calc_cost
+- blk-iocost: don't allow to configure bio based device
+- !867  arm64: kdump: Avoid reserving low memory repeatedly
+- !854 [sync] PR-793: LoongArch: kvm: add pv ipi support
+- !853 [sync] PR-809: LoongArch: defconfig: enable memory and pci hotplug related configs for LoongArch
+- arm64: kdump: Avoid reserving low memory repeatedly
+- LoongArch: LSVZ: Support PV IPI to reduce VM exit
+- LoongArch: defconfig: Add PCI hotplug support
+- LoongArch: defconfig: Add memory hotplug support
+
 * Wed May 31 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.96.0.120
 - !862 Backport CVEs and bugfixes
 - cgroup: Stop task iteration when rebinding subsystem
