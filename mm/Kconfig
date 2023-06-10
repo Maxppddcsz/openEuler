@@ -518,7 +518,7 @@ config MEMCG_SWAP_QOS
 	depends on X86 || ARM64
 	default n
 	help
-	  Support swapin memory for memcg.
+	  Support swapin memory for memcg. Support swapfile limit for memcg.
 
 config ETMEM_SCAN
 	tristate "module: etmem page scan for etmem support"
