@@ -36,6 +36,7 @@
 
 static DEFINE_PER_CPU(struct swap_slots_cache, swp_slots);
 #ifdef CONFIG_MEMCG_SWAP_QOS
+static unsigned int nr_swap_slots;
 static DEFINE_PER_CPU(struct swap_slots_cache [MAX_SWAPFILES], swp_type_slots);
 #endif
 static bool	swap_slot_cache_active;
@@ -208,7 +209,7 @@ static int __alloc_swap_slot_cache_cpu(unsigned int cpu)
 	if (ret)
 		return ret;
 
-	for (i = 0; i < MAX_SWAPFILES; i++) {
+	for (i = 0; i < nr_swap_slots; i++) {
 		ret = alloc_swap_slot_cache_cpu_type(cpu, i);
 		if (ret)
 			return ret;
@@ -216,10 +217,28 @@ static int __alloc_swap_slot_cache_cpu(unsigned int cpu)
 
 	return ret;
 }
+
+static void alloc_swap_slot_cache_type(int type)
+{
+	unsigned int cpu;
+
+	/* serialize with cpu hotplug operations */
+	get_online_cpus();
+	while (type >= nr_swap_slots) {
+		for_each_online_cpu(cpu)
+			alloc_swap_slot_cache_cpu_type(cpu, nr_swap_slots);
+		nr_swap_slots++;
+	}
+	put_online_cpus();
+}
 #else
 static inline int __alloc_swap_slot_cache_cpu(unsigned int cpu)
 {
 	return alloc_swap_slot_cache_cpu_type(cpu, SWAP_TYPE_ALL);
+}
+
+static void alloc_swap_slot_cache_type(int type)
+{
 }
 #endif
 
@@ -267,7 +286,7 @@ static void __drain_slots_cache_cpu(unsigned int cpu, unsigned int type,
 	int i;
 
 	drain_slots_cache_cpu_type(cpu, type, free_slots, SWAP_TYPE_ALL);
-	for (i = 0; i < MAX_SWAPFILES; i++)
+	for (i = 0; i < nr_swap_slots; i++)
 		drain_slots_cache_cpu_type(cpu, type, free_slots, i);
 }
 #else
@@ -323,7 +342,7 @@ static int free_slot_cache(unsigned int cpu)
 	return 0;
 }
 
-void enable_swap_slots_cache(void)
+void enable_swap_slots_cache(int type)
 {
 	mutex_lock(&swap_slots_cache_enable_mutex);
 	if (!swap_slot_cache_initialized) {
@@ -337,7 +356,7 @@ void enable_swap_slots_cache(void)
 
 		swap_slot_cache_initialized = true;
 	}
-
+	alloc_swap_slot_cache_type(type);
 	__reenable_swap_slots_cache();
 out_unlock:
 	mutex_unlock(&swap_slots_cache_enable_mutex);
