@@ -512,6 +512,14 @@ config MEMCG_QOS
 
 	  If unsure, say "n".
 
+config MEMCG_SWAP_QOS
+	bool "Enable Memory Cgroup Swap priority"
+	depends on MEMCG_SWAP
+	depends on X86 || ARM64
+	default n
+	help
+	  Support swapin memory for memcg.
+
 config ETMEM_SCAN
 	tristate "module: etmem page scan for etmem support"
 	depends on ETMEM
