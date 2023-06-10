@@ -247,6 +247,7 @@ struct obj_cgroup {
 
 struct swap_device {
 	int type;
+	unsigned long limit;
 };
 
 /*
