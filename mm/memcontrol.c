@@ -5434,10 +5434,37 @@ static int memcg_swapfile_read(struct seq_file *m, void *v)
 static void memcg_copy_swap_device(struct mem_cgroup *dst,
 				   struct mem_cgroup *src)
 {
-	if (!src)
+	if (!src) {
 		dst->swap_dev->type = SWAP_TYPE_ALL;
-	else
+		dst->swap_dev->limit = PAGE_COUNTER_MAX;
+	} else {
 		dst->swap_dev->type = src->swap_dev->type;
+		dst->swap_dev->limit = src->swap_dev->limit;
+	}
+}
+
+static ssize_t memcg_swapmax_write(struct kernfs_open_file *of,
+				     char *buf, size_t nbytes, loff_t off)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
+	unsigned long limit;
+	int err;
+
+	buf = strstrip(buf);
+	err = page_counter_memparse(buf, "max", &limit);
+	if (err)
+		return err;
+
+	memcg->swap_dev->limit = limit;
+
+	return nbytes;
+}
+
+u64 memcg_swapmax_read(struct cgroup_subsys_state *css, struct cftype *cft)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
+
+	return memcg->swap_dev->limit * PAGE_SIZE;
 }
 
 int memcg_get_swap_type(struct page *page)
@@ -5913,6 +5940,12 @@ static struct cftype mem_cgroup_legacy_files[] = {
 		.flags = CFTYPE_NOT_ON_ROOT,
 		.write = memcg_swapfile_write,
 		.seq_show = memcg_swapfile_read,
+	},
+	{
+		.name = "swap.max",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.write = memcg_swapmax_write,
+		.read_u64 = memcg_swapmax_read,
 	},
 #endif
 	{
@@ -8094,6 +8127,49 @@ void mem_cgroup_swapout(struct page *page, swp_entry_t entry)
 	css_put(&memcg->css);
 }
 
+#ifdef CONFIG_MEMCG_SWAP_QOS
+static int mem_cgroup_check_swap_for_v1(struct page *page, swp_entry_t entry)
+{
+	struct mem_cgroup *memcg, *target_memcg;
+	unsigned long swap_usage;
+	unsigned long swap_limit;
+	long nr_swap_pages = PAGE_COUNTER_MAX;
+
+	if (cgroup_memory_noswap || !entry.val)
+		return 0;
+
+	target_memcg = page_memcg(page);
+	if (!target_memcg || mem_cgroup_is_root(target_memcg))
+		return 0;
+
+	rcu_read_lock();
+	if (!css_tryget_online(&target_memcg->css)) {
+		rcu_read_unlock();
+		return 0;
+	}
+	rcu_read_unlock();
+
+	for (memcg = target_memcg; memcg != root_mem_cgroup;
+	     memcg = parent_mem_cgroup(memcg)) {
+		swap_limit = READ_ONCE(memcg->swap_dev->limit);
+		swap_usage = page_counter_read(&memcg->memsw) -
+			     page_counter_read(&memcg->memory);
+		nr_swap_pages = min_t(long, nr_swap_pages,
+				      swap_limit - swap_usage);
+	}
+	css_put(&target_memcg->css);
+
+	if (thp_nr_pages(page) > nr_swap_pages)
+		return -ENOMEM;
+	return 0;
+}
+#else
+static int mem_cgroup_check_swap_for_v1(struct page *page, swp_entry_t entry)
+{
+	return 0;
+}
+#endif
+
 /**
  * mem_cgroup_try_charge_swap - try charging swap space for a page
  * @page: page being added to swap
@@ -8111,7 +8187,7 @@ int mem_cgroup_try_charge_swap(struct page *page, swp_entry_t entry)
 	unsigned short oldid;
 
 	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys))
-		return 0;
+		return mem_cgroup_check_swap_for_v1(page, entry);
 
 	memcg = page_memcg(page);
 
