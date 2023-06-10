@@ -5263,16 +5263,46 @@ static int memcg_events_local_show(struct seq_file *m, void *v)
 	return 0;
 }
 
+static int reclaim_param_parse(char *buf, unsigned long *nr_pages,
+			       bool *anon, bool *file)
+{
+	char *endp;
+	u64 bytes;
+
+	if (!strcmp(buf, "")) {
+		*nr_pages = PAGE_COUNTER_MAX;
+		return 0;
+	}
+
+	bytes = memparse(buf, &endp);
+	if (*endp == ' ') {
+		buf = endp + 1;
+		buf = strim(buf);
+		if (!strcmp(buf, "type=anon"))
+			*file = false;
+		else if (!strcmp(buf, "type=file"))
+			*anon = false;
+		else
+			return -EINVAL;
+	} else if (*endp != '\0')
+		return -EINVAL;
+
+	*nr_pages = min(bytes / PAGE_SIZE, (u64)PAGE_COUNTER_MAX);
+
+	return 0;
+}
+
 static ssize_t memory_reclaim(struct kernfs_open_file *of, char *buf,
 			      size_t nbytes, loff_t off)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
 	unsigned int nr_retries = MAX_RECLAIM_RETRIES;
 	unsigned long nr_to_reclaim, nr_reclaimed = 0;
+	bool anon = true, file = true;
 	int err;
 
 	buf = strstrip(buf);
-	err = page_counter_memparse(buf, "", &nr_to_reclaim);
+	err = reclaim_param_parse(buf, &nr_to_reclaim, &anon, &file);
 	if (err)
 		return err;
 
@@ -5293,9 +5323,9 @@ static ssize_t memory_reclaim(struct kernfs_open_file *of, char *buf,
 		if (!nr_retries)
 			lru_add_drain_all();
 
-		reclaimed = try_to_free_mem_cgroup_pages(memcg,
+		reclaimed = __try_to_free_mem_cgroup_pages(memcg,
 						nr_to_reclaim - nr_reclaimed,
-						GFP_KERNEL, true);
+						GFP_KERNEL, anon, !file);
 
 		if (!reclaimed && !nr_retries--)
 			return -EAGAIN;
