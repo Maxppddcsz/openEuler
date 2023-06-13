@@ -27,12 +27,17 @@ struct iova_cpu_rcache;
 
 #define IOVA_RANGE_CACHE_MAX_SIZE 6	/* log of max cached IOVA range size (in pages) */
 #define MAX_GLOBAL_MAGS 32	/* magazines per bin */
+#define MAX_CPU_SIZE (NR_CPUS > 64 ? 64 : NR_CPUS)	/* max cpu rcaches */
 
 struct iova_rcache {
 	spinlock_t lock;
 	unsigned long depot_size;
 	struct iova_magazine *depot[MAX_GLOBAL_MAGS];
+#ifdef CONFIG_ARM_SMMU_V3_REDUCE_CPURCACHE
+	struct iova_cpu_rcache *cpu_rcaches[MAX_CPU_SIZE];
+#else
 	struct iova_cpu_rcache __percpu *cpu_rcaches;
+#endif
 };
 
 struct iova_domain;
