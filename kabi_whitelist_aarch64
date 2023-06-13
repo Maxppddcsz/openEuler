@@ -1284,6 +1284,7 @@
     __ip_dev_find
     ip_do_fragment
     ip_local_out
+    __ip_mc_dec_group
     ip_mc_inc_group
     ipmi_add_smi
     ipmi_create_user
@@ -2691,6 +2692,7 @@
     up_read
     up_write
     __usecs_to_jiffies
+    usleep_range_state
     uuid_gen
     uuid_null
     uuid_parse
@@ -2735,6 +2737,7 @@
     vmalloc_to_page
     vmalloc_user
     vmap
+    vmf_insert_pfn_prot
     vm_get_page_prot
     vm_insert_page
     vm_mmap
