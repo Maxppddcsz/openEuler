@@ -343,6 +343,16 @@ config ARM_SMMU_V3_PM
 	help
 	  Add support for suspend and resume support for arm smmu v3.
 
+config ARM_SMMU_V3_REDUCE_CPURCACHE
+	bool "Add support for cpu rcache"
+	depends on ARM_SMMU_V3
+	default n
+	help
+	  Add support for reducing the total amount of cpu rcache. When
+	  num of cpus is large, iova rcache will have serve performance
+	  problem. Reduce the amount of cpu rcaches to improve cache hit
+	  rate.
+
 config S390_IOMMU
 	def_bool y if S390 && PCI
 	depends on S390 && PCI
