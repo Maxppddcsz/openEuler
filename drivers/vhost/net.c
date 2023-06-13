@@ -40,6 +40,20 @@ module_param(experimental_zcopytx, int, 0444);
 MODULE_PARM_DESC(experimental_zcopytx, "Enable Zero Copy TX;"
 		                       " 1 -Enable; 0 - Disable");
 
+#ifdef CONFIG_VHOST_NET_HFT_POLLING
+static_assert(CONFIG_VHOST_NET_HFT_THRESHOLD >= 0);
+
+static unsigned int high_freq_txi_threshold =
+	(unsigned int)CONFIG_VHOST_NET_HFT_THRESHOLD;
+module_param(high_freq_txi_threshold, uint, 0644);
+MODULE_PARM_DESC(high_freq_txi_threshold,
+		"vhost-net will enter polling mode "
+		"if the observed continuous TX interval "
+		"is less than this value. "
+		"The unit is nanosecond, and the default value is "
+		__stringify(CONFIG_VHOST_NET_HFT_THRESHOLD));
+#endif
+
 /* Max number of bytes transferred before requeueing the job.
  * Using this limit prevents one virtqueue from starving others. */
 #define VHOST_NET_WEIGHT 0x80000
@@ -126,6 +140,10 @@ struct vhost_net_virtqueue {
 	struct vhost_net_buf rxq;
 	/* Batched XDP buffs */
 	struct xdp_buff *xdp;
+#ifdef CONFIG_VHOST_NET_HFT_POLLING
+	u64 tx_time;
+	u64 tx_interval;
+#endif
 };
 
 struct vhost_net {
@@ -311,6 +329,10 @@ static void vhost_net_vq_reset(struct vhost_net *n)
 		n->vqs[i].ubufs = NULL;
 		n->vqs[i].vhost_hlen = 0;
 		n->vqs[i].sock_hlen = 0;
+#ifdef CONFIG_VHOST_NET_HFT_POLLING
+		n->vqs[i].tx_time = 0;
+		n->vqs[i].tx_interval = 1000000; /* 1ms */
+#endif
 		vhost_net_buf_init(&n->vqs[i].rxq);
 	}
 
@@ -456,6 +478,25 @@ static void vhost_net_signal_used(struct vhost_net_virtqueue *nvq)
 	nvq->done_idx = 0;
 }
 
+#ifdef CONFIG_VHOST_NET_HFT_POLLING
+
+static void vhost_update_tx_interval(struct vhost_net_virtqueue *nvq)
+{
+	u64 time = ktime_get_mono_fast_ns();
+
+	if (likely(nvq->tx_time != 0)) {
+		u64 x = nvq->tx_interval;
+		u64 y = time - nvq->tx_time;
+
+		/* tx_interval = 0.25 * old_interval + 0.75 * new_interval */
+		nvq->tx_interval = (x >> 2) + (y - (y >> 2));
+	}
+
+	nvq->tx_time = time;
+}
+
+#endif
+
 static void vhost_tx_batch(struct vhost_net *net,
 			   struct vhost_net_virtqueue *nvq,
 			   struct socket *sock,
@@ -489,6 +530,9 @@ static void vhost_tx_batch(struct vhost_net *net,
 	}
 
 signal_used:
+#ifdef CONFIG_VHOST_NET_HFT_POLLING
+	vhost_update_tx_interval(nvq);
+#endif
 	vhost_net_signal_used(nvq);
 	nvq->batched_xdp = 0;
 }
@@ -783,6 +827,10 @@ static void handle_tx_copy(struct vhost_net *net, struct socket *sock)
 	int sent_pkts = 0;
 	bool sock_can_batch = (sock->sk->sk_sndbuf == INT_MAX);
 
+#ifdef CONFIG_VHOST_NET_HFT_POLLING
+	int last_done_idx = 0;
+#endif
+
 	do {
 		bool busyloop_intr = false;
 
@@ -798,6 +846,25 @@ static void handle_tx_copy(struct vhost_net *net, struct socket *sock)
 		if (head == vq->num) {
 			if (unlikely(busyloop_intr)) {
 				vhost_poll_queue(&vq->poll);
+#ifdef CONFIG_VHOST_NET_HFT_POLLING
+			} else if (nvq->done_idx < 32 &&
+				   nvq->tx_interval < high_freq_txi_threshold &&
+				   ktime_get_mono_fast_ns() - nvq->tx_time <
+				   high_freq_txi_threshold) {
+
+				/* Avoid virtio waiting blindly for a long time
+				 * due to vhost silly polling
+				 */
+				if (nvq->done_idx >= vq->num / 2)
+					vhost_tx_batch(net, nvq, sock, &msg);
+
+				/* Update TX interval if we get some packets */
+				if (last_done_idx < nvq->done_idx)
+					vhost_update_tx_interval(nvq);
+
+				last_done_idx = nvq->done_idx;
+				continue;
+#endif
 			} else if (unlikely(vhost_enable_notify(&net->dev,
 								vq))) {
 				vhost_disable_notify(&net->dev, vq);
