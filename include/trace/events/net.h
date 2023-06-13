@@ -326,6 +326,23 @@ DEFINE_EVENT(net_dev_rx_exit_template, netif_receive_skb_list_exit,
 	TP_ARGS(ret)
 );
 
+TRACE_EVENT(is_local_ipaddr,
+
+	TP_PROTO(int *ret, u32 ipaddr),
+
+	TP_ARGS(ret, ipaddr),
+
+	TP_STRUCT__entry(
+		__field(int, ret)
+		__field(u32, ipaddr)
+	),
+	TP_fast_assign(
+		__entry->ret = *ret;
+		__entry->ipaddr = ipaddr;
+	),
+
+	TP_printk("ret=%d, ipaddr:0x%x", __entry->ret, __entry->ipaddr)
+);
 #endif /* _TRACE_NET_H */
 
 /* This part must be outside protection */
