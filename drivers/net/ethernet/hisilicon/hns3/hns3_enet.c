@@ -2165,7 +2165,7 @@ static void hns3_disable_sriov(struct pci_dev *pdev)
 static void hns3_get_dev_capability(struct pci_dev *pdev,
 				    struct hnae3_ae_dev *ae_dev)
 {
-	if (pdev->revision >= 0x21) {
+	if (ae_dev->dev_version >= HNAE3_DEVICE_VERSION_V2) {
 		hnae3_set_bit(ae_dev->flag, HNAE3_DEV_SUPPORT_FD_B, 1);
 		hnae3_set_bit(ae_dev->flag, HNAE3_DEV_SUPPORT_GRO_B, 1);
 	}
@@ -2424,7 +2424,7 @@ static void hns3_set_default_feature(struct net_device *netdev)
 		NETIF_F_GSO_UDP_TUNNEL_CSUM | NETIF_F_SCTP_CRC |
 		NETIF_F_FRAGLIST;
 
-	if (pdev->revision > HNAE3_REVISION_ID_20) {
+	if (ae_dev->dev_version >= HNAE3_DEVICE_VERSION_V2) {
 #ifdef NETIF_F_GRO_HW
 		netdev->features |= NETIF_F_GRO_HW;
 		netdev->hw_features |= NETIF_F_GRO_HW;
@@ -2930,8 +2930,9 @@ static bool hns3_parse_vlan_tag(struct hns3_enet_ring *ring,
 {
 	struct hnae3_handle *handle = ring->tqp->handle;
 	struct pci_dev *pdev = ring->tqp->handle->pdev;
+	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(pdev);
 
-	if (pdev->revision == HNAE3_REVISION_ID_20) {
+	if (unlikely(ae_dev->dev_version < HNAE3_DEVICE_VERSION_V2)) {
 		*vlan_tag = le16_to_cpu(desc->rx.ot_vlan_tag);
 		if (!(*vlan_tag & VLAN_VID_MASK))
 			*vlan_tag = le16_to_cpu(desc->rx.vlan_tag);
