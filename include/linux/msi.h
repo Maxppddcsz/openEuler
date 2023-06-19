@@ -76,7 +76,11 @@ struct msi_desc {
 	unsigned int			nvec_used;
 	struct device			*dev;
 	struct msi_msg			msg;
+#ifndef __GENKSYMS__
 	struct irq_affinity_desc	*affinity;
+#else
+	struct cpumask                  *affinity;
+#endif
 
 	union {
 		/* PCI MSI/X specific data */
