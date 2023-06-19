@@ -63,8 +63,20 @@ struct klp_func_list {
 };
 
 struct stackframe {
+	/* stack frame to be unwinded */
 	unsigned long sp;
+	/* link register saved in last stack frame */
 	unsigned long pc;
+	/* instruction register saved in pt_regs */
+	unsigned long nip;
+	/* link register saved in pt_regs */
+	unsigned long link;
+	/* stack frame pointer (r1 register) saved in pt_regs */
+	unsigned long sfp;
+	/* check if nip and link are in same function */
+	unsigned int nip_link_in_same_func;
+	/* check if it is top frame before interrupt */
+	unsigned int is_top_frame;
 };
 
 struct walk_stackframe_args {
@@ -235,6 +247,22 @@ static int klp_check_activeness_func(struct klp_patch *patch, int enable,
 	return 0;
 }
 
+static int check_addr_in_same_func(unsigned long addr1, unsigned long addr2)
+{
+	unsigned long size = 0;
+	unsigned long offset = 0;
+	unsigned long start;
+
+	if (addr1 == 0 || addr2 == 0)
+		return 0;
+	if (addr1 == addr2)
+		return 1;
+	if (!kallsyms_lookup_size_offset(addr1, &size, &offset))
+		return 0;
+	start = addr1 - offset;
+	return (addr2 >= start) && (addr2 - start < size);
+}
+
 static int unwind_frame(struct task_struct *tsk, struct stackframe *frame)
 {
 
@@ -243,7 +271,35 @@ static int unwind_frame(struct task_struct *tsk, struct stackframe *frame)
 	if (!validate_sp(frame->sp, tsk, STACK_FRAME_OVERHEAD))
 		return -1;
 
+	if (frame->nip != 0)
+		frame->nip = 0;
+	if (frame->link != 0)
+		frame->link = 0;
+
+	frame->is_top_frame = (frame->sfp == frame->sp);
 	stack = (unsigned long *)frame->sp;
+
+	/*
+	 * When switching to the exception stack,
+	 * we save the NIP in pt_regs
+	 *
+	 * See if this is an exception frame.
+	 * We look for the "regshere" marker in the current frame.
+	 */
+	if (validate_sp(frame->sp, tsk, STACK_INT_FRAME_SIZE)
+	    && stack[STACK_FRAME_MARKER] == STACK_FRAME_REGS_MARKER) {
+		struct pt_regs *regs = (struct pt_regs *)
+			(frame->sp + STACK_FRAME_OVERHEAD);
+		frame->nip = regs->nip;
+		frame->link = regs->link;
+		frame->sfp = regs->gpr[PT_R1];
+		frame->nip_link_in_same_func = check_addr_in_same_func(frame->nip, frame->link);
+		pr_debug("--- interrupt: task = %d/%s, trap %lx at NIP=0x%lx/%pS, LR=0x%lx/%pS, SFP=0x%lx, nip_link_in_same_func=%u\n",
+			tsk->pid, tsk->comm, regs->trap,
+			regs->nip, (void *)regs->nip,
+			regs->link, (void *)regs->link,
+			frame->sfp, frame->nip_link_in_same_func);
+	}
 	frame->sp = stack[0];
 	frame->pc = stack[STACK_FRAME_LR_SAVE];
 	return 0;
@@ -282,9 +338,22 @@ static int klp_check_jump_func(struct stackframe *frame, void *data)
 	struct walk_stackframe_args *args = data;
 	struct klp_func_list *check_funcs = args->check_funcs;
 
-	if (!check_func_list(check_funcs, &args->ret, frame->pc)) {
+	/* check NIP when the exception stack switching */
+	if (frame->nip && !check_func_list(check_funcs, &args->ret, frame->nip))
 		return args->ret;
+	if (frame->link && !frame->nip_link_in_same_func &&
+	    !check_func_list(check_funcs, &args->ret, frame->link))
+		return args->ret;
+	/*
+	 * There are two cases that frame->pc is reliable:
+	 *   1. frame->pc is not in top frame before interrupt;
+	 *   2. nip and link are in same function;
+	 */
+	if (!frame->is_top_frame || frame->nip_link_in_same_func) {
+		if (!check_func_list(check_funcs, &args->ret, frame->pc))
+			return args->ret;
 	}
+
 	return 0;
 }
 
@@ -302,7 +371,6 @@ static void free_list(struct klp_func_list **funcs)
 int klp_check_calltrace(struct klp_patch *patch, int enable)
 {
 	struct task_struct *g, *t;
-	struct stackframe frame;
 	unsigned long *stack;
 	int ret = 0;
 	struct klp_func_list *check_funcs = NULL;
@@ -318,6 +386,8 @@ int klp_check_calltrace(struct klp_patch *patch, int enable)
 	args.check_funcs = check_funcs;
 
 	for_each_process_thread(g, t) {
+		struct stackframe frame = { 0 };
+
 		if (t == current) {
 			/*
 			 * Handle the current carefully on each CPUs, we shouldn't
