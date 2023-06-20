@@ -404,11 +404,15 @@ struct sas_ha_struct {
 				* their siblings when forming wide ports */
 
 	/* LLDD calls these to notify the class of an event. */
+#ifndef __GENKSYMS__
 	int (*notify_port_event)(struct asd_sas_phy *, enum port_event,
 				 gfp_t gfp_flags);
 	int (*notify_phy_event)(struct asd_sas_phy *, enum phy_event,
 				gfp_t gfp_flags);
-
+#else
+	int (*notify_port_event)(struct asd_sas_phy *, enum port_event);
+	int (*notify_phy_event)(struct asd_sas_phy *, enum phy_event);
+#endif
 	void *lldd_ha;		  /* not touched by sas class code */
 
 	struct list_head eh_done_q;  /* complete via scsi_eh_flush_done_q */
