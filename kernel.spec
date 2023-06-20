@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .98.0
-%global pkg_release         .122
+%global maintenance_release .99.0
+%global pkg_release         .123
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,24 @@ fi
 %endif
 
 %changelog
+* Tue Jun 20 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.99.0.123
+- !1176 MAINTAINERS: update openEuler/MAINTAINERS for LoongArch
+- MAINTAINERS: update openEuler/MAINTAINERS for LoongArch
+- !1167 [sync] PR-1162:  fbcon: Check font dimension limits
+- !1171  mm: oom: move memcg_print_bad_task() out of mem_cgroup_scan_tasks()
+- !1163 [sync] PR-1098:  proc: allow pid_revalidate() during LOOKUP_RCU
+- mm: oom: move memcg_print_bad_task() out of mem_cgroup_scan_tasks()
+- fbcon: Check font dimension limits
+- proc: allow pid_revalidate() during LOOKUP_RCU
+- !1145 [sync] PR-1136:  gfs2: Don't deref jdesc in evict
+- gfs2: Don't deref jdesc in evict
+- !1024 [sync] PR-947:  locking/rwsem: Prevent potential lock starvation
+- !1073 [sync] PR-1042:  xfrm: Reinject transport-mode packets through workqueue
+- xfrm: Reinject transport-mode packets through workqueue
+- locking/rwsem: Prevent potential lock starvation
+- locking/rwsem: Pass the current atomic count to rwsem_down_read_slowpath()
+- locking/rwsem: Better collate rwsem_read_trylock()
+
 * Wed Jun 14 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.98.0.122
 - !1103 [sync] PR-1089:  power: supply: bq24190: Fix use after free bug in bq24190_remove due to race condition
 - !1108 [sync] PR-1090:  fs/ntfs3: Check fields while reading
