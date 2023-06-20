@@ -345,8 +345,10 @@ struct hnae3_ae_dev {
 	struct list_head node;
 	u32 flag;
 	unsigned long hw_err_reset_req;
+#ifndef __GENKSYMS__
 	u32 dev_version;
 	unsigned long caps[BITS_TO_LONGS(HNAE3_DEV_CAPS_MAX_NUM)];
+#endif
 	void *priv;
 };
 
