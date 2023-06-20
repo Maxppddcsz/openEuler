@@ -367,7 +367,9 @@ bool ethtool_convert_link_mode_to_legacy_u32(u32 *legacy_u32,
  * of the generic netdev features interface.
  */
 struct ethtool_ops {
+#ifndef __GENKSYMS__
 	u32     supported_coalesce_params;
+#endif
 	int	(*get_settings)(struct net_device *, struct ethtool_cmd *);
 	int	(*set_settings)(struct net_device *, struct ethtool_cmd *);
 	void	(*get_drvinfo)(struct net_device *, struct ethtool_drvinfo *);
