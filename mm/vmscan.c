@@ -102,6 +102,8 @@ struct scan_control {
 
 	/* Can pages be swapped as part of reclaim? */
 	unsigned int may_swap:1;
+	/* Only swap anon pages */
+	unsigned int only_swap:1;
 
 	/*
 	 * Cgroup memory below memory.low is protected as long as we
@@ -2461,6 +2463,11 @@ static void get_scan_count(struct lruvec *lruvec, struct scan_control *sc,
 	unsigned long ap, fp;
 	enum lru_list lru;
 
+	if (sc->only_swap) {
+		scan_balance = SCAN_ANON;
+		goto out;
+	}
+
 	/* If we have no swap space, do not bother scanning anon pages. */
 	if (!sc->may_swap || mem_cgroup_get_nr_swap_pages(memcg) <= 0) {
 		scan_balance = SCAN_FILE;
@@ -3564,6 +3571,15 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 					   gfp_t gfp_mask,
 					   bool may_swap)
 {
+	return __try_to_free_mem_cgroup_pages(memcg, nr_pages, gfp_mask,
+						  may_swap, false);
+}
+
+unsigned long __try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
+					     unsigned long nr_pages,
+					     gfp_t gfp_mask,
+					     bool may_swap, bool only_swap)
+{
 	unsigned long nr_reclaimed;
 	unsigned int noreclaim_flag;
 	struct scan_control sc = {
@@ -3576,6 +3592,7 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 		.may_writepage = !laptop_mode,
 		.may_unmap = 1,
 		.may_swap = may_swap,
+		.only_swap = only_swap,
 	};
 	/*
 	 * Traverse the ZONELIST_FALLBACK zonelist of the current node to put

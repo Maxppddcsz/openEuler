@@ -5265,16 +5265,46 @@ static int memcg_events_local_show(struct seq_file *m, void *v)
 	return 0;
 }
 
+static int reclaim_param_parse(char *buf, unsigned long *nr_pages,
+			       bool *anon, bool *file)
+{
+	char *endp;
+	u64 bytes;
+
+	if (!strcmp(buf, "")) {
+		*nr_pages = PAGE_COUNTER_MAX;
+		return 0;
+	}
+
+	bytes = memparse(buf, &endp);
+	if (*endp == ' ') {
+		buf = endp + 1;
+		buf = strim(buf);
+		if (!strcmp(buf, "type=anon"))
+			*file = false;
+		else if (!strcmp(buf, "type=file"))
+			*anon = false;
+		else
+			return -EINVAL;
+	} else if (*endp != '\0')
+		return -EINVAL;
+
+	*nr_pages = min(bytes / PAGE_SIZE, (u64)PAGE_COUNTER_MAX);
+
+	return 0;
+}
+
 static ssize_t memory_reclaim(struct kernfs_open_file *of, char *buf,
 			      size_t nbytes, loff_t off)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
 	unsigned int nr_retries = MAX_RECLAIM_RETRIES;
 	unsigned long nr_to_reclaim, nr_reclaimed = 0;
+	bool anon = true, file = true;
 	int err;
 
 	buf = strstrip(buf);
-	err = page_counter_memparse(buf, "", &nr_to_reclaim);
+	err = reclaim_param_parse(buf, &nr_to_reclaim, &anon, &file);
 	if (err)
 		return err;
 
@@ -5295,9 +5325,9 @@ static ssize_t memory_reclaim(struct kernfs_open_file *of, char *buf,
 		if (!nr_retries)
 			lru_add_drain_all();
 
-		reclaimed = try_to_free_mem_cgroup_pages(memcg,
+		reclaimed = __try_to_free_mem_cgroup_pages(memcg,
 						nr_to_reclaim - nr_reclaimed,
-						GFP_KERNEL, true);
+						GFP_KERNEL, anon, !file);
 
 		if (!reclaimed && !nr_retries--)
 			return -EAGAIN;
@@ -5307,6 +5337,197 @@ static ssize_t memory_reclaim(struct kernfs_open_file *of, char *buf,
 
 	return nbytes;
 }
+
+#ifdef CONFIG_MEMCG_SWAP_QOS
+static int mem_cgroup_task_swapin(struct task_struct *task, void *arg)
+{
+	struct mm_struct *mm = task->mm;
+	struct vm_area_struct *vma;
+	struct blk_plug plug;
+
+	mmap_read_lock(mm);
+	blk_start_plug(&plug);
+	for (vma = mm->mmap; vma; vma = vma->vm_next)
+		force_swapin_vma(vma);
+	blk_finish_plug(&plug);
+	mmap_read_unlock(mm);
+
+	return 0;
+}
+
+static ssize_t memory_swapin(struct kernfs_open_file *of, char *buf,
+			      size_t nbytes, loff_t off)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
+
+	if (unlikely(mem_cgroup_is_root(memcg)))
+		return -EINVAL;
+
+	mem_cgroup_scan_tasks(memcg, mem_cgroup_task_swapin, NULL);
+
+	return nbytes;
+}
+
+static int memcg_alloc_swap_device(struct mem_cgroup *memcg)
+{
+	memcg->swap_dev = kmalloc(sizeof(struct swap_device), GFP_KERNEL);
+	if (!memcg->swap_dev)
+		return -ENOMEM;
+	return 0;
+}
+
+static void memcg_free_swap_device(struct mem_cgroup *memcg)
+{
+	if (!memcg->swap_dev)
+		return;
+
+	kfree(memcg->swap_dev);
+	memcg->swap_dev = NULL;
+}
+
+static ssize_t memcg_swapfile_write(struct kernfs_open_file *of, char *buf,
+				     size_t nbytes, loff_t off)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
+	struct filename *pathname;
+	struct file *swapfile;
+	int ret;
+
+	buf = strstrip(buf);
+
+	if (!strcmp(buf, "none")) {
+		memcg->swap_dev->type = SWAP_TYPE_NONE;
+		return nbytes;
+	} else if (!strcmp(buf, "all")) {
+		memcg->swap_dev->type = SWAP_TYPE_ALL;
+		return nbytes;
+	}
+
+	pathname = getname_kernel(buf);
+	if (IS_ERR(pathname))
+		return PTR_ERR(pathname);
+
+	swapfile = file_open_name(pathname, O_RDWR|O_LARGEFILE, 0);
+	if (IS_ERR(swapfile)) {
+		putname(pathname);
+		return PTR_ERR(swapfile);
+	}
+	ret = write_swapfile_for_memcg(swapfile->f_mapping,
+				       &memcg->swap_dev->type);
+	filp_close(swapfile, NULL);
+	putname(pathname);
+
+	return ret < 0 ? ret : nbytes;
+}
+
+static int memcg_swapfile_read(struct seq_file *m, void *v)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
+
+	if (memcg->swap_dev->type == SWAP_TYPE_NONE)
+		seq_printf(m, "none\n");
+	else if (memcg->swap_dev->type == SWAP_TYPE_ALL)
+		seq_printf(m, "all\n");
+	else
+		read_swapfile_for_memcg(m, memcg->swap_dev->type);
+	return 0;
+}
+
+static void memcg_copy_swap_device(struct mem_cgroup *dst,
+				   struct mem_cgroup *src)
+{
+	if (!src) {
+		dst->swap_dev->type = SWAP_TYPE_ALL;
+		dst->swap_dev->limit = PAGE_COUNTER_MAX;
+	} else {
+		dst->swap_dev->type = src->swap_dev->type;
+		dst->swap_dev->limit = src->swap_dev->limit;
+	}
+}
+
+static ssize_t memcg_swapmax_write(struct kernfs_open_file *of,
+				     char *buf, size_t nbytes, loff_t off)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
+	unsigned long limit;
+	int err;
+
+	buf = strstrip(buf);
+	err = page_counter_memparse(buf, "max", &limit);
+	if (err)
+		return err;
+
+	memcg->swap_dev->limit = limit;
+
+	return nbytes;
+}
+
+u64 memcg_swapmax_read(struct cgroup_subsys_state *css, struct cftype *cft)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
+
+	return memcg->swap_dev->limit * PAGE_SIZE;
+}
+
+int memcg_get_swap_type(struct page *page)
+{
+	struct mem_cgroup *memcg;
+	int type;
+
+	if (mem_cgroup_disabled() || !page)
+		return SWAP_TYPE_ALL;
+
+	memcg = page_memcg(page);
+	if (!memcg || mem_cgroup_is_root(memcg))
+		return SWAP_TYPE_ALL;
+
+	rcu_read_lock();
+	if (!css_tryget_online(&memcg->css)) {
+		rcu_read_unlock();
+		return SWAP_TYPE_ALL;
+	}
+	rcu_read_unlock();
+
+	type = READ_ONCE(memcg->swap_dev->type);
+	css_put(&memcg->css);
+	return type;
+}
+
+void memcg_remove_swapfile(int type)
+{
+	struct mem_cgroup *memcg;
+
+	if (mem_cgroup_disabled())
+		return;
+
+	for_each_mem_cgroup(memcg)
+		if (memcg->swap_dev->type == type)
+			memcg->swap_dev->type = SWAP_TYPE_NONE;
+}
+#else
+static int memcg_alloc_swap_device(struct mem_cgroup *memcg)
+{
+	return 0;
+}
+
+static void memcg_free_swap_device(struct mem_cgroup *memcg)
+{
+}
+
+static void memcg_copy_swap_device(struct mem_cgroup *dst,
+				   struct mem_cgroup *src)
+{
+}
+
+int memcg_get_swap_type(struct page *page)
+{
+	return SWAP_TYPE_ALL;
+}
+
+void memcg_remove_swapfile(int type)
+{
+}
+#endif
 
 static int memcg_high_async_ratio_show(struct seq_file *m, void *v)
 {
@@ -5710,6 +5931,25 @@ static struct cftype mem_cgroup_legacy_files[] = {
 		.name = "reclaim",
 		.write = memory_reclaim,
 	},
+#ifdef CONFIG_MEMCG_SWAP_QOS
+	{
+		.name = "force_swapin",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.write = memory_swapin,
+	},
+	{
+		.name = "swapfile",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.write = memcg_swapfile_write,
+		.seq_show = memcg_swapfile_read,
+	},
+	{
+		.name = "swap.max",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.write = memcg_swapmax_write,
+		.read_u64 = memcg_swapmax_read,
+	},
+#endif
 	{
 		.name = "high_async_ratio",
 		.flags = CFTYPE_NOT_ON_ROOT,
@@ -5854,6 +6094,7 @@ static void __mem_cgroup_free(struct mem_cgroup *memcg)
 	for_each_node(node)
 		free_mem_cgroup_per_node_info(memcg, node);
 	free_percpu(memcg->vmstats_percpu);
+	memcg_free_swap_device(memcg);
 	kfree(memcg);
 }
 
@@ -5877,6 +6118,9 @@ static struct mem_cgroup *mem_cgroup_alloc(void)
 	memcg = kzalloc(size, GFP_KERNEL);
 	if (!memcg)
 		return ERR_PTR(error);
+
+	if (memcg_alloc_swap_device(memcg))
+		goto fail;
 
 	memcg->id.id = idr_alloc(&mem_cgroup_idr, NULL,
 				 1, MEM_CGROUP_ID_MAX,
@@ -5955,17 +6199,20 @@ mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 		page_counter_init(&memcg->swap, NULL);
 		page_counter_init(&memcg->kmem, NULL);
 		page_counter_init(&memcg->tcpmem, NULL);
+		memcg_copy_swap_device(memcg, NULL);
 	} else if (parent->use_hierarchy) {
 		memcg->use_hierarchy = true;
 		page_counter_init(&memcg->memory, &parent->memory);
 		page_counter_init(&memcg->swap, &parent->swap);
 		page_counter_init(&memcg->kmem, &parent->kmem);
 		page_counter_init(&memcg->tcpmem, &parent->tcpmem);
+		memcg_copy_swap_device(memcg, parent);
 	} else {
 		page_counter_init(&memcg->memory, &root_mem_cgroup->memory);
 		page_counter_init(&memcg->swap, &root_mem_cgroup->swap);
 		page_counter_init(&memcg->kmem, &root_mem_cgroup->kmem);
 		page_counter_init(&memcg->tcpmem, &root_mem_cgroup->tcpmem);
+		memcg_copy_swap_device(memcg, root_mem_cgroup);
 		/*
 		 * Deeper hierachy with use_hierarchy == false doesn't make
 		 * much sense so let cgroup subsystem know about this
@@ -7882,6 +8129,49 @@ void mem_cgroup_swapout(struct page *page, swp_entry_t entry)
 	css_put(&memcg->css);
 }
 
+#ifdef CONFIG_MEMCG_SWAP_QOS
+static int mem_cgroup_check_swap_for_v1(struct page *page, swp_entry_t entry)
+{
+	struct mem_cgroup *memcg, *target_memcg;
+	unsigned long swap_usage;
+	unsigned long swap_limit;
+	long nr_swap_pages = PAGE_COUNTER_MAX;
+
+	if (cgroup_memory_noswap || !entry.val)
+		return 0;
+
+	target_memcg = page_memcg(page);
+	if (!target_memcg || mem_cgroup_is_root(target_memcg))
+		return 0;
+
+	rcu_read_lock();
+	if (!css_tryget_online(&target_memcg->css)) {
+		rcu_read_unlock();
+		return 0;
+	}
+	rcu_read_unlock();
+
+	for (memcg = target_memcg; memcg != root_mem_cgroup;
+	     memcg = parent_mem_cgroup(memcg)) {
+		swap_limit = READ_ONCE(memcg->swap_dev->limit);
+		swap_usage = page_counter_read(&memcg->memsw) -
+			     page_counter_read(&memcg->memory);
+		nr_swap_pages = min_t(long, nr_swap_pages,
+				      swap_limit - swap_usage);
+	}
+	css_put(&target_memcg->css);
+
+	if (thp_nr_pages(page) > nr_swap_pages)
+		return -ENOMEM;
+	return 0;
+}
+#else
+static int mem_cgroup_check_swap_for_v1(struct page *page, swp_entry_t entry)
+{
+	return 0;
+}
+#endif
+
 /**
  * mem_cgroup_try_charge_swap - try charging swap space for a page
  * @page: page being added to swap
@@ -7899,7 +8189,7 @@ int mem_cgroup_try_charge_swap(struct page *page, swp_entry_t entry)
 	unsigned short oldid;
 
 	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys))
-		return 0;
+		return mem_cgroup_check_swap_for_v1(page, entry);
 
 	memcg = page_memcg(page);
 
