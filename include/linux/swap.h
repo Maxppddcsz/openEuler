@@ -380,6 +380,10 @@ extern unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 						  unsigned long nr_pages,
 						  gfp_t gfp_mask,
 						  bool may_swap);
+extern unsigned long __try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
+						  unsigned long nr_pages,
+						  gfp_t gfp_mask,
+						  bool may_swap, bool only_swap);
 extern unsigned long mem_cgroup_shrink_node(struct mem_cgroup *mem,
 						gfp_t gfp_mask, bool noswap,
 						pg_data_t *pgdat,
@@ -511,7 +515,8 @@ extern void si_swapinfo(struct sysinfo *);
 extern swp_entry_t get_swap_page(struct page *page);
 extern void put_swap_page(struct page *page, swp_entry_t entry);
 extern swp_entry_t get_swap_page_of_type(int);
-extern int get_swap_pages(int n, swp_entry_t swp_entries[], int entry_size);
+extern int get_swap_pages(int n, swp_entry_t swp_entries[], int entry_size,
+			  int type);
 extern int add_swap_count_continuation(swp_entry_t, gfp_t);
 extern void swap_shmem_alloc(swp_entry_t);
 extern int swap_duplicate(swp_entry_t);
@@ -543,6 +548,9 @@ static inline void put_swap_device(struct swap_info_struct *si)
 	percpu_ref_put(&si->sei->users);
 }
 
+extern int write_swapfile_for_memcg(struct address_space *mapping,
+				    int *swap_type);
+extern void read_swapfile_for_memcg(struct seq_file *m, int type);
 #else /* CONFIG_SWAP */
 
 static inline int swap_readpage(struct page *page, bool do_poll)
