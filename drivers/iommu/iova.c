@@ -881,11 +881,19 @@ static void init_iova_rcaches(struct iova_domain *iovad)
 		rcache = &iovad->rcaches[i];
 		spin_lock_init(&rcache->lock);
 		rcache->depot_size = 0;
+#ifdef CONFIG_ARM_SMMU_V3_REDUCE_CPURCACHE
+		for (cpu = 0; cpu < MAX_CPU_SIZE; cpu++) {
+			rcache->cpu_rcaches[cpu] = kmalloc(sizeof(*cpu_rcache), GFP_KERNEL);
+			if (WARN_ON(!rcache->cpu_rcaches[cpu]))
+				continue;
+			cpu_rcache = rcache->cpu_rcaches[cpu];
+#else
 		rcache->cpu_rcaches = __alloc_percpu(sizeof(*cpu_rcache), cache_line_size());
 		if (WARN_ON(!rcache->cpu_rcaches))
 			continue;
 		for_each_possible_cpu(cpu) {
 			cpu_rcache = per_cpu_ptr(rcache->cpu_rcaches, cpu);
+#endif
 			spin_lock_init(&cpu_rcache->lock);
 			cpu_rcache->loaded = iova_magazine_alloc(GFP_KERNEL);
 			cpu_rcache->prev = iova_magazine_alloc(GFP_KERNEL);
@@ -907,8 +915,14 @@ static bool __iova_rcache_insert(struct iova_domain *iovad,
 	struct iova_cpu_rcache *cpu_rcache;
 	bool can_insert = false;
 	unsigned long flags;
+#ifdef CONFIG_ARM_SMMU_V3_REDUCE_CPURCACHE
+	int cpu;
 
+	cpu = raw_smp_processor_id();
+	cpu_rcache = rcache->cpu_rcaches[cpu % MAX_CPU_SIZE];
+#else
 	cpu_rcache = raw_cpu_ptr(rcache->cpu_rcaches);
+#endif
 	spin_lock_irqsave(&cpu_rcache->lock, flags);
 
 	if (!iova_magazine_full(cpu_rcache->loaded)) {
@@ -970,8 +984,14 @@ static unsigned long __iova_rcache_get(struct iova_rcache *rcache,
 	unsigned long iova_pfn = 0;
 	bool has_pfn = false;
 	unsigned long flags;
+#ifdef CONFIG_ARM_SMMU_V3_REDUCE_CPURCACHE
+	int cpu;
 
+	cpu = raw_smp_processor_id();
+	cpu_rcache = rcache->cpu_rcaches[cpu % MAX_CPU_SIZE];
+#else
 	cpu_rcache = raw_cpu_ptr(rcache->cpu_rcaches);
+#endif
 	spin_lock_irqsave(&cpu_rcache->lock, flags);
 
 	if (!iova_magazine_empty(cpu_rcache->loaded)) {
@@ -1026,12 +1046,21 @@ static void free_iova_rcaches(struct iova_domain *iovad)
 
 	for (i = 0; i < IOVA_RANGE_CACHE_MAX_SIZE; ++i) {
 		rcache = &iovad->rcaches[i];
+#ifdef CONFIG_ARM_SMMU_V3_REDUCE_CPURCACHE
+		for (cpu = 0; cpu < MAX_CPU_SIZE; cpu++) {
+			cpu_rcache = rcache->cpu_rcaches[cpu];
+			iova_magazine_free(cpu_rcache->loaded);
+			iova_magazine_free(cpu_rcache->prev);
+			kfree(cpu_rcache);
+		}
+#else
 		for_each_possible_cpu(cpu) {
 			cpu_rcache = per_cpu_ptr(rcache->cpu_rcaches, cpu);
 			iova_magazine_free(cpu_rcache->loaded);
 			iova_magazine_free(cpu_rcache->prev);
 		}
 		free_percpu(rcache->cpu_rcaches);
+#endif
 		for (j = 0; j < rcache->depot_size; ++j)
 			iova_magazine_free(rcache->depot[j]);
 	}
@@ -1049,7 +1078,11 @@ void free_cpu_cached_iovas(unsigned int cpu, struct iova_domain *iovad)
 
 	for (i = 0; i < IOVA_RANGE_CACHE_MAX_SIZE; ++i) {
 		rcache = &iovad->rcaches[i];
+#ifdef CONFIG_ARM_SMMU_V3_REDUCE_CPURCACHE
+		cpu_rcache = rcache->cpu_rcaches[cpu % MAX_CPU_SIZE];
+#else
 		cpu_rcache = per_cpu_ptr(rcache->cpu_rcaches, cpu);
+#endif
 		spin_lock_irqsave(&cpu_rcache->lock, flags);
 		iova_magazine_free_pfns(cpu_rcache->loaded, iovad);
 		iova_magazine_free_pfns(cpu_rcache->prev, iovad);
