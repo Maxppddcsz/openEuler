@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .99.0
-%global pkg_release         .123
+%global maintenance_release .100.0
+%global pkg_release         .124
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,23 @@ fi
 %endif
 
 %changelog
+* Tue Jun 27 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.100.0.124
+- !1250  hugetlb: Fix some incorrect behavior
+- hugetlb: fix hugepages_setup when deal with pernode
+- hugetlb: fix wrong use of nr_online_nodes
+- !1238 [sync] PR-1181:  relayfs: fix out-of-bounds access in relay_file_read
+- relayfs: fix out-of-bounds access in relay_file_read
+- !1209 [sync] PR-1185:  nbd: validate the block size in nbd_set_size
+- !1232 [sync] PR-1220:  mm/memory_hotplug: extend offline_and_remove_memory() to handle more than one memory block
+- mm/memory_hotplug: extend offline_and_remove_memory() to handle more than one memory block
+- !1224 [sync] PR-1221:  media: rkvdec: fix use after free bug in rkvdec_remove
+- media: rkvdec: fix use after free bug in rkvdec_remove
+- !1198 [sync] PR-1190:  memcg: fix implicit declaration of memcg_print_bad_task()
+- nbd: fix incomplete validation of ioctl arg
+- nbd: validate the block size in nbd_set_size
+- memcg: fix implicit declaration of memcg_print_bad_task()
+- memstick: r592: Fix UAF bug in r592_remove due to race condition
+
 * Tue Jun 20 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.99.0.123
 - !1176 MAINTAINERS: update openEuler/MAINTAINERS for LoongArch
 - MAINTAINERS: update openEuler/MAINTAINERS for LoongArch
