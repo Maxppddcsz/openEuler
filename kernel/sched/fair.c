@@ -5637,7 +5637,7 @@ static int init_affinity_domains(struct affinity_domain *ad)
 
 	if (!sd || dcount > AD_LEVEL_MAX) {
 		rcu_read_unlock();
-		ret = -EINVAL;
+		ret = 0;
 		goto err;
 	}
 
