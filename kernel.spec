@@ -18,7 +18,7 @@
 %global upstream_sublevel   0
 %global devel_release       60
 %global maintenance_release .100.0
-%global pkg_release         .124
+%global pkg_release         .125
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -484,7 +484,7 @@ install -m 644 System.map $RPM_BUILD_ROOT/boot/System.map-%{KernelVer}
 gzip -c9 < Module.symvers > $RPM_BUILD_ROOT/boot/symvers-%{KernelVer}.gz
 
 mkdir -p $RPM_BUILD_ROOT%{_sbindir}
-install -m 755 %{SOURCE200} $RPM_BUILD_ROOT%{_sbindir}/mkgrub-menu-%{devel_release}.sh
+install -m 755 %{SOURCE200} $RPM_BUILD_ROOT%{_sbindir}/mkgrub-menu-%{version}-%{devel_release}%{?maintenance_release}%{?pkg_release}.sh
 
 
 %if 0%{?with_debuginfo}
@@ -745,7 +745,7 @@ popd
 %preun
 if [ `uname -i` == "aarch64" ] &&
         [ -f /boot/EFI/grub2/grub.cfg ]; then
-    /usr/bin/sh  %{_sbindir}/mkgrub-menu-%{devel_release}.sh %{version}-%{devel_release}.aarch64  /boot/EFI/grub2/grub.cfg  remove
+    /usr/bin/sh  %{_sbindir}/mkgrub-menu-%{version}-%{devel_release}%{?maintenance_release}%{?pkg_release}.sh %{version}-%{release}.aarch64  /boot/EFI/grub2/grub.cfg  remove
 fi
 
 %postun
@@ -771,7 +771,7 @@ fi
 %{_sbindir}/new-kernel-pkg --package kernel --rpmposttrans %{KernelVer} || exit $?
 if [ `uname -i` == "aarch64" ] &&
         [ -f /boot/EFI/grub2/grub.cfg ]; then
-	/usr/bin/sh %{_sbindir}/mkgrub-menu-%{devel_release}.sh %{version}-%{devel_release}.aarch64  /boot/EFI/grub2/grub.cfg  update
+	/usr/bin/sh %{_sbindir}/mkgrub-menu-%{version}-%{devel_release}%{?maintenance_release}%{?pkg_release}.sh %{version}-%{release}.aarch64  /boot/EFI/grub2/grub.cfg  update
 fi
 if [ `uname -i` == "loongarch64" ];then
 	[ -f /etc/grub2.cfg ] && GRUB_CFG=`readlink -f /etc/grub2.cfg`
@@ -932,6 +932,9 @@ fi
 %endif
 
 %changelog
+* Thu Jun 29 2023 Shi Kemeng <shikemeng@huawei.com> - 5.10.0-60.100.0.125
+- use full version-release instead of devel_release for mkgrub-menu
+
 * Tue Jun 27 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.100.0.124
 - !1250  hugetlb: Fix some incorrect behavior
 - hugetlb: fix hugepages_setup when deal with pernode
