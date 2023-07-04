@@ -695,8 +695,7 @@ static void hclge_update_stats_for_all(struct hclge_dev *hdev)
 			"Update MAC stats fail, status = %d.\n", status);
 }
 
-static void hclge_update_stats(struct hnae3_handle *handle,
-			       struct net_device_stats *net_stats)
+static void hclge_update_stats(struct hnae3_handle *handle)
 {
 	struct hclge_vport *vport = hclge_get_vport(handle);
 	struct hclge_dev *hdev = vport->back;
@@ -830,7 +829,7 @@ static void hclge_get_mac_stat(struct hnae3_handle *handle,
 	struct hclge_vport *vport = hclge_get_vport(handle);
 	struct hclge_dev *hdev = vport->back;
 
-	hclge_update_stats(handle, NULL);
+	hclge_update_stats(handle);
 
 	mac_stats->tx_pause_cnt = hdev->mac_stats.mac_tx_mac_pause_num;
 	mac_stats->rx_pause_cnt = hdev->mac_stats.mac_rx_mac_pause_num;
@@ -5099,9 +5098,7 @@ int hclge_rss_init_hw(struct hclge_dev *hdev)
 	if (ret)
 		return ret;
 
-	ret = hclge_comm_set_rss_input_tuple(&hdev->vport[0].nic,
-					     &hdev->hw.hw, true,
-					     &hdev->rss_cfg);
+	ret = hclge_comm_set_rss_input_tuple(&hdev->hw.hw, &hdev->rss_cfg);
 	if (ret)
 		return ret;
 
@@ -6501,8 +6498,7 @@ static int hclge_fd_check_spec(struct hclge_dev *hdev,
 	return hclge_fd_check_ext_tuple(hdev, fs, unused_tuple);
 }
 
-static void hclge_fd_get_tcpip4_tuple(struct hclge_dev *hdev,
-				      struct ethtool_rx_flow_spec *fs,
+static void hclge_fd_get_tcpip4_tuple(struct ethtool_rx_flow_spec *fs,
 				      struct hclge_fd_rule *rule, u8 ip_proto)
 {
 	rule->tuples.src_ip[IPV4_INDEX] =
@@ -6531,8 +6527,7 @@ static void hclge_fd_get_tcpip4_tuple(struct hclge_dev *hdev,
 	rule->tuples_mask.ip_proto = 0xFF;
 }
 
-static void hclge_fd_get_ip4_tuple(struct hclge_dev *hdev,
-				   struct ethtool_rx_flow_spec *fs,
+static void hclge_fd_get_ip4_tuple(struct ethtool_rx_flow_spec *fs,
 				   struct hclge_fd_rule *rule)
 {
 	rule->tuples.src_ip[IPV4_INDEX] =
@@ -6616,8 +6611,7 @@ static void hclge_fd_get_tcpip6_tuple(struct hclge_dev *hdev,
 	rule->tuples_mask.ip_proto = 0xFF;
 }
 
-static void hclge_fd_get_ip6_tuple(struct hclge_dev *hdev,
-				   struct ethtool_rx_flow_spec *fs,
+static void hclge_fd_get_ip6_tuple(struct ethtool_rx_flow_spec *fs,
 				   struct hclge_fd_rule *rule)
 {
 	be32_to_cpu_array(rule->tuples.src_ip, fs->h_u.usr_ip6_spec.ip6src,
@@ -6708,8 +6702,7 @@ static void hclge_fd_get_user_def_tuple(struct hclge_fd_user_def_info *info,
 	rule->ep.user_def = *info;
 }
 
-static int hclge_fd_get_tuple(struct hclge_dev *hdev,
-			      struct ethtool_rx_flow_spec *fs,
+static int hclge_fd_get_tuple(struct ethtool_rx_flow_spec *fs,
 			      struct hclge_fd_rule *rule,
 			      struct hclge_fd_user_def_info *info)
 {
@@ -6908,7 +6901,7 @@ static int hclge_add_fd_entry(struct hnae3_handle *handle,
 	if (!rule)
 		return -ENOMEM;
 
-	ret = hclge_fd_get_tuple(hdev, fs, rule, &info);
+	ret = hclge_fd_get_tuple(fs, rule, &info);
 	if (ret) {
 		kfree(rule);
 		return ret;
