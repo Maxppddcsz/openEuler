@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .100.0
-%global pkg_release         .125
+%global maintenance_release .101.0
+%global pkg_release         .126
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,32 @@ fi
 %endif
 
 %changelog
+* Wed Jul 05 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.101.0.126
+- !1311 Fix CVE-2023-2860
+- !1237 [sync] PR-1194:  fix memleak with efi_fake_mem
+- ipv6: sr: fix out-of-bounds read when setting HMAC data.
+- !1274 [sync] PR-1253:  media: saa7134: fix use after free bug in saa7134_finidev due to race condition
+- !1303 [sync] PR-1283:  media: dm1105: Fix use after free bug in dm1105_remove due to race condition
+- !1299 [sync] PR-1270:  media: dvb-core: Fix kernel WARNING for blocking operation in wait_event*()
+- !1269  arm64: Add AMPERE1 to the Spectre-BHB affected list
+- !1264 [sync] PR-1261:  usb: gadget: udc: renesas_usb3: Fix use after free bug in renesas_usb3_remove due to race condition
+- media: dm1105: Fix use after free bug in dm1105_remove due to race condition
+- !1187 [sync] PR-1177:  net/sched: flower: fix possible OOB write in fl_set_geneve_opt()
+- media: dvb-core: Fix kernel WARNING for blocking operation in wait_event*()
+- media: saa7134: fix use after free bug in saa7134_finidev due to race condition
+- !1202 [sync] PR-1148: LoongArch: cleanup swiotlb bakcup buffer related code
+- arm64: Add AMPERE1 to the Spectre-BHB affected list
+- !1255 [sync] PR-1247:  HID: intel_ish-hid: Add check for ishtp_dma_tx_map
+- !1128 [sync] PR-1077:  drm/qxl: Fix missing free_irq
+- usb: gadget: udc: renesas_usb3: Fix use after free bug in renesas_usb3_remove due to race condition
+- HID: intel_ish-hid: Add check for ishtp_dma_tx_map
+- config: Disable EFI_FAKE_MEMMAP support for arm64 by default
+- efi: Fix UAF for arm64 when enable efi_fake_mem
+- Revert "LoongArch: Add ARCH_HAS_SETUP_DMA_OPS and DMA_OPS"
+- Revert "LoongArch: Add swiotlb backups buffer"
+- net/sched: flower: fix possible OOB write in fl_set_geneve_opt()
+- drm/qxl: Fix missing free_irq
+
 * Thu Jun 29 2023 Shi Kemeng <shikemeng@huawei.com> - 5.10.0-60.100.0.125
 - use full version-release instead of devel_release for mkgrub-menu
 
