@@ -625,6 +625,8 @@ static void ext4_netlink_send_info(struct super_block *sb, int ext4_errno)
 	struct ext4_err_msg *msg;
 
 	if (ext4nl) {
+		if (IS_EXT2_SB(sb))
+			return;
 		size = NLMSG_SPACE(sizeof(struct ext4_err_msg));
 		skb = alloc_skb(size, GFP_ATOMIC);
 		if (!skb) {
@@ -636,7 +638,10 @@ static void ext4_netlink_send_info(struct super_block *sb, int ext4_errno)
 		if (!nlh)
 			goto nlmsg_failure;
 		msg = (struct ext4_err_msg *)NLMSG_DATA(nlh);
-		msg->magic = EXT4_ERROR_MAGIC;
+		if (IS_EXT3_SB(sb))
+			msg->magic = EXT3_ERROR_MAGIC;
+		else
+			msg->magic = EXT4_ERROR_MAGIC;
 		memcpy(msg->s_id, sb->s_id, sizeof(sb->s_id));
 		msg->s_flags = sb->s_flags;
 		msg->ext4_errno = ext4_errno;
@@ -709,6 +714,7 @@ static void ext4_handle_error(struct super_block *sb, bool force_ro, int error,
 	 * disabled.
 	 */
 	if (test_opt(sb, ERRORS_PANIC) && !system_going_down()) {
+		ext4_netlink_send_info(sb, 1);
 		panic("EXT4-fs (device %s): panic forced after error\n",
 			sb->s_id);
 	}
