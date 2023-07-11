@@ -2,9 +2,11 @@
 // Copyright (c) 2021-2021 Hisilicon Limited.
 
 #include "hnae3.h"
+#include "hclge_cmd.h"
 #include "hclge_comm_cmd.h"
 
-static bool hclge_is_elem_in_array(const u16 *spec_opcode, u32 size, u16 opcode)
+static void hclge_comm_cmd_config_regs(struct hclge_comm_hw *hw,
+				       struct hclge_comm_cmq_ring *ring)
 {
 	dma_addr_t dma = ring->desc_dma_addr;
 	u32 reg_val;
@@ -226,40 +228,40 @@ int hclge_comm_cmd_query_version_and_capability(struct hnae3_ae_dev *ae_dev,
 					 HNAE3_PCI_REVISION_BIT_SIZE;
 	ae_dev->dev_version |= ae_dev->pdev->revision;
 
-	for (i = 0; i < size; i++) {
-		if (spec_opcode[i] == opcode)
-			return true;
+	if (ae_dev->dev_version == HNAE3_DEVICE_VERSION_V2) {
+		hclge_comm_set_default_capability(ae_dev, is_pf);
+		return 0;
 	}
+
+	hclge_comm_parse_capability(ae_dev, is_pf, resp);
 
 	return false;
 }
 
-static const u16 pf_spec_opcode[] = { HCLGE_COMM_OPC_STATS_64_BIT,
-				      HCLGE_COMM_OPC_STATS_32_BIT,
-				      HCLGE_COMM_OPC_STATS_MAC,
-				      HCLGE_COMM_OPC_STATS_MAC_ALL,
-				      HCLGE_COMM_OPC_QUERY_32_BIT_REG,
-				      HCLGE_COMM_OPC_QUERY_64_BIT_REG,
-				      HCLGE_COMM_QUERY_CLEAR_MPF_RAS_INT,
-				      HCLGE_COMM_QUERY_CLEAR_PF_RAS_INT,
-				      HCLGE_COMM_QUERY_CLEAR_ALL_MPF_MSIX_INT,
-				      HCLGE_COMM_QUERY_CLEAR_ALL_PF_MSIX_INT,
-				      HCLGE_COMM_QUERY_ALL_ERR_INFO };
+static const u16 spec_opcode[] = { HCLGE_OPC_STATS_64_BIT,
+				   HCLGE_OPC_STATS_32_BIT,
+				   HCLGE_OPC_STATS_MAC,
+				   HCLGE_OPC_STATS_MAC_ALL,
+				   HCLGE_OPC_QUERY_32_BIT_REG,
+				   HCLGE_OPC_QUERY_64_BIT_REG,
+				   HCLGE_QUERY_CLEAR_MPF_RAS_INT,
+				   HCLGE_QUERY_CLEAR_PF_RAS_INT,
+				   HCLGE_QUERY_CLEAR_ALL_MPF_MSIX_INT,
+				   HCLGE_QUERY_CLEAR_ALL_PF_MSIX_INT,
+				   HCLGE_QUERY_ALL_ERR_INFO };
 
-static const u16 vf_spec_opcode[] = { HCLGE_COMM_OPC_STATS_64_BIT,
-				      HCLGE_COMM_OPC_STATS_32_BIT,
-				      HCLGE_COMM_OPC_STATS_MAC };
-
-static bool hclge_comm_is_special_opcode(u16 opcode, bool is_pf)
+static bool hclge_comm_is_special_opcode(u16 opcode)
 {
 	/* these commands have several descriptors,
 	 * and use the first one to save opcode and return value
 	 */
-	const u16 *spec_opcode = is_pf ? pf_spec_opcode : vf_spec_opcode;
-	u32 size = is_pf ? ARRAY_SIZE(pf_spec_opcode) :
-				ARRAY_SIZE(vf_spec_opcode);
+	u32 i;
 
-	return hclge_is_elem_in_array(spec_opcode, size, opcode);
+	for (i = 0; i < ARRAY_SIZE(spec_opcode); i++)
+		if (spec_opcode[i] == opcode)
+			return true;
+
+	return false;
 }
 
 static int hclge_comm_ring_space(struct hclge_comm_cmq_ring *ring)
@@ -389,7 +391,7 @@ static int hclge_comm_cmd_convert_err_code(u16 desc_ret)
 
 static int hclge_comm_cmd_check_retval(struct hclge_comm_hw *hw,
 				       struct hclge_desc *desc, int num,
-				       int ntc, bool is_pf)
+				       int ntc)
 {
 	u16 opcode, desc_ret;
 	int handle;
@@ -401,7 +403,7 @@ static int hclge_comm_cmd_check_retval(struct hclge_comm_hw *hw,
 		if (ntc >= hw->cmq.csq.desc_num)
 			ntc = 0;
 	}
-	if (likely(!hclge_comm_is_special_opcode(opcode, is_pf)))
+	if (likely(!hclge_comm_is_special_opcode(opcode)))
 		desc_ret = le16_to_cpu(desc[num - 1].retval);
 	else
 		desc_ret = le16_to_cpu(desc[0].retval);
@@ -413,7 +415,7 @@ static int hclge_comm_cmd_check_retval(struct hclge_comm_hw *hw,
 
 static int hclge_comm_cmd_check_result(struct hclge_comm_hw *hw,
 				       struct hclge_desc *desc,
-				       int num, int ntc, bool is_pf)
+				       int num, int ntc)
 {
 	bool is_completed = false;
 	int handle, ret;
@@ -428,7 +430,7 @@ static int hclge_comm_cmd_check_result(struct hclge_comm_hw *hw,
 	if (!is_completed)
 		ret = -EBADE;
 	else
-		ret = hclge_comm_cmd_check_retval(hw, desc, num, ntc, is_pf);
+		ret = hclge_comm_cmd_check_retval(hw, desc, num, ntc);
 
 	/* Clean the command send queue */
 	handle = hclge_comm_cmd_csq_clean(hw);
@@ -451,7 +453,7 @@ static int hclge_comm_cmd_check_result(struct hclge_comm_hw *hw,
  * sends the queue, cleans the queue, etc
  **/
 int hclge_comm_cmd_send(struct hclge_comm_hw *hw, struct hclge_desc *desc,
-			int num, bool is_pf)
+			int num)
 {
 	struct hclge_comm_cmq_ring *csq = &hw->cmq.csq;
 	int ret;
@@ -486,7 +488,7 @@ int hclge_comm_cmd_send(struct hclge_comm_hw *hw, struct hclge_desc *desc,
 	hclge_comm_write_dev(hw, HCLGE_COMM_NIC_CSQ_TAIL_REG,
 			     hw->cmq.csq.next_to_use);
 
-	ret = hclge_comm_cmd_check_result(hw, desc, num, ntc, is_pf);
+	ret = hclge_comm_cmd_check_result(hw, desc, num, ntc);
 
 	spin_unlock_bh(&hw->cmq.csq.lock);
 

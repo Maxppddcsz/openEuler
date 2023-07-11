@@ -18,16 +18,6 @@ static nic_event_fn_t nic_event_call;
  */
 static DEFINE_MUTEX(hclge_nic_event_lock);
 
-void hclge_comm_cmd_reuse_desc(struct hclge_desc *desc, bool is_read)
-{
-	desc->flag = cpu_to_le16(HCLGE_COMM_CMD_FLAG_NO_INTR |
-				 HCLGE_COMM_CMD_FLAG_IN);
-	if (is_read)
-		desc->flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_WR);
-	else
-		desc->flag &= cpu_to_le16(~HCLGE_COMM_CMD_FLAG_WR);
-}
-
 static int hclge_clean_stats64(struct hclge_dev *hdev, void *data,
 			       size_t length)
 {

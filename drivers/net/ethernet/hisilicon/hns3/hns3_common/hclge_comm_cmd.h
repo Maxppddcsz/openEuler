@@ -5,7 +5,6 @@
 #define __HCLGE_COMM_CMD_H
 #include <linux/types.h>
 
-#include "hclge_cmd.h"
 #include "hnae3.h"
 
 #define HCLGE_COMM_CMD_FLAG_IN			BIT(0)
@@ -135,6 +134,14 @@ struct hclge_comm_errcode {
 	int common_errno;
 };
 
+#define HCLGE_COMM_QUERY_CAP_LENGTH		3
+struct hclge_comm_query_version_cmd {
+	__le32 firmware;
+	__le32 hardware;
+	__le32 api_caps;
+	__le32 caps[HCLGE_COMM_QUERY_CAP_LENGTH]; /* capabilities of device */
+};
+
 #define HCLGE_DESC_DATA_LEN		6
 struct hclge_desc {
 	__le16 opcode;
@@ -203,7 +210,7 @@ int hclge_comm_cmd_query_version_and_capability(struct hnae3_ae_dev *ae_dev,
 						u32 *fw_version, bool is_pf);
 int hclge_comm_alloc_cmd_queue(struct hclge_comm_hw *hw, int ring_type);
 int hclge_comm_cmd_send(struct hclge_comm_hw *hw, struct hclge_desc *desc,
-			int num, bool is_pf);
+			int num);
 int hclge_comm_firmware_compat_config(struct hnae3_ae_dev *ae_dev,
 				      struct hclge_comm_hw *hw, bool en);
 void hclge_comm_free_cmd_desc(struct hclge_comm_cmq_ring *ring);
