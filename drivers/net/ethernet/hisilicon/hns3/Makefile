@@ -48,6 +48,7 @@ HCLGE_OBJ_IT_MAIN	=	hns3_extension/hns3pf/hclge_main_it.o \
 obj-$(CONFIG_HNS3_HCLGE) += hclge.o
 hclge-objs := $(HCLGE_OBJ) $(HCLGE_OBJ_IT_MAIN)
 hclge-objs += hns3pf/hclge_ext.o
+hclge-objs += hns3_common/hclge_comm_cmd.o
 
 hclge-$(CONFIG_HNS3_DCB) += hns3pf/hclge_dcb.o
 #### compile hclgevf.ko
