@@ -274,7 +274,8 @@ static void * __init find_section32(Elf32_Ehdr *ehdr, const char *secname,
 			return (void *)ehdr + sechdrs[i].sh_offset;
 		}
 	}
-	*size = 0;
+    if(size)
+	    *size = 0;
 	return NULL;
 }
 
