@@ -417,9 +417,9 @@ struct ethtool_ops {
 			      struct ethtool_eeprom *, u8 *);
 	int	(*get_coalesce)(struct net_device *, struct ethtool_coalesce *);
 	int	(*set_coalesce)(struct net_device *, struct ethtool_coalesce *);
-	void	(*get_ringparam)(struct net_device *,
+	void    (*get_ringparam)(struct net_device *,
 				 struct ethtool_ringparam *);
-	int	(*set_ringparam)(struct net_device *,
+	int     (*set_ringparam)(struct net_device *,
 				 struct ethtool_ringparam *);
 	void	(*get_pauseparam)(struct net_device *,
 				  struct ethtool_pauseparam*);
