@@ -419,6 +419,12 @@ struct ethtool_ops {
 			      struct ethtool_eeprom *, u8 *);
 	int	(*get_coalesce)(struct net_device *, struct ethtool_coalesce *);
 	int	(*set_coalesce)(struct net_device *, struct ethtool_coalesce *);
+#ifdef __GENKSYMS__
+	void    (*get_ringparam)(struct net_device *,
+				 struct ethtool_ringparam *);
+	int     (*set_ringparam)(struct net_device *,
+				 struct ethtool_ringparam *);
+#else
 	void	(*get_ringparam)(struct net_device *,
 				 struct ethtool_ringparam *,
 				 struct kernel_ethtool_ringparam *,
@@ -427,6 +433,7 @@ struct ethtool_ops {
 				 struct ethtool_ringparam *,
 				 struct kernel_ethtool_ringparam *,
 				 struct netlink_ext_ack *);
+#endif
 	void	(*get_pauseparam)(struct net_device *,
 				  struct ethtool_pauseparam*);
 	int	(*set_pauseparam)(struct net_device *,
