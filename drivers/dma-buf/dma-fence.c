@@ -104,10 +104,10 @@ int dma_fence_signal_locked(struct dma_fence *fence)
 	struct dma_fence_cb *cur, *tmp;
 	int ret = 0;
 
-	lockdep_assert_held(fence->lock);
-
 	if (WARN_ON(!fence))
 		return -EINVAL;
+
+	lockdep_assert_held(fence->lock);
 
 	if (test_and_set_bit(DMA_FENCE_FLAG_SIGNALED_BIT, &fence->flags)) {
 		ret = -EINVAL;
