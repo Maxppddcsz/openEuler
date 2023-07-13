@@ -35,9 +35,11 @@ struct devlink {
 	struct device *dev;
 	possible_net_t _net;
 	struct mutex lock;
+#ifndef __GENKSYMS__
 	u8 reload_failed:1,
 	   reload_enabled:1,
 	   registered:1;
+#endif
 	char priv[0] __aligned(NETDEV_ALIGN);
 };
 
