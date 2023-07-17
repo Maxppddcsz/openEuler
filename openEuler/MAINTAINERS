@@ -215,6 +215,12 @@ S:	Maintained
 F:	Documentation/scsi/sssraid.rst
 F:	drivers/scsi/sssraid/
 
+ZHAOXIN I2C BUSSES DRIVERS
+M:	Leoliu-oc <leoliu-oc@zhaoxin.com>
+L:	kernel@openeuler.org
+S:	Maintained
+F:	drivers/i2c/busses/i2c-zhaoxin.c
+
 UB DRIVER
 M:	Chunzhi Hu <huchunzhi@huawei.com>
 M:	delong ouyang <ouyangdelong@huawei.com>
