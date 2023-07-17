@@ -215,6 +215,13 @@ S:	Maintained
 F:	Documentation/scsi/sssraid.rst
 F:	drivers/scsi/sssraid/
 
+ZHAOXIN PROCESSOR SUPPORT
+M:	LeoLiu-oc <leoliu-oc@zhaoxin.com>
+L:	kernel@openeuler.org
+S:	Maintained
+F:	drivers/crypto/zhaoxin-aes.c
+F:	drivers/crypto/zhaoxin-sha.c
+
 UB DRIVER
 M:	Chunzhi Hu <huchunzhi@huawei.com>
 M:	delong ouyang <ouyangdelong@huawei.com>
