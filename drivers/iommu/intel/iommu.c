@@ -3740,6 +3740,12 @@ static void *intel_alloc_coherent(struct device *dev, size_t size,
 	struct page *page = NULL;
 	int order;
 
+#ifdef CONFIG_X86
+	nodemask_t nodemask;
+
+	nodes_clear(nodemask);
+#endif
+
 	if (unlikely(attach_deferred(dev)))
 		do_deferred_attach(dev);
 
@@ -3753,8 +3759,28 @@ static void *intel_alloc_coherent(struct device *dev, size_t size,
 						 flags & __GFP_NOWARN);
 	}
 
-	if (!page)
+	if (!page) {
+#ifdef CONFIG_X86
+		if (zhaoxin_p2cw_patch_en == true) {
+			if (dev_to_node(dev) == NUMA_NO_NODE) {
+				page = __alloc_pages(flags, order,
+						numa_mem_id(), NULL);
+			} else {
+				if (!(flags & (GFP_DMA | GFP_DMA32))) {
+					node_set(dev_to_node(dev), nodemask);
+					page = __alloc_pages(flags | __GFP_HIGH, order,
+						dev_to_node(dev), &nodemask);
+				} else
+					page = __alloc_pages(flags | __GFP_HIGH, order,
+						dev_to_node(dev), NULL);
+			}
+			goto check_alloc;
+		}
+#endif
 		page = alloc_pages(flags, order);
+	}
+
+check_alloc:
 	if (!page)
 		return NULL;
 	memset(page_address(page), 0, size);

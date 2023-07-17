@@ -257,6 +257,11 @@ int __init dma_contiguous_reserve_area(phys_addr_t size, phys_addr_t base,
 struct page *dma_alloc_from_contiguous(struct device *dev, size_t count,
 				       unsigned int align, bool no_warn)
 {
+#if defined(CONFIG_X86) && defined(CONFIG_PCI)
+	if (zhaoxin_p2cw_patch_en == true)
+		return NULL;
+#endif
+
 	if (align > CONFIG_CMA_ALIGNMENT)
 		align = CONFIG_CMA_ALIGNMENT;
 
@@ -305,6 +310,11 @@ struct page *dma_alloc_contiguous(struct device *dev, size_t size, gfp_t gfp)
 {
 #ifdef CONFIG_DMA_PERNUMA_CMA
 	int nid = dev_to_node(dev);
+#endif
+
+#if defined(CONFIG_X86) && defined(CONFIG_PCI)
+	if (zhaoxin_p2cw_patch_en == true)
+		return NULL;
 #endif
 
 	/* CMA can be used only in the context which permits sleeping */
