@@ -31,4 +31,30 @@ static inline pgprot_t arch_vmap_pgprot_tagged(pgprot_t prot)
 	return pgprot_tagged(prot);
 }
 
+#ifdef CONFIG_RANDOMIZE_BASE
+extern u64 module_alloc_base;
+#define arch_vmap_skip_module_region arch_vmap_skip_module_region
+static inline void arch_vmap_skip_module_region(unsigned long *addr,
+						unsigned long vstart,
+						unsigned long size,
+						unsigned long align)
+{
+	u64 module_alloc_end = module_alloc_base + MODULES_VSIZE;
+
+	if (vstart == module_alloc_base)
+		return;
+
+	if (IS_ENABLED(CONFIG_KASAN_GENERIC) ||
+	    IS_ENABLED(CONFIG_KASAN_SW_TAGS))
+		/* don't exceed the static module region - see module_alloc() */
+		module_alloc_end = MODULES_END;
+
+	if ((module_alloc_base >= *addr + size) ||
+	    (module_alloc_end <= *addr))
+		return;
+
+	*addr = ALIGN(module_alloc_end, align);
+}
+#endif
+
 #endif /* _ASM_ARM64_VMALLOC_H */
