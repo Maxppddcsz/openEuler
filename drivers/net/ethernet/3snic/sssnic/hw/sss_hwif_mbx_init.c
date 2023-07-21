@@ -18,14 +18,13 @@
 #include "sss_hwif_mbx.h"
 #include "sss_csr.h"
 #include "sss_common.h"
+#include "sss_adapter_mgmt.h"
 
 #define SSS_MBX_WB_STATUS_SIZE			16UL
 
 #define SSS_MBX_DMA_MSG_QUEUE_DEPTH	32
 
 #define SSS_MBX_WQ_NAME				"sss_mbx"
-
-#define SSS_MAX_FUNC					4096
 
 #define SSS_MBX_AREA(hwif)				\
 	((hwif)->cfg_reg_base + SSS_HW_CSR_MBX_DATA_OFF)
