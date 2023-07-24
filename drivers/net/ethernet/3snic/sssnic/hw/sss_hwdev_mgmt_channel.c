@@ -318,10 +318,10 @@ static void sss_print_chip_fault(struct sss_hwdev *hwdev,
 		level_str = SSS_FAULT_LEVEL_STR_UNKNOWN;
 
 	if (err_level == SSS_FAULT_LEVEL_SERIOUS_FLR)
-		dev_err(hwdev->dev_hdl, "Err_level: %u [%s], func_id: %u\n",
+		sdk_err(hwdev->dev_hdl, "Err_level: %u [%s], func_id: %u\n",
 			err_level, level_str, fault_event->info.chip.func_id);
 
-	dev_err(hwdev->dev_hdl, "Node_id: 0x%x, err_type: 0x%x, err_level: %u[%s], err_csr_addr: 0x%08x, err_csr_value: 0x%08x\n",
+	sdk_err(hwdev->dev_hdl, "Node_id: 0x%x, err_type: 0x%x, err_level: %u[%s], err_csr_addr: 0x%08x, err_csr_value: 0x%08x\n",
 		fault_event->info.chip.node_id, fault_event->info.chip.err_type,
 		err_level, level_str,
 		fault_event->info.chip.err_csr_addr, fault_event->info.chip.err_csr_value);

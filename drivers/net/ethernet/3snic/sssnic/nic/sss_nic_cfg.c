@@ -1100,3 +1100,48 @@ get_rq_info_error:
 	return ret;
 }
 
+int sss_nic_set_pf_rate(void *hwdev, u8 speed_level)
+{
+	struct sss_nic_mbx_tx_rate_cfg rate_cfg = {{0}};
+	struct sss_nic_io *nic_io = NULL;
+	u16 out_size = sizeof(rate_cfg);
+	u32 pf_rate;
+	int err;
+	u32 speed_convert[SSSNIC_PORT_SPEED_UNKNOWN] = {
+		0, 10, 100, 1000, 10000, 25000, 40000, 50000, 100000, 200000
+	};
+
+	nic_io = sss_get_service_adapter(hwdev, SSS_SERVICE_TYPE_NIC);
+	if (!nic_io)
+		return -EINVAL;
+
+	if (speed_level >= SSSNIC_PORT_SPEED_UNKNOWN) {
+		nic_err(nic_io->dev_hdl, "Invalid speed level: %hhu\n", speed_level);
+		return -EINVAL;
+	}
+
+	if (nic_io->mag_cfg.pf_bw_limit == SSSNIC_PF_LIMIT_BW_MAX) {
+		pf_rate = 0;
+	} else {
+		/* divided by 100 to convert to percentage */
+		pf_rate = (speed_convert[speed_level] / 100) * nic_io->mag_cfg.pf_bw_limit;
+		/* bandwidth limit is very small but not unlimit in this case */
+		if (pf_rate == 0 && speed_level != SSSNIC_PORT_SPEED_NOT_SET)
+			pf_rate = 1;
+	}
+
+	rate_cfg.func_id = sss_get_global_func_id(hwdev);
+	rate_cfg.min_rate = 0;
+	rate_cfg.max_rate = pf_rate;
+
+	err = sss_nic_l2nic_msg_to_mgmt_sync(hwdev, SSSNIC_MBX_OPCODE_SET_MAX_MIN_RATE, &rate_cfg,
+					     sizeof(rate_cfg), &rate_cfg, &out_size);
+	if (err || !out_size || rate_cfg.head.state) {
+		nic_err(nic_io->dev_hdl, "Failed to set rate(%u), err: %d, status: 0x%x, out size: 0x%x\n",
+			pf_rate, err, rate_cfg.head.state, out_size);
+		return rate_cfg.head.state ? rate_cfg.head.state : -EIO;
+	}
+
+	return 0;
+}
+
