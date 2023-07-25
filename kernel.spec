@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .103.0
-%global pkg_release         .130
+%global maintenance_release .104.0
+%global pkg_release         .131
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,26 @@ fi
 %endif
 
 %changelog
+* Tue Jul 25 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.104.0.131
+- !1524 [sync] PR-1482:  CVE-2023-3567 fix patches
+- !1337 [sync] PR-1335:  bpf: Fix incorrect verifier pruning due to missing register precision taints
+- vc_screen: modify vcs_size() handling in vcs_read()
+- vc_screen: don't clobber return value in vcs_read
+- vc_screen: move load of struct vc_data pointer in vcs_read() to avoid UAF
+- !1515  Fix CDM node problems
+- mm: fix alloc CDM node memory for MPOL_BIND
+- mm: fix ignore cpuset enforcement
+- !1489 [sync] PR-1476:  ipv6/addrconf: fix a potential refcount underflow for idev
+- !1485 [sync] PR-1452:  media: dvb-core: Fix use-after-free due on race condition at dvb_net
+- !1494 [sync] PR-1445:  netfilter: nf_tables: prevent OOB access in nft_byteorder_eval
+- netfilter: nf_tables: prevent OOB access in nft_byteorder_eval
+- ipv6/addrconf: fix a potential refcount underflow for idev
+- media: dvb-core: Fix use-after-free due on race condition at dvb_net
+- !1371 [sync] PR-1254:  Two CVE fixes of ksmbd
+- ksmbd: fix NULL pointer dereference in smb2_get_info_filesystem()
+- ksmbd: fix memleak in session setup
+- bpf: Fix incorrect verifier pruning due to missing register precision taints
+
 * Wed Jul 19 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.103.0.130
 - !1289 [sync] PR-1262:  drm/msm/dpu: Add check for pstates
 - !1455 [sync] PR-1358:  Remove DECnet support from kernel
