@@ -17,5 +17,10 @@ extern const struct file_operations proc_mounts_operations;
 extern const struct file_operations proc_mountinfo_operations;
 extern const struct file_operations proc_mountstats_operations;
 
+#ifdef CONFIG_CORE_PATTERN_ISOLATION
+#include <linux/types.h>
+extern char *mnt_ns_core_pattern(struct mnt_namespace *mnt);
+#endif
+
 #endif
 #endif
