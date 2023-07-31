@@ -4,6 +4,9 @@
 #include <linux/poll.h>
 #include <linux/ns_common.h>
 #include <linux/fs_pin.h>
+#ifdef CONFIG_CORE_PATTERN_ISOLATION
+#include <linux/binfmts.h>
+#endif
 
 struct mnt_namespace {
 	atomic_t		count;
@@ -23,6 +26,9 @@ struct mnt_namespace {
 	u64 event;
 	unsigned int		mounts; /* # of mounts in the namespace */
 	unsigned int		pending_mounts;
+#ifdef CONFIG_CORE_PATTERN_ISOLATION
+	char			core_pattern[CORENAME_MAX_SIZE];
+#endif
 } __randomize_layout;
 
 struct mnt_pcp {
