@@ -14,6 +14,10 @@
 extern int iommu_merge;
 extern int panic_on_overflow;
 
+#ifdef CONFIG_PCI
+extern bool is_zhaoxin_kh40000;
+#endif
+
 extern const struct dma_map_ops *dma_ops;
 
 static inline const struct dma_map_ops *get_arch_dma_ops(struct bus_type *bus)
