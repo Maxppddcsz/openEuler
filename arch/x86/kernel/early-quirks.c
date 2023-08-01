@@ -679,6 +679,7 @@ static void zhaoxin_platform_check(int num, int slot, int func)
 	revision = read_pci_config_byte(num, slot, func, PCI_REVISION_ID);
 	if (revision == 0x10) {
 		is_zhaoxin_kh40000 = true;
+		dma_ops = &kh40000_direct_dma_ops;
 		found = true;
 		pr_info("KH-40000 DMA patch enabled\n");
 	}
