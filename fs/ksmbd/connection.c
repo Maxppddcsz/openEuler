@@ -309,14 +309,13 @@ int ksmbd_conn_handler_loop(void *p)
 		}
 
 		/* 4 for rfc1002 length field */
-		size = pdu_size + 4;
+		/* 1 for implied bcc[0] */
+		size = pdu_size + 4 + 1;
 		conn->request_buf = kvmalloc(size, GFP_KERNEL);
 		if (!conn->request_buf)
 			continue;
 
 		memcpy(conn->request_buf, hdr_buf, sizeof(hdr_buf));
-		if (!ksmbd_smb_request(conn))
-			break;
 
 		/*
 		 * We already read 4 bytes to find out PDU size, now
@@ -333,6 +332,9 @@ int ksmbd_conn_handler_loop(void *p)
 			       size, pdu_size);
 			continue;
 		}
+
+		if (!ksmbd_smb_request(conn))
+			break;
 
 		if (!default_conn_ops.process_fn) {
 			pr_err("No connection request callback\n");
