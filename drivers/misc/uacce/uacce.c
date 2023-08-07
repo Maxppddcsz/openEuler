@@ -594,8 +594,8 @@ static int uacce_mmap_dma_buffers(struct uacce_queue *q,
 					slice[i].dma,
 					slice[i].size);
 		if (ret) {
-			dev_err(pdev, "dma mmap fail(dma=0x%llx,size=0x%llx)!\n",
-				slice[i].dma, slice[i].size);
+			dev_err(pdev, "dma mmap fail(slice num=%d,size=0x%llx)!\n",
+				i, slice[i].size);
 			goto DMA_MMAP_FAIL;
 		}
 
@@ -846,10 +846,11 @@ static ssize_t dev_state_show(struct device *dev,
 static ssize_t node_id_show(struct device *dev,
 			    struct device_attribute *attr, char *buf)
 {
-	struct uacce_device *uacce = to_uacce_device(dev);
 	int node_id = -1;
 
 #ifdef CONFIG_NUMA
+	struct uacce_device *uacce = to_uacce_device(dev);
+
 	node_id = uacce->parent->numa_node;
 #endif
 	return sysfs_emit(buf, "%d\n", node_id);
@@ -858,10 +859,11 @@ static ssize_t node_id_show(struct device *dev,
 static ssize_t numa_distance_show(struct device *dev,
 				  struct device_attribute *attr, char *buf)
 {
-	struct uacce_device *uacce = to_uacce_device(dev);
 	int distance = 0;
 
 #ifdef CONFIG_NUMA
+	struct uacce_device *uacce = to_uacce_device(dev);
+
 	distance = node_distance(uacce->parent->numa_node,
 		cpu_to_node(smp_processor_id()));
 #endif
