@@ -968,7 +968,7 @@ __mod_timer(struct timer_list *timer, unsigned long expires, unsigned int option
 	unsigned long clk = 0, flags;
 	int ret = 0;
 
-	BUG_ON(!timer->function);
+	debug_assert_init(timer);
 
 	/*
 	 * This is a common optimization triggered by the networking code - if
@@ -995,6 +995,14 @@ __mod_timer(struct timer_list *timer, unsigned long expires, unsigned int option
 		 * dequeue/enqueue dance.
 		 */
 		base = lock_timer_base(timer, &flags);
+		/*
+		 * Has @timer been shutdown? This needs to be evaluated
+		 * while holding base lock to prevent a race against the
+		 * shutdown code.
+		 */
+		if (!timer->function)
+			goto out_unlock;
+
 		forward_timer_base(base);
 
 		if (timer_pending(timer) && (options & MOD_TIMER_REDUCE) &&
@@ -1021,6 +1029,14 @@ __mod_timer(struct timer_list *timer, unsigned long expires, unsigned int option
 		}
 	} else {
 		base = lock_timer_base(timer, &flags);
+		/*
+		 * Has @timer been shutdown? This needs to be evaluated
+		 * while holding base lock to prevent a race against the
+		 * shutdown code.
+		 */
+		if (!timer->function)
+			goto out_unlock;
+
 		forward_timer_base(base);
 	}
 
@@ -1083,6 +1099,8 @@ out_unlock:
  * but will not re-activate and modify already deleted timers.
  *
  * It is useful for unserialized use of timers.
+ * If @timer->function == NULL then the start operation is silently
+ * discarded.
  */
 int mod_timer_pending(struct timer_list *timer, unsigned long expires)
 {
@@ -1109,6 +1127,9 @@ EXPORT_SYMBOL(mod_timer_pending);
  * The function returns whether it has modified a pending timer or not.
  * (ie. mod_timer() of an inactive timer returns 0, mod_timer() of an
  * active timer returns 1.)
+ *
+ * If @timer->function == NULL then the start operation is silently
+ * discarded. In this case the return value is 0 and meaningless.
  */
 int mod_timer(struct timer_list *timer, unsigned long expires)
 {
@@ -1124,6 +1145,9 @@ EXPORT_SYMBOL(mod_timer);
  * timer_reduce() is very similar to mod_timer(), except that it will only
  * modify a running timer if that would reduce the expiration time (it will
  * start a timer that isn't running).
+ *
+ * If @timer->function == NULL then the start operation is silently
+ * discarded.
  */
 int timer_reduce(struct timer_list *timer, unsigned long expires)
 {
@@ -1141,6 +1165,9 @@ EXPORT_SYMBOL(timer_reduce);
  *
  * The timer's ->expires, ->function fields must be set prior calling this
  * function.
+ *
+ * If @timer->function == NULL then the start operation is silently
+ * discarded.
  *
  * Timers with an ->expires field in the past will be executed in the next
  * timer tick.
@@ -1165,7 +1192,9 @@ void add_timer_on(struct timer_list *timer, int cpu)
 	struct timer_base *new_base, *base;
 	unsigned long flags;
 
-	if (WARN_ON_ONCE(timer_pending(timer) || !timer->function))
+	debug_assert_init(timer);
+
+	if (WARN_ON_ONCE(timer_pending(timer)))
 		return;
 
 	new_base = get_timer_cpu_base(timer->flags, cpu);
@@ -1176,6 +1205,13 @@ void add_timer_on(struct timer_list *timer, int cpu)
 	 * wrong base locked.  See lock_timer_base().
 	 */
 	base = lock_timer_base(timer, &flags);
+	/*
+	 * Has @timer been shutdown? This needs to be evaluated while
+	 * holding base lock to prevent a race against the shutdown code.
+	 */
+	if (!timer->function)
+		goto out_unlock;
+
 	if (base != new_base) {
 		timer->flags |= TIMER_MIGRATING;
 
@@ -1189,6 +1225,7 @@ void add_timer_on(struct timer_list *timer, int cpu)
 
 	debug_activate(timer, timer->expires);
 	internal_add_timer(base, timer);
+out_unlock:
 	raw_spin_unlock_irqrestore(&base->lock, flags);
 }
 EXPORT_SYMBOL_GPL(add_timer_on);
@@ -1368,6 +1405,12 @@ static void expire_timers(struct timer_base *base, struct hlist_head *head)
 		detach_timer(timer, true);
 
 		fn = timer->function;
+
+		if (WARN_ON_ONCE(!fn)) {
+			/* Should never happen. Emphasis on should! */
+			base->running_timer = NULL;
+			continue;
+		}
 
 		if (timer->flags & TIMER_IRQSAFE) {
 			raw_spin_unlock(&base->lock);
