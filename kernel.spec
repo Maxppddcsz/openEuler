@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .105.0
-%global pkg_release         .132
+%global maintenance_release .106.0
+%global pkg_release         .133
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,19 @@ fi
 %endif
 
 %changelog
+* Wed Aug 09 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.106.0.133
+- !1702 [sync] PR-1682:  netfilter: nft_set_pipapo: fix improper element removal
+- !1674 [sync] PR-1596:  ksmbd: fix out-of-bound read in deassemble_neg_contexts()
+- netfilter: nft_set_pipapo: fix improper element removal
+- !1656  Revert "arm64/mpam: Fix mpam corrupt when cpu online"
+- !1640 [sync] PR-1551:  ksmbd: allocate one more byte for implied bcc[0
+- !1664 [sync] PR-1605:  CVE-2023-38430
+- ksmbd: fix out-of-bound read in deassemble_neg_contexts()
+- ksmbd: validate smb request protocol id
+- ksmbd: define SMB2_COMPRESSION_TRANSFORM_ID in fs/ksmbd/smb2pdu.h
+- Revert "arm64/mpam: Fix mpam corrupt when cpu online"
+- ksmbd: allocate one more byte for implied bcc[0]
+
 * Thu Aug 03 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.105.0.132
 - !1587 [sync] PR-1557:  net/sched: cls_fw: Fix improper refcount update leads to use-after-free
 - !1582 [sync] PR-1480:  ksmbd: fix wrong UserName check in session_user
