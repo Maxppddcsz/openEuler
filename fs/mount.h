@@ -5,7 +5,9 @@
 #include <linux/ns_common.h>
 #include <linux/fs_pin.h>
 #ifdef CONFIG_CORE_PATTERN_ISOLATION
+#ifndef __GENKSYMS__
 #include <linux/binfmts.h>
+#endif
 #endif
 
 struct mnt_namespace {
@@ -27,7 +29,7 @@ struct mnt_namespace {
 	unsigned int		mounts; /* # of mounts in the namespace */
 	unsigned int		pending_mounts;
 #ifdef CONFIG_CORE_PATTERN_ISOLATION
-	char			core_pattern[CORENAME_MAX_SIZE];
+	KABI_EXTEND(char core_pattern[CORENAME_MAX_SIZE])
 #endif
 } __randomize_layout;
 
