@@ -752,6 +752,7 @@ static inline bool mem_cgroup_swap_full(struct folio *folio)
 	return vm_swap_full();
 }
 #endif
+extern unsigned long reclaim_pages(struct list_head *folio_list);
 
 #endif /* __KERNEL__*/
 #endif /* _LINUX_SWAP_H */
