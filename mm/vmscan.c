@@ -8148,8 +8148,7 @@ int add_page_for_swap(struct page *page, struct list_head *pagelist)
 		return -EACCES;
 
 	head = compound_head(page);
-	err = isolate_lru_page(head);
-	if (err) {
+	if (!folio_isolate_lru(page_folio(head))) {
 		put_page(page);
 		return err;
 	}
@@ -8178,7 +8177,7 @@ struct page *get_page_from_vaddr(struct mm_struct *mm, unsigned long vaddr)
 		return NULL;
 	}
 
-	follflags = FOLL_GET | FOLL_DUMP;
+	follflags = FOLL_GET | FOLL_DUMP | FOLL_FORCE;
 	page = follow_page(vma, vaddr, follflags);
 	if (IS_ERR(page) || !page) {
 		up_read(&mm->mmap_lock);
@@ -8197,36 +8196,29 @@ static int add_page_for_reclaim_swapcache(struct page *page,
 
 	/* If the page is mapped by more than one process, do not swap it */
 	if (page_mapcount(page) > 1)
-		return -EACCES;
+		return -EINVAL;
 
 	if (PageHuge(page))
-		return -EACCES;
+		return -EINVAL;
 
 	head = compound_head(page);
+	if (!PageLRU(head) || PageUnevictable(head))
+		return -EBUSY;
 
-	switch (__isolate_lru_page_prepare(head, 0)) {
-	case 0:
-		if (unlikely(!get_page_unless_zero(page)))
-			return -1;
+	if (unlikely(!get_page_unless_zero(page)))
+		return -EBUSY;
 
-		if (!TestClearPageLRU(page)) {
-			/*
-			 * This page may in other isolation path,
-			 * but we still hold lru_lock.
-			 */
-			put_page(page);
-			return -1;
-		}
-
-		list_move(&head->lru, pagelist);
-		update_lru_size(lruvec, lru, page_zonenum(head), -thp_nr_pages(head));
-		break;
-
-	case -EBUSY:
-		return -1;
-	default:
-		break;
+	if (!TestClearPageLRU(page)) {
+		/*
+		 * This page may in other isolation path,
+		 * but we still hold lru_lock.
+		 */
+		put_page(page);
+		return -EBUSY;
 	}
+
+	list_move(&head->lru, pagelist);
+	update_lru_size(lruvec, lru, page_zonenum(head), -thp_nr_pages(head));
 
 	return 0;
 }
@@ -8238,6 +8230,7 @@ static unsigned long reclaim_swapcache_pages_from_list(int nid,
 		.may_unmap = 1,
 		.may_swap = 1,
 		.may_writepage = 1,
+		.no_demotion = 1,
 		.gfp_mask = GFP_KERNEL,
 	};
 	unsigned long nr_reclaimed = 0;
@@ -8269,7 +8262,7 @@ static unsigned long reclaim_swapcache_pages_from_list(int nid,
 
 	/* swap the pages */
 	if (pgdat)
-		nr_reclaimed = shrink_page_list(&swap_pages,
+		nr_reclaimed = shrink_folio_list(&swap_pages,
 						pgdat,
 						&sc,
 						&stat, true);
@@ -8408,7 +8401,7 @@ do_scan:
 				continue;
 			}
 
-			if (!PageLRU(pos) || page_lru(pos) != LRU_INACTIVE_ANON) {
+			if (!PageLRU(pos) || folio_lru_list(page_folio(pos)) != LRU_INACTIVE_ANON) {
 				spin_unlock_irq(&lruvec->lru_lock);
 				continue;
 			}
