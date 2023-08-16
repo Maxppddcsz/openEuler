@@ -53,6 +53,10 @@
 
 #include <trace/events/sched.h>
 
+#ifdef CONFIG_CORE_PATTERN_ISOLATION
+#include <linux/mnt_namespace.h>
+#endif
+
 static bool dump_vma_snapshot(struct coredump_params *cprm);
 static void free_vma_snapshot(struct coredump_params *cprm);
 
@@ -201,7 +205,11 @@ static int format_corename(struct core_name *cn, struct coredump_params *cprm,
 			   size_t **argv, int *argc)
 {
 	const struct cred *cred = current_cred();
+#ifdef CONFIG_CORE_PATTERN_ISOLATION
+	const char *pat_ptr = mnt_ns_core_pattern(current->nsproxy->mnt_ns);
+#else
 	const char *pat_ptr = core_pattern;
+#endif
 	int ispipe = (*pat_ptr == '|');
 	bool was_space = false;
 	int pid_in_pattern = 0;

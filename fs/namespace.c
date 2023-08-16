@@ -77,6 +77,52 @@ static LIST_HEAD(ex_mountpoints); /* protected by namespace_sem */
 struct kobject *fs_kobj;
 EXPORT_SYMBOL_GPL(fs_kobj);
 
+#ifdef CONFIG_CORE_PATTERN_ISOLATION
+#include <linux/rbtree.h>
+#include <linux/binfmts.h>
+static struct rb_root coredump_tree = RB_ROOT;
+
+struct core_pattern_node {
+	struct rb_node rb_node;
+	u64 mnt_ns_seq;
+	char core_pattern[CORENAME_MAX_SIZE];
+};
+
+#define node_2_cpn(node) \
+	rb_entry((node), struct core_pattern_node, rb_node)
+
+#define node_2_seq(node) \
+	node_2_cpn(node)->mnt_ns_seq
+
+#define node_2_cp(node) \
+	node_2_cpn(node)->core_pattern
+
+static inline bool mnt_ns_seq_less(struct rb_node *a, const struct rb_node *b)
+{
+	return (node_2_seq(a) < node_2_seq(b));
+}
+
+static inline int mnt_ns_seq_cmp(const void *key, const struct rb_node *b)
+{
+	u64 seq = *(u64 *)key;
+
+	if (seq > node_2_seq(b))
+		return 1;
+	else if (seq < node_2_seq(b))
+		return -1;
+
+	return 0;
+}
+
+char *mnt_ns_core_pattern(struct mnt_namespace *mnt)
+{
+	struct rb_node *node = rb_find(&mnt->seq, &coredump_tree, mnt_ns_seq_cmp);
+
+	return node_2_cp(node);
+}
+
+#endif
+
 /*
  * vfsmount lock may be taken for read to prevent changes to the
  * vfsmount hash, ie. during mountpoint lookups or walking back
@@ -3257,8 +3303,23 @@ static void dec_mnt_namespaces(struct ucounts *ucounts)
 
 static void free_mnt_ns(struct mnt_namespace *ns)
 {
+#ifdef CONFIG_CORE_PATTERN_ISOLATION
+	if (!is_anon_ns(ns)) {
+		struct rb_node *node;
+		struct core_pattern_node *cpn;
+
+		ns_free_inum(&ns->ns);
+		node = rb_find(&ns->seq, &coredump_tree, mnt_ns_seq_cmp);
+		if (node) {
+			cpn = node_2_cpn(node);
+			rb_erase(node, &coredump_tree);
+			kfree(cpn);
+		}
+	}
+#else
 	if (!is_anon_ns(ns))
 		ns_free_inum(&ns->ns);
+#endif
 	dec_mnt_namespaces(ns->ucounts);
 	put_user_ns(ns->user_ns);
 	kfree(ns);
@@ -3278,6 +3339,9 @@ static struct mnt_namespace *alloc_mnt_ns(struct user_namespace *user_ns, bool a
 	struct mnt_namespace *new_ns;
 	struct ucounts *ucounts;
 	int ret;
+#ifdef CONFIG_CORE_PATTERN_ISOLATION
+	struct core_pattern_node *cpn;
+#endif
 
 	ucounts = inc_mnt_namespaces(user_ns);
 	if (!ucounts)
@@ -3297,8 +3361,21 @@ static struct mnt_namespace *alloc_mnt_ns(struct user_namespace *user_ns, bool a
 		}
 	}
 	new_ns->ns.ops = &mntns_operations;
-	if (!anon)
+	if (!anon) {
 		new_ns->seq = atomic64_add_return(1, &mnt_ns_seq);
+#ifdef CONFIG_CORE_PATTERN_ISOLATION
+		cpn = kmalloc(sizeof(struct core_pattern_node), GFP_KERNEL);
+		if (!cpn) {
+			kfree(new_ns);
+			dec_mnt_namespaces(ucounts);
+			return ERR_PTR(-ENOMEM);
+		}
+
+		cpn->mnt_ns_seq = new_ns->seq;
+		strncpy(cpn->core_pattern, "core", CORENAME_MAX_SIZE);
+		rb_add(&cpn->rb_node, &coredump_tree, mnt_ns_seq_less);
+#endif
+	}
 	atomic_set(&new_ns->count, 1);
 	INIT_LIST_HEAD(&new_ns->list);
 	init_waitqueue_head(&new_ns->poll);
@@ -3318,6 +3395,9 @@ struct mnt_namespace *copy_mnt_ns(unsigned long flags, struct mnt_namespace *ns,
 	struct mount *old;
 	struct mount *new;
 	int copy_flags;
+#ifdef CONFIG_CORE_PATTERN_ISOLATION
+	char *core_pattern, *core_pattern_old;
+#endif
 
 	BUG_ON(!ns);
 
@@ -3333,6 +3413,11 @@ struct mnt_namespace *copy_mnt_ns(unsigned long flags, struct mnt_namespace *ns,
 		return new_ns;
 
 	namespace_lock();
+#ifdef CONFIG_CORE_PATTERN_ISOLATION
+	core_pattern = mnt_ns_core_pattern(new_ns);
+	core_pattern_old = mnt_ns_core_pattern(ns);
+	strncpy(core_pattern, core_pattern_old, CORENAME_MAX_SIZE);
+#endif
 	/* First pass: copy the tree topology */
 	copy_flags = CL_COPY_UNBINDABLE | CL_EXPIRE;
 	if (user_ns != ns->user_ns)
