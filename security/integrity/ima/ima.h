@@ -53,11 +53,11 @@ extern int ima_hash_algo_idx __ro_after_init;
 extern int ima_extra_slots __ro_after_init;
 extern int ima_appraise;
 extern struct tpm_chip *ima_tpm_chip;
+extern const char boot_aggregate_name[];
+#ifdef CONFIG_IMA_DIGEST_LIST
 extern int ima_digest_list_pcr;
 extern bool ima_plus_standard_pcr;
-extern const char boot_aggregate_name[];
 extern int ima_digest_list_actions;
-#ifdef CONFIG_IMA_DIGEST_LIST
 extern int ima_digest_db_max_size __ro_after_init;
 extern int ima_digest_db_size;
 #endif
@@ -189,6 +189,7 @@ static inline unsigned int ima_hash_key(u8 *digest)
 	return (digest[0] | digest[1] << 8) % IMA_MEASURE_HTABLE_SIZE;
 }
 
+#ifdef CONFIG_IMA_DIGEST_LIST
 #define __ima_hooks(hook)				\
 	hook(NONE, none)				\
 	hook(FILE_CHECK, file)				\
@@ -205,6 +206,23 @@ static inline unsigned int ima_hash_key(u8 *digest)
 	hook(KEY_CHECK, key)				\
 	hook(DIGEST_LIST_CHECK, digest_list)		\
 	hook(MAX_CHECK, none)
+#else
+#define __ima_hooks(hook)				\
+	hook(NONE, none)				\
+	hook(FILE_CHECK, file)				\
+	hook(MMAP_CHECK, mmap)				\
+	hook(BPRM_CHECK, bprm)				\
+	hook(CREDS_CHECK, creds)			\
+	hook(POST_SETATTR, post_setattr)		\
+	hook(MODULE_CHECK, module)			\
+	hook(FIRMWARE_CHECK, firmware)			\
+	hook(KEXEC_KERNEL_CHECK, kexec_kernel)		\
+	hook(KEXEC_INITRAMFS_CHECK, kexec_initramfs)	\
+	hook(POLICY_CHECK, policy)			\
+	hook(KEXEC_CMDLINE, kexec_cmdline)		\
+	hook(KEY_CHECK, key)				\
+	hook(MAX_CHECK, none)
+#endif
 
 #define __ima_hook_enumify(ENUM, str)	ENUM,
 #define __ima_stringify(arg) (#arg)
@@ -264,12 +282,20 @@ int ima_must_measure(struct inode *inode, int mask, enum ima_hooks func);
 int ima_collect_measurement(struct integrity_iint_cache *iint,
 			    struct file *file, void *buf, loff_t size,
 			    enum hash_algo algo, struct modsig *modsig);
+#ifdef CONFIG_IMA_DIGEST_LIST
 void ima_store_measurement(struct integrity_iint_cache *iint, struct file *file,
 			   const unsigned char *filename,
 			   struct evm_ima_xattr_data *xattr_value,
 			   int xattr_len, const struct modsig *modsig, int pcr,
 			   struct ima_template_desc *template_desc,
 			   struct ima_digest *digest);
+#else
+void ima_store_measurement(struct integrity_iint_cache *iint, struct file *file,
+			   const unsigned char *filename,
+			   struct evm_ima_xattr_data *xattr_value,
+			   int xattr_len, const struct modsig *modsig, int pcr,
+			   struct ima_template_desc *template_desc);
+#endif
 void process_buffer_measurement(struct inode *inode, const void *buf, int size,
 				const char *eventname, enum ima_hooks func,
 				int pcr, const char *keyring);
@@ -278,9 +304,15 @@ void ima_audit_measurement(struct integrity_iint_cache *iint,
 int ima_alloc_init_template(struct ima_event_data *event_data,
 			    struct ima_template_entry **entry,
 			    struct ima_template_desc *template_desc);
+#ifdef CONFIG_IMA_DIGEST_LIST
 int ima_store_template(struct ima_template_entry *entry, int violation,
 		       struct inode *inode, const unsigned char *filename,
 		       int pcr, struct ima_digest *digest);
+#else
+int ima_store_template(struct ima_template_entry *entry, int violation,
+		       struct inode *inode,
+		       const unsigned char *filename, int pcr);
+#endif
 void ima_free_template_entry(struct ima_template_entry *entry);
 const char *ima_d_path(const struct path *path, char **pathbuf, char *filename);
 
@@ -308,21 +340,41 @@ int ima_policy_show(struct seq_file *m, void *v);
 #define IMA_APPRAISE_FIRMWARE	0x10
 #define IMA_APPRAISE_POLICY	0x20
 #define IMA_APPRAISE_KEXEC	0x40
+#ifdef CONFIG_IMA_DIGEST_LIST
 #define IMA_APPRAISE_DIGEST_LIST	0x80
+#endif
 
 #ifdef CONFIG_IMA_APPRAISE
 int ima_check_blacklist(struct integrity_iint_cache *iint,
 			const struct modsig *modsig, int pcr);
+
+#ifdef CONFIG_IMA_DIGEST_LIST
 int ima_appraise_measurement(enum ima_hooks func,
 			     struct integrity_iint_cache *iint,
 			     struct file *file, const unsigned char *filename,
 			     struct evm_ima_xattr_data *xattr_value,
 			     int xattr_len, const struct modsig *modsig,
 			     struct ima_digest *found_digest);
+#else
+int ima_appraise_measurement(enum ima_hooks func,
+			     struct integrity_iint_cache *iint,
+			     struct file *file, const unsigned char *filename,
+			     struct evm_ima_xattr_data *xattr_value,
+			     int xattr_len, const struct modsig *modsig);
+#endif
+
 int ima_must_appraise(struct inode *inode, int mask, enum ima_hooks func);
 void ima_update_xattr(struct integrity_iint_cache *iint, struct file *file);
 enum integrity_status ima_get_cache_status(struct integrity_iint_cache *iint,
 					   enum ima_hooks func);
+
+#ifndef CONFIG_IMA_DIGEST_LIST
+enum hash_algo ima_get_hash_algo(struct evm_ima_xattr_data *xattr_value,
+				 int xattr_len);
+int ima_read_xattr(struct dentry *dentry,
+		   struct evm_ima_xattr_data **xattr_value);
+#endif
+
 #else
 static inline int ima_check_blacklist(struct integrity_iint_cache *iint,
 				      const struct modsig *modsig, int pcr)
@@ -330,6 +382,7 @@ static inline int ima_check_blacklist(struct integrity_iint_cache *iint,
 	return 0;
 }
 
+#ifndef CONFIG_IMA_DIGEST_LIST
 static inline int ima_appraise_measurement(enum ima_hooks func,
 					   struct integrity_iint_cache *iint,
 					   struct file *file,
@@ -338,6 +391,15 @@ static inline int ima_appraise_measurement(enum ima_hooks func,
 					   int xattr_len,
 					   const struct modsig *modsig,
 					   struct ima_digest *found_digest)
+#else
+static inline int ima_appraise_measurement(enum ima_hooks func,
+					   struct integrity_iint_cache *iint,
+					   struct file *file,
+					   const unsigned char *filename,
+					   struct evm_ima_xattr_data *xattr_value,
+					   int xattr_len,
+					   const struct modsig *modsig)
+#endif
 {
 	return INTEGRITY_UNKNOWN;
 }
@@ -359,6 +421,20 @@ static inline enum integrity_status ima_get_cache_status(struct integrity_iint_c
 {
 	return INTEGRITY_UNKNOWN;
 }
+
+#ifndef CONFIG_IMA_DIGEST_LIST
+static inline enum hash_algo
+ima_get_hash_algo(struct evm_ima_xattr_data *xattr_value, int xattr_len)
+{
+	return ima_hash_algo;
+}
+
+static inline int ima_read_xattr(struct dentry *dentry,
+				 struct evm_ima_xattr_data **xattr_value)
+{
+	return 0;
+}
+#endif
 
 #endif /* CONFIG_IMA_APPRAISE */
 
