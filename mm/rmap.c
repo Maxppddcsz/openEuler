@@ -604,7 +604,11 @@ void page_unlock_anon_vma_read(struct anon_vma *anon_vma)
  */
 void try_to_unmap_flush(void)
 {
+#ifdef CONFIG_ARM64
+	struct tlbflush_unmap_batch_arm64 *tlb_ubc = &current->_resvd->tlb_ubc;
+#else
 	struct tlbflush_unmap_batch *tlb_ubc = &current->tlb_ubc;
+#endif
 
 	if (!tlb_ubc->flush_required)
 		return;
@@ -617,7 +621,11 @@ void try_to_unmap_flush(void)
 /* Flush iff there are potentially writable TLB entries that can race with IO */
 void try_to_unmap_flush_dirty(void)
 {
+#ifdef CONFIG_ARM64
+	struct tlbflush_unmap_batch_arm64 *tlb_ubc = &current->_resvd->tlb_ubc;
+#else
 	struct tlbflush_unmap_batch *tlb_ubc = &current->tlb_ubc;
+#endif
 
 	if (tlb_ubc->writable)
 		try_to_unmap_flush();
@@ -626,7 +634,11 @@ void try_to_unmap_flush_dirty(void)
 static void set_tlb_ubc_flush_pending(struct mm_struct *mm, bool writable,
 						unsigned long uaddr)
 {
+#ifdef CONFIG_ARM64
+	struct tlbflush_unmap_batch_arm64 *tlb_ubc = &current->_resvd->tlb_ubc;
+#else
 	struct tlbflush_unmap_batch *tlb_ubc = &current->tlb_ubc;
+#endif
 
 	arch_tlbbatch_add_pending(&tlb_ubc->arch, mm, uaddr);
 	tlb_ubc->flush_required = true;
