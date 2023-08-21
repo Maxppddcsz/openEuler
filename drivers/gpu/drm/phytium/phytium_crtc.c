@@ -26,11 +26,11 @@
 #define KERNELSTATES		(PHYALIGN(KERNELTABLESIZE + 4, 8))
 #define PHYPI			3.14159265358979323846f
 
-#define MATH_Add(X, Y)			(float)((X) + (Y))
-#define MATH_Multiply(X, Y)		(float)((X) * (Y))
-#define MATH_Divide(X, Y)		(float)((X) / (Y))
+#define MATH_Add(X, Y)			((float)((X) + (Y)))
+#define MATH_Multiply(X, Y)		((float)((X) * (Y)))
+#define MATH_Divide(X, Y)		((float)((X) / (Y)))
 #define MATH_DivideFromUInteger(X, Y)	((float)(X) / (float)(Y))
-#define MATH_I2Float(X)		(float)(X)
+#define MATH_I2Float(X)		((float)(X))
 
 struct filter_blit_array {
 	uint8_t kernelSize;

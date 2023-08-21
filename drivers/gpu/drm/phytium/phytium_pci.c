@@ -229,14 +229,14 @@ static int phytium_pci_probe(struct pci_dev *pdev, const struct pci_device_id *e
 	pci_set_master(pdev);
 	ret = pci_enable_device(pdev);
 	if (ret) {
-		DRM_ERROR("pci enbale device fail\n");
+		DRM_ERROR("pci enable device fail\n");
 		goto failed_enable_device;
 	}
 
 	if (dc_msi_enable) {
 		ret = pci_enable_msi(pdev);
 		if (ret)
-			DRM_ERROR("pci enbale msi fail\n");
+			DRM_ERROR("pci enable msi fail\n");
 	}
 
 	dma_set_mask(&pdev->dev, DMA_BIT_MASK(40));
