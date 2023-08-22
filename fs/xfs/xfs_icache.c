@@ -610,7 +610,7 @@ xfs_iget_cache_miss(
 
 	ip = xfs_inode_alloc(mp, ino);
 	if (!ip)
-		return -ENOMEM;
+		return -EAGAIN;
 
 	error = xfs_imap(pag, tp, ip->i_ino, &ip->i_imap, flags);
 	if (error)
