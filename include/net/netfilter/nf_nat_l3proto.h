@@ -22,9 +22,9 @@ struct nf_nat_l3proto {
 			       const struct nf_conntrack_tuple *t,
 			       enum nf_nat_manip_type maniptype);
 
-	void	(*csum_recalc)(struct sk_buff *skb, u8 proto,
-			       void *data, __sum16 *check,
-			       int datalen, int oldlen);
+	void(*csum_recalc)(struct sk_buff *skb, u8 proto,
+			   void *data, __sum16 *check,
+			   int datalen, int oldlen);
 
 	void	(*decode_session)(struct sk_buff *skb,
 				  const struct nf_conn *ct,
@@ -53,5 +53,9 @@ void nf_nat_l3proto_ipv4_unregister_fn(struct net *net, const struct nf_hook_ops
 
 int nf_nat_l3proto_ipv6_register_fn(struct net *net, const struct nf_hook_ops *ops);
 void nf_nat_l3proto_ipv6_unregister_fn(struct net *net, const struct nf_hook_ops *ops);
+
+void nf_nat_csum_recalc(struct sk_buff *skb,
+			u8 nfproto, u8 proto, void *data, __sum16 *check,
+			int datalen, int oldlen);
 
 #endif /* _NF_NAT_L3PROTO_H */
