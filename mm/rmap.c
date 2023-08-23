@@ -604,7 +604,11 @@ void page_unlock_anon_vma_read(struct anon_vma *anon_vma)
  */
 void try_to_unmap_flush(void)
 {
+#ifdef CONFIG_ARM64
+	struct tlbflush_unmap_batch_arm64 *tlb_ubc = &current->_resvd->tlb_ubc;
+#else
 	struct tlbflush_unmap_batch *tlb_ubc = &current->tlb_ubc;
+#endif
 
 	if (!tlb_ubc->flush_required)
 		return;
@@ -617,17 +621,26 @@ void try_to_unmap_flush(void)
 /* Flush iff there are potentially writable TLB entries that can race with IO */
 void try_to_unmap_flush_dirty(void)
 {
+#ifdef CONFIG_ARM64
+	struct tlbflush_unmap_batch_arm64 *tlb_ubc = &current->_resvd->tlb_ubc;
+#else
 	struct tlbflush_unmap_batch *tlb_ubc = &current->tlb_ubc;
+#endif
 
 	if (tlb_ubc->writable)
 		try_to_unmap_flush();
 }
 
-static void set_tlb_ubc_flush_pending(struct mm_struct *mm, bool writable)
+static void set_tlb_ubc_flush_pending(struct mm_struct *mm, bool writable,
+						unsigned long uaddr)
 {
+#ifdef CONFIG_ARM64
+	struct tlbflush_unmap_batch_arm64 *tlb_ubc = &current->_resvd->tlb_ubc;
+#else
 	struct tlbflush_unmap_batch *tlb_ubc = &current->tlb_ubc;
+#endif
 
-	arch_tlbbatch_add_mm(&tlb_ubc->arch, mm);
+	arch_tlbbatch_add_pending(&tlb_ubc->arch, mm, uaddr);
 	tlb_ubc->flush_required = true;
 
 	/*
@@ -652,17 +665,10 @@ static void set_tlb_ubc_flush_pending(struct mm_struct *mm, bool writable)
  */
 static bool should_defer_flush(struct mm_struct *mm, enum ttu_flags flags)
 {
-	bool should_defer = false;
-
 	if (!(flags & TTU_BATCH_FLUSH))
 		return false;
 
-	/* If remote CPUs need to be flushed then defer batch the flush */
-	if (cpumask_any_but(mm_cpumask(mm), get_cpu()) < nr_cpu_ids)
-		should_defer = true;
-	put_cpu();
-
-	return should_defer;
+	return arch_tlbbatch_should_defer(mm);
 }
 
 /*
@@ -683,7 +689,7 @@ static bool should_defer_flush(struct mm_struct *mm, enum ttu_flags flags)
 void flush_tlb_batched_pending(struct mm_struct *mm)
 {
 	if (data_race(mm->tlb_flush_batched)) {
-		flush_tlb_mm(mm);
+		arch_flush_tlb_batched_pending(mm);
 
 		/*
 		 * Do not allow the compiler to re-order the clearing of
@@ -694,7 +700,8 @@ void flush_tlb_batched_pending(struct mm_struct *mm)
 	}
 }
 #else
-static void set_tlb_ubc_flush_pending(struct mm_struct *mm, bool writable)
+static void set_tlb_ubc_flush_pending(struct mm_struct *mm, bool writable,
+						unsigned long uaddr)
 {
 }
 
@@ -1573,7 +1580,7 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 			 */
 			pteval = ptep_get_and_clear(mm, address, pvmw.pte);
 
-			set_tlb_ubc_flush_pending(mm, pte_dirty(pteval));
+			set_tlb_ubc_flush_pending(mm, pte_dirty(pteval), address);
 		} else {
 			pteval = ptep_clear_flush(vma, address, pvmw.pte);
 		}
