@@ -1098,9 +1098,8 @@ static int phytium_dp_dpcd_set_link(struct phytium_dp_device *phytium_dp,
 
 	link_config[0] = drm_dp_link_rate_to_bw_code(link_rate);
 	link_config[1] = lane_count;
-	if (drm_dp_enhanced_frame_cap(phytium_dp->dpcd)) {
+	if (drm_dp_enhanced_frame_cap(phytium_dp->dpcd))
 		link_config[1] |= DP_LANE_COUNT_ENHANCED_FRAME_EN;
-	}
 	ret = drm_dp_dpcd_write(&phytium_dp->aux, DP_LINK_BW_SET, link_config, 2);
 	if (ret < 0) {
 		DRM_NOTE("write dpcd DP_LINK_BW_SET fail: ret:%d\n", ret);
@@ -1283,6 +1282,7 @@ static bool phytium_dp_link_training_clock_recovery(struct phytium_dp_device *ph
 	max_vswing_tries = 0;
 	for (;;) {
 		unsigned char link_status[DP_LINK_STATUS_SIZE];
+
 		drm_dp_link_train_clock_recovery_delay(phytium_dp->dpcd);
 		/* get link status 0x202-0x207 */
 		ret = drm_dp_dpcd_read(&phytium_dp->aux, DP_LANE0_1_STATUS,
@@ -2189,9 +2189,8 @@ static void phytium_encoder_enable(struct drm_encoder *encoder)
 			phytium_dp_hw_enable_audio(phytium_dp);
 	}
 
-	if (phytium_dp->is_edp) {
+	if (phytium_dp->is_edp)
 		phytium_edp_backlight_on(phytium_dp);
-	}
 }
 
 enum drm_mode_status
@@ -2504,13 +2503,10 @@ static bool phytium_edp_init_connector(struct phytium_dp_device *phytium_dp)
 
 static void phytium_edp_fini_connector(struct phytium_dp_device *phytium_dp)
 {
-	if (phytium_dp->edp_edid)
-		kfree(phytium_dp->edp_edid);
+	kfree(phytium_dp->edp_edid);
 
 	phytium_dp->edp_edid = NULL;
 	phytium_edp_panel_poweroff(phytium_dp);
-
-	return;
 }
 
 int phytium_dp_resume(struct drm_device *drm_dev)

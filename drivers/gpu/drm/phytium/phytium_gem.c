@@ -165,7 +165,7 @@ void *phytium_gem_prime_vmap(struct drm_gem_object *obj)
 
 void phytium_gem_prime_vunmap(struct drm_gem_object *obj, void *vaddr)
 {
-	return;
+
 }
 
 int phytium_gem_prime_mmap(struct drm_gem_object *obj, struct vm_area_struct *vma)
