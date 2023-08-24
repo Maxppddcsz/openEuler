@@ -13,15 +13,21 @@ struct blk_mq_tags {
 
 	atomic_t active_queues;
 
-	struct sbitmap_queue *bitmap_tags;
-	struct sbitmap_queue *breserved_tags;
-
+#ifdef __GENKSYMS__
+	struct sbitmap_queue bitmap_tags;
+	struct sbitmap_queue breserved_tags;
+#else
 	struct sbitmap_queue __bitmap_tags;
 	struct sbitmap_queue __breserved_tags;
-
+#endif
 	struct request **rqs;
 	struct request **static_rqs;
 	struct list_head page_list;
+
+#ifndef __GENKSYMS__
+	struct sbitmap_queue *bitmap_tags;
+	struct sbitmap_queue *breserved_tags;
+#endif
 };
 
 struct blk_mq_tags_wrapper {
