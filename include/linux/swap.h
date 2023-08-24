@@ -393,6 +393,10 @@ extern int vm_swappiness;
 extern int remove_mapping(struct address_space *mapping, struct page *page);
 
 extern unsigned long reclaim_pages(struct list_head *page_list);
+#ifdef CONFIG_PREFERRED_SWAP
+extern int find_swap_info(char *filename, struct mm_struct *mm);
+extern void clear_tasks_mm_preferred_swap(struct swap_info_struct *p);
+#endif
 #ifdef CONFIG_ETMEM
 enum etmem_swapcache_watermark_en {
 	ETMEM_SWAPCACHE_WMARK_LOW,
@@ -500,6 +504,10 @@ extern long total_swap_pages;
 extern atomic_t nr_rotate_swap;
 extern bool has_usable_swap(void);
 
+#ifdef CONFIG_PREFERRED_SWAP
+extern int preferred_swap_used;
+#endif
+
 /* Swap 50% full? Release swapcache more aggressively.. */
 static inline bool vm_swap_full(void)
 {
@@ -517,8 +525,13 @@ extern void si_swapinfo(struct sysinfo *);
 extern swp_entry_t get_swap_page(struct page *page);
 extern void put_swap_page(struct page *page, swp_entry_t entry);
 extern swp_entry_t get_swap_page_of_type(int);
+#ifdef CONFIG_PREFERRED_SWAP
+extern int get_swap_pages(int n, swp_entry_t swp_entries[], int entry_size,
+			struct swap_info_struct *preferred_swap, int type);
+#else
 extern int get_swap_pages(int n, swp_entry_t swp_entries[], int entry_size,
 			  int type);
+#endif
 extern int add_swap_count_continuation(swp_entry_t, gfp_t);
 extern void swap_shmem_alloc(swp_entry_t);
 extern int swap_duplicate(swp_entry_t);

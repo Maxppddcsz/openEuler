@@ -33,6 +33,9 @@
 #include <linux/vmalloc.h>
 #include <linux/mutex.h>
 #include <linux/mm.h>
+#ifdef CONFIG_PREFERRED_SWAP
+#include <linux/rmap.h>
+#endif
 
 static DEFINE_PER_CPU(struct swap_slots_cache, swp_slots);
 #ifdef CONFIG_MEMCG_SWAP_QOS
@@ -385,8 +388,13 @@ static int refill_swap_slots_cache(struct swap_slots_cache *cache, int type)
 
 	cache->cur = 0;
 	if (swap_slot_cache_active)
+#ifdef CONFIG_PREFERRED_SWAP
+		cache->nr = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
+					   cache->slots, 1, NULL, type);
+#else
 		cache->nr = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
 					   cache->slots, 1, type);
+#endif
 
 	return cache->nr;
 }
@@ -423,11 +431,57 @@ direct_free:
 	return 0;
 }
 
+#ifdef CONFIG_PREFERRED_SWAP
+static bool has_preferred_swap(struct page *page, struct vm_area_struct *vma,
+			   unsigned long addr, void *arg)
+{
+	struct swap_info_struct **si = (struct swap_info_struct **)arg;
+
+	if (*si) {
+		*si = ERR_PTR(-EPERM);
+		return false;
+	}
+	if (vma->vm_file) {
+		*si = ERR_PTR(-EPERM);
+		return false;
+	}
+	if (vma->vm_mm->preferred_swap) {
+		*si = vma->vm_mm->preferred_swap;
+	} else {
+		*si = ERR_PTR(-EPERM);
+		return false;
+	}
+	return true;
+}
+
+static struct swap_info_struct *page_preferred_swap(struct page *page)
+{
+	struct swap_info_struct *preferred_swap = NULL;
+	struct rmap_walk_control rwc = {
+		.rmap_one = has_preferred_swap,
+		.arg = (void *)&preferred_swap,
+		.anon_lock = page_lock_anon_vma_read,
+	};
+	rmap_walk(page, &rwc);
+	if (IS_ERR_OR_NULL(preferred_swap))
+		preferred_swap = NULL;
+
+	return preferred_swap;
+}
+#endif /* CONFIG_PREFERRED_SWAP */
+
 swp_entry_t get_swap_page(struct page *page)
 {
 	swp_entry_t entry;
 	struct swap_slots_cache *cache;
 	int type;
+
+#ifdef CONFIG_PREFERRED_SWAP
+	struct swap_info_struct *preferred_swap = NULL;
+
+	if (!page_mapping(page))
+		preferred_swap = page_preferred_swap(page);
+#endif
 
 	entry.val = 0;
 
@@ -437,7 +491,11 @@ swp_entry_t get_swap_page(struct page *page)
 
 	if (PageTransHuge(page)) {
 		if (IS_ENABLED(CONFIG_THP_SWAP) && arch_thp_swp_supported())
+#ifdef CONFIG_PREFERRED_SWAP
+			get_swap_pages(1, &entry, HPAGE_PMD_NR, preferred_swap, type);
+#else
 			get_swap_pages(1, &entry, HPAGE_PMD_NR, type);
+#endif
 		goto out;
 	}
 
@@ -452,7 +510,11 @@ swp_entry_t get_swap_page(struct page *page)
 	 */
 	cache = get_slots_cache(type);
 
-	if (likely(check_cache_active() && cache->slots)) {
+#ifdef CONFIG_PREFERRED_SWAP
+	if (likely(check_cache_active() && cache->slots && !preferred_swap)) {
+#else
+	if (likely(check_cache_active() && cache->slots &&)) {
+#endif
 		mutex_lock(&cache->alloc_lock);
 		if (cache->slots) {
 repeat:
@@ -469,7 +531,11 @@ repeat:
 			goto out;
 	}
 
+#ifdef CONFIG_PREFERRED_SWAP
+	get_swap_pages(1, &entry, 1, preferred_swap, type);
+#else
 	get_swap_pages(1, &entry, 1, type);
+#endif
 out:
 	if (mem_cgroup_try_charge_swap(page, entry)) {
 		put_swap_page(page, entry);
