@@ -62,7 +62,10 @@ EXPORT_SYMBOL_GPL(nr_swap_pages);
 /* protected with swap_lock. reading in vm_swap_full() doesn't need lock */
 long total_swap_pages;
 static int least_priority = -1;
-
+#ifdef CONFIG_PREFERRED_SWAP
+DEFINE_SPINLOCK(preferred_swap_lock);
+int preferred_swap_used;
+#endif
 static const char Bad_file[] = "Bad swap file entry ";
 static const char Unused_file[] = "Unused swap file entry ";
 static const char Bad_offset[] = "Bad swap offset entry ";
@@ -1056,7 +1059,13 @@ static unsigned long scan_swap_map(struct swap_info_struct *si,
 
 }
 
-int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size)
+#ifdef CONFIG_PREFERRED_SWAP
+int get_swap_pages(int n_goal, swp_entry_t swp_entries[],
+		   int entry_size, struct swap_info_struct *preferred_swap)
+#else
+int get_swap_pages(int n_goal, swp_entry_t swp_entries[],
+				int entry_size)
+#endif
 {
 	unsigned long size = swap_entry_size(entry_size);
 	struct swap_info_struct *si, *next;
@@ -1082,6 +1091,10 @@ int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size)
 start_over:
 	node = numa_node_id();
 	plist_for_each_entry_safe(si, next, &swap_avail_heads[node], avail_lists[node]) {
+#ifdef CONFIG_PREFERRED_SWAP
+		if (preferred_swap && preferred_swap != si)
+			goto nextsi;
+#endif
 		/* requeue si to after same-priority siblings */
 		plist_requeue(&si->avail_lists[node], &swap_avail_heads[node]);
 		spin_unlock(&swap_avail_lock);
@@ -2643,6 +2656,10 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	p->flags &= ~SWP_WRITEOK;
 	spin_unlock(&p->lock);
 	spin_unlock(&swap_lock);
+#ifdef CONFIG_PREFERRED_SWAP
+	if (preferred_swap_used)
+		clear_tasks_mm_preferred_swap(p);
+#endif
 
 	disable_swap_slots_cache_lock();
 
@@ -3878,6 +3895,71 @@ void cgroup_throttle_swaprate(struct page *page, gfp_t gfp_mask)
 }
 #endif
 
+#ifdef CONFIG_PREFERRED_SWAP
+int find_swap_info(char *filename, struct mm_struct *mm)
+{
+	struct file *chosen_file;
+	unsigned int type;
+	struct path path;
+	int err = 0;
+	struct swap_info_struct *found_swap = NULL;
+
+	err = kern_path(filename, LOOKUP_FOLLOW, &path);
+	if (err)
+		goto out_no_path;
+	chosen_file = dentry_open(&path, O_RDWR|O_LARGEFILE, current_cred());
+	if (IS_ERR(chosen_file)) {
+		err = PTR_ERR(chosen_file);
+		goto out_no_file;
+	}
+	spin_lock(&preferred_swap_lock);
+	spin_lock(&swap_lock);
+	for (type = 0; type < nr_swapfiles; type++) {
+		if ((swap_info[type]->flags & SWP_USED) &&
+			(swap_info[type]->flags & SWP_WRITEOK)) {
+			if (swap_info[type]->swap_file->f_mapping ==
+				chosen_file->f_mapping) {
+				found_swap = swap_info[type];
+				break;
+			}
+		}
+	}
+
+	spin_unlock(&swap_lock);
+	if (type >= nr_swapfiles) {
+		err = -EINVAL;
+		goto out;
+	}
+
+	mm->preferred_swap = found_swap;
+out:
+	spin_unlock(&preferred_swap_lock);
+	filp_close(chosen_file, NULL);
+out_no_file:
+	path_put(&path);
+out_no_path:
+	return err;
+}
+
+void clear_tasks_mm_preferred_swap(struct swap_info_struct *p)
+{
+	struct task_struct *task;
+	struct mm_struct *mm;
+
+	spin_lock(&preferred_swap_lock);
+	read_lock(&tasklist_lock);
+	for_each_process(task) {
+		mm = get_task_mm(task);
+		if (mm) {
+			if (mm->preferred_swap == p)
+				mm->preferred_swap = NULL;
+			mmput(mm);
+		}
+	}
+	read_unlock(&tasklist_lock);
+	spin_unlock(&preferred_swap_lock);
+}
+#endif
 static int __init swapfile_init(void)
 {
 	int nid;
