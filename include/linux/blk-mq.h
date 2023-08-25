@@ -127,7 +127,6 @@ struct blk_mq_tag_set {
 	unsigned int		timeout;
 	unsigned int		flags;		/* BLK_MQ_F_* */
 	void			*driver_data;
-	atomic_t		active_queues_shared_sbitmap;
 
 	struct blk_mq_tags	**tags;
 
@@ -138,12 +137,13 @@ struct blk_mq_tag_set {
 	unsigned int            nr_maps;        /* nr entries in map[] */
 	struct sbitmap_queue    __bitmap_tags;
 	struct sbitmap_queue    __breserved_tags;
+	atomic_t                active_queues_shared_sbitmap;
 #else
 	KABI_RESERVE(1)
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
-#endif
 	KABI_RESERVE(4)
+#endif
 	KABI_RESERVE(5)
 	KABI_RESERVE(6)
 	KABI_RESERVE(7)
