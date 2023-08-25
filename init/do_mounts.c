@@ -31,6 +31,7 @@ int root_mountflags = MS_RDONLY | MS_SILENT;
 static char * __initdata root_device_name;
 static char __initdata saved_root_name[64];
 static int root_wait;
+static int initramtmpfs;
 
 dev_t ROOT_DEV;
 
@@ -333,9 +334,16 @@ static int __init root_delay_setup(char *str)
 	return 1;
 }
 
+static int __init initramtmpfs_setup(char *str)
+{
+	initramtmpfs = 1;
+	return 1;
+}
+
 __setup("rootflags=", root_data_setup);
 __setup("rootfstype=", fs_names_setup);
 __setup("rootdelay=", root_delay_setup);
+__setup("initramtmpfs", initramtmpfs_setup);
 
 /* This can return zero length strings. Caller should check */
 static int __init split_fs_names(char *page, size_t size, char *names)
@@ -665,7 +673,8 @@ struct file_system_type rootfs_fs_type = {
 
 void __init init_rootfs(void)
 {
-	if (IS_ENABLED(CONFIG_TMPFS) && !saved_root_name[0] &&
+	if (IS_ENABLED(CONFIG_TMPFS) &&
+		(!saved_root_name[0] || initramtmpfs) &&
 		(!root_fs_names || strstr(root_fs_names, "tmpfs")))
 		is_tmpfs = true;
 }

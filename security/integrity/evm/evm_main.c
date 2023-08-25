@@ -73,16 +73,22 @@ static struct xattr_list evm_config_default_xattrnames[] = {
 LIST_HEAD(evm_config_xattrnames);
 
 static int evm_fixmode __ro_after_init;
-static int __init evm_set_fixmode(char *str)
+static int __init evm_set_param(char *str)
 {
 	if (strncmp(str, "fix", 3) == 0)
 		evm_fixmode = 1;
+	else if (strncmp(str, "x509", 4) == 0)
+		evm_initialized |= EVM_INIT_X509;
+	else if (strncmp(str, "allow_metadata_writes", 21) == 0)
+		evm_initialized |= EVM_ALLOW_METADATA_WRITES;
+	else if (strncmp(str, "complete", 8) == 0)
+		evm_initialized |= EVM_SETUP_COMPLETE;
 	else
 		pr_err("invalid \"%s\" mode", str);
 
 	return 1;
 }
-__setup("evm=", evm_set_fixmode);
+__setup("evm=", evm_set_param);
 
 static void __init evm_init_config(void)
 {
@@ -128,7 +134,7 @@ static bool evm_hmac_disabled(void)
 	return true;
 }
 
-static int evm_find_protected_xattrs(struct dentry *dentry)
+static int evm_find_protected_xattrs(struct dentry *dentry, int *ima_present)
 {
 	struct inode *inode = d_backing_inode(dentry);
 	struct xattr_list *xattr;
@@ -145,6 +151,8 @@ static int evm_find_protected_xattrs(struct dentry *dentry)
 				continue;
 			return error;
 		}
+		if (!strcmp(xattr->name, XATTR_NAME_IMA))
+			*ima_present = 1;
 		count++;
 	}
 
@@ -173,9 +181,14 @@ static enum integrity_status evm_verify_hmac(struct dentry *dentry,
 	struct evm_ima_xattr_data *xattr_data = NULL;
 	struct signature_v2_hdr *hdr;
 	enum integrity_status evm_status = INTEGRITY_PASS;
+	enum integrity_status saved_evm_status = INTEGRITY_UNKNOWN;
 	struct evm_digest digest;
+	struct ima_digest *found_digest;
 	struct inode *inode;
-	int rc, xattr_len, evm_immutable = 0;
+	struct signature_v2_hdr evm_fake_xattr = {
+				.type = EVM_IMA_XATTR_DIGEST_LIST,
+				.version = 2, .hash_algo = HASH_ALGO_SHA256 };
+	int rc, xattr_len, evm_immutable = 0, ima_present = 0;
 
 	if (iint && (iint->evm_status == INTEGRITY_PASS ||
 		     iint->evm_status == INTEGRITY_PASS_IMMUTABLE))
@@ -189,7 +202,7 @@ static enum integrity_status evm_verify_hmac(struct dentry *dentry,
 	if (rc <= 0) {
 		evm_status = INTEGRITY_FAIL;
 		if (rc == -ENODATA) {
-			rc = evm_find_protected_xattrs(dentry);
+			rc = evm_find_protected_xattrs(dentry, &ima_present);
 			if (rc > 0)
 				evm_status = INTEGRITY_NOLABEL;
 			else if (rc == 0)
@@ -197,7 +210,20 @@ static enum integrity_status evm_verify_hmac(struct dentry *dentry,
 		} else if (rc == -EOPNOTSUPP) {
 			evm_status = INTEGRITY_UNKNOWN;
 		}
-		goto out;
+		/* IMA added a fake xattr, set also EVM fake xattr */
+		if (!ima_present && xattr_name &&
+		    !strcmp(xattr_name, XATTR_NAME_IMA) &&
+		    xattr_value_len > 2) {
+			evm_fake_xattr.hash_algo =
+			  ((struct evm_ima_xattr_data *)xattr_value)->data[0];
+			xattr_data =
+			  (struct evm_ima_xattr_data *)&evm_fake_xattr;
+			rc = sizeof(evm_fake_xattr);
+		}
+		if (xattr_data != (struct evm_ima_xattr_data *)&evm_fake_xattr)
+			goto out;
+
+		saved_evm_status = evm_status;
 	}
 
 	xattr_len = rc;
@@ -205,18 +231,18 @@ static enum integrity_status evm_verify_hmac(struct dentry *dentry,
 	/* check value type */
 	switch (xattr_data->type) {
 	case EVM_XATTR_HMAC:
-		if (xattr_len != sizeof(struct evm_xattr)) {
+		if (xattr_len != hash_digest_size[evm_hash_algo] + 1) {
 			evm_status = INTEGRITY_FAIL;
 			goto out;
 		}
 
-		digest.hdr.algo = HASH_ALGO_SHA1;
+		digest.hdr.algo = evm_hash_algo;
 		rc = evm_calc_hmac(dentry, xattr_name, xattr_value,
 				   xattr_value_len, &digest);
 		if (rc)
 			break;
 		rc = crypto_memneq(xattr_data->data, digest.digest,
-				   SHA1_DIGEST_SIZE);
+				   hash_digest_size[evm_hash_algo]);
 		if (rc)
 			rc = -EINVAL;
 		break;
@@ -255,12 +281,54 @@ static enum integrity_status evm_verify_hmac(struct dentry *dentry,
 			}
 		}
 		break;
+	case EVM_IMA_XATTR_DIGEST_LIST:
+		/* At this point, we cannot determine whether metadata are
+		 * immutable or not. However, it is safe to return the
+		 * fail_immutable error, as HMAC will not be created for this
+		 * security.evm type.
+		 */
+		evm_immutable = 1;
+
+		if (xattr_len < offsetof(struct signature_v2_hdr, keyid)) {
+			evm_status = INTEGRITY_FAIL;
+			goto out;
+		}
+
+		hdr = (struct signature_v2_hdr *)xattr_data;
+		digest.hdr.algo = hdr->hash_algo;
+		rc = evm_calc_hash(dentry, xattr_name, xattr_value,
+				   xattr_value_len, xattr_data->type, &digest);
+		if (rc)
+			break;
+
+		found_digest = ima_lookup_digest(digest.digest, hdr->hash_algo,
+						 COMPACT_METADATA);
+		if (!found_digest) {
+			rc = -ENOENT;
+			break;
+		}
+
+		if (!ima_digest_allow(found_digest, IMA_APPRAISE)) {
+			rc = -EACCES;
+			break;
+		}
+
+		if (ima_digest_is_immutable(found_digest)) {
+			if (iint)
+				iint->flags |= EVM_IMMUTABLE_DIGSIG;
+			evm_status = INTEGRITY_PASS_IMMUTABLE;
+		} else {
+			evm_status = INTEGRITY_PASS;
+		}
+		break;
 	default:
 		rc = -EINVAL;
 		break;
 	}
 
-	if (rc) {
+	if (rc && xattr_data == (struct evm_ima_xattr_data *)&evm_fake_xattr) {
+		evm_status = saved_evm_status;
+	} else if (rc) {
 		if (rc == -ENODATA)
 			evm_status = INTEGRITY_NOXATTRS;
 		else if (evm_immutable)
@@ -273,7 +341,8 @@ static enum integrity_status evm_verify_hmac(struct dentry *dentry,
 out:
 	if (iint)
 		iint->evm_status = evm_status;
-	kfree(xattr_data);
+	if (xattr_data != (struct evm_ima_xattr_data *)&evm_fake_xattr)
+		kfree(xattr_data);
 	return evm_status;
 }
 
@@ -581,7 +650,8 @@ int evm_inode_setxattr(struct mnt_idmap *idmap, struct dentry *dentry,
 		if (!xattr_value_len)
 			return -EINVAL;
 		if (xattr_data->type != EVM_IMA_XATTR_DIGSIG &&
-		    xattr_data->type != EVM_XATTR_PORTABLE_DIGSIG)
+		    xattr_data->type != EVM_XATTR_PORTABLE_DIGSIG &&
+			xattr_data->type != EVM_IMA_XATTR_DIGEST_LIST)
 			return -EPERM;
 	}
 	return evm_protect_xattr(idmap, dentry, xattr_name, xattr_value,
@@ -885,7 +955,7 @@ int evm_inode_init_security(struct inode *inode,
 		goto out;
 
 	evm_xattr->value = xattr_data;
-	evm_xattr->value_len = sizeof(*xattr_data);
+	evm_xattr->value_len = hash_digest_size[evm_hash_algo] + 1;
 	evm_xattr->name = XATTR_EVM_SUFFIX;
 	return 0;
 out:
@@ -907,8 +977,13 @@ void __init evm_load_x509(void)
 
 static int __init init_evm(void)
 {
-	int error;
+	int error, i;
 	struct list_head *pos, *q;
+
+	i = match_string(hash_algo_name, HASH_ALGO__LAST,
+			 CONFIG_EVM_DEFAULT_HASH);
+	if (i >= 0)
+		evm_hash_algo = i;
 
 	evm_init_config();
 
