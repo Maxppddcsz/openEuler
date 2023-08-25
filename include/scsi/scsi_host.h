@@ -443,9 +443,6 @@ struct scsi_host_template {
 	/* True if the low-level driver supports blk-mq only */
 	unsigned force_blk_mq:1;
 
-	/* True if the host uses host-wide tagspace */
-	unsigned host_tagset:1;
-
 	/*
 	 * Countdown for host blocking with no commands outstanding.
 	 */
@@ -491,7 +488,12 @@ struct scsi_host_template {
 	unsigned int cmd_size;
 	struct scsi_host_cmd_pool *cmd_pool;
 
+#ifndef __GENKSYMS__
+	/* True if the host uses host-wide tagspace */
+	unsigned host_tagset:1;
+#else
 	KABI_RESERVE(1)
+#endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
@@ -663,9 +665,6 @@ struct Scsi_Host {
 	unsigned use_blk_mq:1;
 	unsigned use_cmd_list:1;
 
-	/* True if the host uses host-wide tagspace */
-	unsigned host_tagset:1;
-
 	/* Host responded with short (<36 bytes) INQUIRY result */
 	unsigned short_inquiry:1;
 
@@ -717,16 +716,17 @@ struct Scsi_Host {
 	 */
 	struct device *dma_dev;
 
-
 #ifndef __GENKSYMS__
 	union {
 		bool is_builtin;
 		KABI_RESERVE(1)
 	};
+	/* True if the host uses host-wide tagspace */
+	unsigned host_tagset:1;
 #else
 	KABI_RESERVE(1)
-#endif
 	KABI_RESERVE(2)
+#endif
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
 	KABI_RESERVE(5)
