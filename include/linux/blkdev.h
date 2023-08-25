@@ -159,7 +159,6 @@ enum mq_rq_state {
 struct request {
 	struct request_queue *q;
 	struct blk_mq_ctx *mq_ctx;
-	struct blk_mq_hw_ctx *mq_hctx;
 
 	int cpu;
 	unsigned int cmd_flags;		/* op and common flags */
@@ -277,6 +276,9 @@ struct request {
 
 #ifdef CONFIG_BLK_CGROUP
 	struct request_list *rl;		/* rl this rq is alloced from */
+#endif
+#ifndef __GENKSYMS__
+	struct blk_mq_hw_ctx *mq_hctx;
 #endif
 };
 
