@@ -128,8 +128,6 @@ struct blk_mq_tag_set {
 	unsigned int		flags;		/* BLK_MQ_F_* */
 	void			*driver_data;
 
-	struct sbitmap_queue	__bitmap_tags;
-	struct sbitmap_queue	__breserved_tags;
 	struct blk_mq_tags	**tags;
 
 	struct mutex		tag_list_lock;
@@ -137,11 +135,13 @@ struct blk_mq_tag_set {
 
 #ifndef __GENKSYMS__
 	unsigned int            nr_maps;        /* nr entries in map[] */
+	struct sbitmap_queue    __bitmap_tags;
+	struct sbitmap_queue    __breserved_tags;
 #else
 	KABI_RESERVE(1)
-#endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
+#endif
 	KABI_RESERVE(4)
 	KABI_RESERVE(5)
 	KABI_RESERVE(6)
