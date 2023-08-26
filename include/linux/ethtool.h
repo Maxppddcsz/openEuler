@@ -540,8 +540,10 @@ struct ethtool_ops {
 				      struct ethtool_link_ksettings *);
 	int	(*set_link_ksettings)(struct net_device *,
 				      const struct ethtool_link_ksettings *);
+#ifndef __GENKSYMS__
 	void	(*get_fec_stats)(struct net_device *dev,
 				 struct ethtool_fec_stats *fec_stats);
+#endif
 	int	(*get_fecparam)(struct net_device *,
 				      struct ethtool_fecparam *);
 	int	(*set_fecparam)(struct net_device *,
