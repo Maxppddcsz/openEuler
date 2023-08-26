@@ -47,6 +47,6 @@ int blk_mq_rdma_map_queues(struct blk_mq_tag_set *set,
 	return 0;
 
 fallback:
-	return blk_mq_map_queues(&set->map[0]);
+	return blk_mq_map_queues_by_qmap(&set->map[0]);
 }
 EXPORT_SYMBOL_GPL(blk_mq_rdma_map_queues);

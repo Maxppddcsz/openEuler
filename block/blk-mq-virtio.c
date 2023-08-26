@@ -49,6 +49,6 @@ int blk_mq_virtio_map_queues(struct blk_mq_queue_map *qmap,
 
 	return 0;
 fallback:
-	return blk_mq_map_queues(qmap);
+	return blk_mq_map_queues_by_qmap(qmap);
 }
 EXPORT_SYMBOL_GPL(blk_mq_virtio_map_queues);

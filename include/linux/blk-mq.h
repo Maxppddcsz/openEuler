@@ -94,7 +94,11 @@ enum {
 };
 
 struct blk_mq_tag_set {
-	struct blk_mq_queue_map	map[HCTX_MAX_TYPES];
+#ifdef __GENKSYMS__
+	unsigned int            *mq_map;
+#else
+	struct blk_mq_queue_map map[HCTX_MAX_TYPES];
+#endif
 	const struct blk_mq_ops	*ops;
 	unsigned int		nr_hw_queues;	/* nr hw queues across maps */
 	unsigned int		queue_depth;	/* max hw supported */
@@ -335,7 +339,7 @@ void blk_mq_freeze_queue_wait(struct request_queue *q);
 int blk_mq_freeze_queue_wait_timeout(struct request_queue *q,
 				     unsigned long timeout);
 
-int blk_mq_map_queues(struct blk_mq_queue_map *qmap);
+int blk_mq_map_queues_by_qmap(struct blk_mq_queue_map *qmap);
 void blk_mq_update_nr_hw_queues(struct blk_mq_tag_set *set, int nr_hw_queues);
 
 void blk_mq_quiesce_queue_nowait(struct request_queue *q);

@@ -6884,9 +6884,9 @@ static int qla2xxx_map_queues(struct Scsi_Host *shost)
 	struct blk_mq_queue_map *qmap = &shost->tag_set.map[0];
 
 	if (USER_CTRL_IRQ(vha->hw))
-		rc = blk_mq_map_queues(qmap);
+		rc = blk_mq_map_queues_by_qmap(qmap);
 	else
-		rc = blk_mq_pci_map_queues(qmap, vha->hw->pdev, 0);
+		rc = blk_mq_pci_map_queues_by_qmap(qmap, vha->hw->pdev, 0);
 	return rc;
 }
 

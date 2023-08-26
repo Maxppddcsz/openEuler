@@ -3044,7 +3044,7 @@ static int blk_mq_update_queue_map(struct blk_mq_tag_set *set)
 
 		return set->ops->map_queues(set);
 	} else
-		return blk_mq_map_queues(&set->map[0]);
+		return blk_mq_map_queues_by_qmap(&set->map[0]);
 }
 
 /*
@@ -3305,7 +3305,7 @@ fallback:
 				blk_mq_free_map_and_requests(set, i);
 
 			set->nr_hw_queues = prev_nr_hw_queues;
-			blk_mq_map_queues(&set->map[0]);
+			blk_mq_map_queues_by_qmap(&set->map[0]);
 			goto fallback;
 		}
 		blk_mq_map_swqueue(q);

@@ -30,7 +30,13 @@ static int get_first_sibling(unsigned int cpu)
 	return cpu;
 }
 
-int blk_mq_map_queues(struct blk_mq_queue_map *qmap)
+int blk_mq_map_queues(struct blk_mq_tag_set *set)
+{
+	return blk_mq_map_queues_by_qmap(&set->map[0]);
+}
+EXPORT_SYMBOL_GPL(blk_mq_map_queues);
+
+int blk_mq_map_queues_by_qmap(struct blk_mq_queue_map *qmap)
 {
 	unsigned int *map = qmap->mq_map;
 	unsigned int nr_queues = qmap->nr_queues;
@@ -56,7 +62,7 @@ int blk_mq_map_queues(struct blk_mq_queue_map *qmap)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(blk_mq_map_queues);
+EXPORT_SYMBOL_GPL(blk_mq_map_queues_by_qmap);
 
 /*
  * We have no quick way of doing reverse lookups. This is only used at

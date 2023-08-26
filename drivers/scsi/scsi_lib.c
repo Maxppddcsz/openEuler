@@ -2302,7 +2302,7 @@ static int scsi_map_queues(struct blk_mq_tag_set *set)
 
 	if (shost->hostt->map_queues)
 		return shost->hostt->map_queues(shost);
-	return blk_mq_map_queues(&set->map[0]);
+	return blk_mq_map_queues_by_qmap(&set->map[0]);
 }
 
 void __scsi_init_queue(struct Scsi_Host *shost, struct request_queue *q)

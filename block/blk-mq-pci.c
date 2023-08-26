@@ -19,20 +19,10 @@
 
 #include "blk-mq.h"
 
-/**
- * blk_mq_pci_map_queues - provide a default queue mapping for PCI device
- * @set:	tagset to provide the mapping for
- * @pdev:	PCI device associated with @set.
- * @offset:	Offset to use for the pci irq vector
- *
- * This function assumes the PCI device @pdev has at least as many available
- * interrupt vectors as @set has queues.  It will then query the vector
- * corresponding to each queue for it's affinity mask and built queue mapping
- * that maps a queue to the CPUs that have irq affinity for the corresponding
- * vector.
- */
-int blk_mq_pci_map_queues(struct blk_mq_queue_map *qmap, struct pci_dev *pdev,
-			    int offset)
+
+int blk_mq_pci_map_queues_by_qmap(struct blk_mq_queue_map *qmap,
+				  struct pci_dev *pdev,
+				  int offset)
 {
 	const struct cpumask *mask;
 	unsigned int queue, cpu;
@@ -52,5 +42,24 @@ fallback:
 	WARN_ON_ONCE(qmap->nr_queues > 1);
 	blk_mq_clear_mq_map(qmap);
 	return 0;
+}
+EXPORT_SYMBOL_GPL(blk_mq_pci_map_queues_by_qmap);
+
+/**
+ * blk_mq_pci_map_queues - provide a default queue mapping for PCI device
+ * @set:	tagset to provide the mapping for
+ * @pdev:	PCI device associated with @set.
+ * @offset:	Offset to use for the pci irq vector
+ *
+ * This function assumes the PCI device @pdev has at least as many available
+ * interrupt vectors as @set has queues.  It will then query the vector
+ * corresponding to each queue for it's affinity mask and built queue mapping
+ * that maps a queue to the CPUs that have irq affinity for the corresponding
+ * vector.
+ */
+int blk_mq_pci_map_queues(struct blk_mq_tag_set *set,  struct pci_dev *pdev,
+			  int offset)
+{
+	return blk_mq_pci_map_queues_by_qmap(&set->map[0], pdev, offset);
 }
 EXPORT_SYMBOL_GPL(blk_mq_pci_map_queues);
