@@ -22,7 +22,9 @@ struct blk_mq_ctx {
 	}  ____cacheline_aligned_in_smp;
 
 	unsigned int		cpu;
-	unsigned short		index_hw[HCTX_MAX_TYPES];
+#ifdef __GENKSYMS__
+	unsigned int            index_hw;
+#endif
 
 	/* incremented at dispatch time */
 	unsigned long		rq_dispatched[2];
@@ -34,6 +36,9 @@ struct blk_mq_ctx {
 	struct request_queue	*queue;
 	struct blk_mq_ctxs      *ctxs;
 	struct kobject		kobj;
+#ifndef __GENKSYMS__
+	unsigned short          index_hw[HCTX_MAX_TYPES];
+#endif
 } ____cacheline_aligned_in_smp;
 
 void blk_mq_freeze_queue(struct request_queue *q);

@@ -37,8 +37,11 @@ struct blk_mq_hw_ctx {
 	struct blk_mq_ctx	*dispatch_from;
 	unsigned int		dispatch_busy;
 
-	unsigned short		type;
+#ifndef __GENKSYMS__
 	unsigned short		nr_ctx;
+#else
+	unsigned int            nr_ctx;
+#endif
 	struct blk_mq_ctx	**ctxs;
 
 	spinlock_t		dispatch_wait_lock;
@@ -72,7 +75,11 @@ struct blk_mq_hw_ctx {
 #endif
 
 	struct list_head hctx_list;
+#ifndef __GENKSYMS__
+	unsigned short          type;
+#else
 	KABI_RESERVE(1)
+#endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
