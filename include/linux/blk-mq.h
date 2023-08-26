@@ -107,13 +107,6 @@ struct blk_mq_tag_set {
 #else
 	struct blk_mq_queue_map map[HCTX_MAX_TYPES];
 #endif
-	/*
-	 * map[] holds ctx -> hctx mappings, one map exists for each type
-	 * that the driver wishes to support. There are no restrictions
-	 * on maps being of the same size, and it's perfectly legal to
-	 * share maps between types.
-	 */
-	unsigned int		nr_maps;	/* nr entries in map[] */
 	const struct blk_mq_ops	*ops;
 	unsigned int		nr_hw_queues;	/* nr hw queues across maps */
 	unsigned int		queue_depth;	/* max hw supported */
@@ -129,7 +122,11 @@ struct blk_mq_tag_set {
 	struct mutex		tag_list_lock;
 	struct list_head	tag_list;
 
+#ifndef __GENKSYMS__
+	unsigned int            nr_maps;        /* nr entries in map[] */
+#else
 	KABI_RESERVE(1)
+#endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
@@ -173,11 +170,6 @@ struct blk_mq_ops {
 	 * Queue request
 	 */
 	queue_rq_fn		*queue_rq;
-
-	/*
-	 * Return a queue map type for the given request/bio flags
-	 */
-	rq_flags_to_type_fn	*rq_flags_to_type;
 
 	/*
 	 * Reserve budget before queue request, once .queue_rq is
@@ -238,7 +230,14 @@ struct blk_mq_ops {
 	void (*show_rq)(struct seq_file *m, struct request *rq);
 #endif
 
+#ifndef __GENKSYMS__
+	/*
+	 * Return a queue map type for the given request/bio flags
+	 */
+	rq_flags_to_type_fn      *rq_flags_to_type;
+#else
 	KABI_RESERVE(1)
+#endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
