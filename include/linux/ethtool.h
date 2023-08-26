@@ -150,7 +150,9 @@ struct ethtool_link_ksettings {
 		__ETHTOOL_DECLARE_LINK_MODE_MASK(advertising);
 		__ETHTOOL_DECLARE_LINK_MODE_MASK(lp_advertising);
 	} link_modes;
+#ifndef __GENKSYMS__
 	u32	lanes;
+#endif
 };
 
 /**

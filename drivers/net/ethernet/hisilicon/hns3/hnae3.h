@@ -611,12 +611,18 @@ struct hnae3_ae_ops {
 	int (*client_start)(struct hnae3_handle *handle);
 	void (*client_stop)(struct hnae3_handle *handle);
 	int (*get_status)(struct hnae3_handle *handle);
+#ifndef __GENKSYMS__
 	void (*get_ksettings_an_result)(struct hnae3_handle *handle,
 					u8 *auto_neg, u32 *speed, u8 *duplex,
 					u32 *lane_num);
-
 	int (*cfg_mac_speed_dup_h)(struct hnae3_handle *handle, int speed,
 				   u8 duplex, u8 lane_num);
+#else
+	void (*get_ksettings_an_result)(struct hnae3_handle *handle,
+					u8 *auto_neg, u32 *speed, u8 *duplex);
+	int (*cfg_mac_speed_dup_h)(struct hnae3_handle *handle, int speed,
+				   u8 duplex);
+#endif
 
 	void (*get_media_type)(struct hnae3_handle *handle, u8 *media_type,
 			       u8 *module_type);
