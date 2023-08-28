@@ -1094,7 +1094,6 @@ struct device_link {
 	struct list_head s_node;
 	struct device *consumer;
 	struct list_head c_node;
-	struct device link_dev;
 	enum device_link_state status;
 	u32 flags;
 	refcount_t rpm_active;
@@ -1103,6 +1102,9 @@ struct device_link {
 	struct rcu_head rcu_head;
 #endif
 	bool supplier_preactivated; /* Owned by consumer probe. */
+#ifndef __GENKSYMS__
+	struct device link_dev;
+#endif
 };
 
 static inline struct device *kobj_to_dev(struct kobject *kobj)
