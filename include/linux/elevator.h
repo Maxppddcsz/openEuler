@@ -155,6 +155,7 @@ struct elevator_type
 	size_t icq_align;	/* ditto */
 	struct elv_fs_entry *elevator_attrs;
 	char elevator_name[ELV_NAME_MAX];
+	unsigned int elevator_features;
 	const char *elevator_alias;
 	struct module *elevator_owner;
 	bool uses_mq;
@@ -275,6 +276,9 @@ enum {
 
 #define rq_entry_fifo(ptr)	list_entry((ptr), struct request, queuelist)
 #define rq_fifo_clear(rq)	list_del_init(&(rq)->queuelist)
+
+/* Supports scheduling on multiple hardware queues */
+#define ELEVATOR_F_MQ_AWARE		(1U << 1)
 
 #else /* CONFIG_BLOCK */
 
