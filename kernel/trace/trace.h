@@ -1434,6 +1434,18 @@ struct event_filter {
 	char			*filter_string;
 };
 
+#define STACK_FILTER_ADDR_MAP_SIZE 31
+
+struct stack_filter_addr_map {
+	struct hlist_head map[STACK_FILTER_ADDR_MAP_SIZE];
+	spinlock_t lock;
+};
+
+struct event_stack_filter {
+	struct list_head filters;
+	struct stack_filter_addr_map *addr_map;
+};
+
 struct event_subsystem {
 	struct list_head	list;
 	const char		*name;
@@ -1512,6 +1524,7 @@ __event_trigger_test_discard(struct trace_event_file *file,
 
 	if (likely(!(file->flags & (EVENT_FILE_FL_SOFT_DISABLED |
 				    EVENT_FILE_FL_FILTERED |
+				    EVENT_FILE_FL_STACK_FILTER |
 				    EVENT_FILE_FL_PID_FILTER))))
 		return false;
 
@@ -1520,6 +1533,10 @@ __event_trigger_test_discard(struct trace_event_file *file,
 
 	if (file->flags & EVENT_FILE_FL_FILTERED &&
 	    !filter_match_preds(file->filter, entry))
+		goto discard;
+
+	if ((file->flags & EVENT_FILE_FL_STACK_FILTER) &&
+	    !stack_filter_match(file->stack_filter))
 		goto discard;
 
 	if ((file->flags & EVENT_FILE_FL_PID_FILTER) &&
@@ -1694,6 +1711,10 @@ static inline void *event_file_data(struct file *filp)
 
 extern struct mutex event_mutex;
 extern struct list_head ftrace_events;
+
+#ifdef CONFIG_STACKTRACE
+extern const struct file_operations event_stack_filter_fops;
+#endif
 
 extern const struct file_operations event_trigger_fops;
 extern const struct file_operations event_hist_fops;

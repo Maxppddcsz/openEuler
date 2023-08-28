@@ -370,6 +370,7 @@ enum {
 	EVENT_FILE_FL_RECORDED_TGID_BIT,
 	EVENT_FILE_FL_FILTERED_BIT,
 	EVENT_FILE_FL_NO_SET_FILTER_BIT,
+	EVENT_FILE_FL_STACK_FILTER_BIT,
 	EVENT_FILE_FL_SOFT_MODE_BIT,
 	EVENT_FILE_FL_SOFT_DISABLED_BIT,
 	EVENT_FILE_FL_TRIGGER_MODE_BIT,
@@ -521,6 +522,7 @@ enum {
 	EVENT_FILE_FL_RECORDED_TGID	= (1 << EVENT_FILE_FL_RECORDED_TGID_BIT),
 	EVENT_FILE_FL_FILTERED		= (1 << EVENT_FILE_FL_FILTERED_BIT),
 	EVENT_FILE_FL_NO_SET_FILTER	= (1 << EVENT_FILE_FL_NO_SET_FILTER_BIT),
+	EVENT_FILE_FL_STACK_FILTER	= (1 << EVENT_FILE_FL_STACK_FILTER_BIT),
 	EVENT_FILE_FL_SOFT_MODE		= (1 << EVENT_FILE_FL_SOFT_MODE_BIT),
 	EVENT_FILE_FL_SOFT_DISABLED	= (1 << EVENT_FILE_FL_SOFT_DISABLED_BIT),
 	EVENT_FILE_FL_TRIGGER_MODE	= (1 << EVENT_FILE_FL_TRIGGER_MODE_BIT),
@@ -533,6 +535,7 @@ struct trace_event_file {
 	struct list_head		list;
 	struct trace_event_call		*event_call;
 	struct event_filter __rcu	*filter;
+	struct event_stack_filter __rcu	*stack_filter;
 	struct dentry			*dir;
 	struct trace_array		*tr;
 	struct trace_subsystem_dir	*system;
@@ -595,6 +598,15 @@ enum event_trigger_type {
 };
 
 extern int filter_match_preds(struct event_filter *filter, void *rec);
+
+#ifdef CONFIG_STACKTRACE
+extern int stack_filter_match(struct event_stack_filter *stack_filter);
+#else
+static inline int stack_filter_match(struct event_stack_filter *stack_filter)
+{
+	return 1;
+}
+#endif
 
 extern enum event_trigger_type
 event_triggers_call(struct trace_event_file *file, void *rec,
