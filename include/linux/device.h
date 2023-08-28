@@ -1098,10 +1098,13 @@ struct device_link {
 	u32 flags;
 	refcount_t rpm_active;
 	struct kref kref;
-	struct work_struct rm_work;
+#ifdef CONFIG_SRCU
+	struct rcu_head rcu_head;
+#endif
 	bool supplier_preactivated; /* Owned by consumer probe. */
 #ifndef __GENKSYMS__
 	struct device link_dev;
+	struct work_struct rm_work;
 #endif
 };
 
