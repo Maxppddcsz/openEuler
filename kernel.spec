@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .108.0
-%global pkg_release         .135
+%global maintenance_release .109.0
+%global pkg_release         .136
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,22 @@ fi
 %endif
 
 %changelog
+* Tue Aug 29 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.109.0.136
+- !1891 [sync] PR-1784:  tun/tap: fix CVE-2023-4194
+- !1885 [sync] PR-1815:  Bluetooth: L2CAP: Fix use-after-free in l2cap_sock_ready_cb
+- !1866 [sync] PR-1821:  nbd: pass nbd_sock to nbd_read_reply() instead of index
+- !1780 [sync] PR-1766:  xen/netback: Fix buffer overrun triggered by unusual packet
+- !1888 [sync] PR-1835:  tcp: Reduce chance of collisions in inet6_hashfn().
+- net: tap_open(): set sk_uid from current_fsuid()
+- net: tun_chr_open(): set sk_uid from current_fsuid()
+- tcp: Reduce chance of collisions in inet6_hashfn().
+- Bluetooth: L2CAP: Fix use-after-free in l2cap_sock_ready_cb
+- !1827 [sync] PR-1813:  ksmbd: fix cve-2023-38432
+- nbd: pass nbd_sock to nbd_read_reply() instead of index
+- ksmbd: validate command request size
+- ksmbd: validate command payload size
+- xen/netback: Fix buffer overrun triggered by unusual packet
+
 * Tue Aug 22 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.108.0.135
 - !1838  fix CVE-2023-20593 for openEuler
 - tools arch x86: Sync the msr-index.h copy with the kernel sources
