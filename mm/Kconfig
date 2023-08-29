@@ -1206,6 +1206,31 @@ config PER_VMA_LOCK
 	  This feature allows locking each virtual memory area separately when
 	  handling page faults instead of taking mmap_lock.
 
+config ETMEM_SCAN
+	tristate "module: etmem page scan for etmem support"
+        depends on ETMEM
+	help
+	 etmem page scan feature
+	 used to scan the virtual address of the target process
+
+config ETMEM_SWAP
+	tristate "module: etmem page swap for etmem support"
+	depends on ETMEM
+	help
+	 etmem page swap feature
+
+config ETMEM
+	bool "Enable etmem feature"
+	depends on MMU
+	depends on X86 || ARM64
+	default n
+	help
+	  etmem is a tiered memory extension technology that uses DRAM and memory
+	  compression/high-performance storage media to form tiered memory storage.
+	  Memory data is tiered, and cold data is migrated from memory media to
+	  high-performance storage media to release memory space and reduce
+	  memory costs.
+
 source "mm/damon/Kconfig"
 
 endmenu
