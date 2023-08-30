@@ -2745,7 +2745,7 @@ static int alloc_va_in_peer_devices(struct mm_struct *mm,
 	if (!mm->gm_as)
 		return -ENODEV;
 
-	prot |= vm_flags;
+	gmf.prot |= vm_flags;
 	if (!vma->vm_obj)
 		vma->vm_obj = vm_object_create(vma);
 	if (!vma->vm_obj)
