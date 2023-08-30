@@ -66,7 +66,7 @@ static int phytium_rtc_read_time(struct device *dev, struct rtc_time *tm)
 	writel(RTC_AES_SEL_COUNTER, pdata->csr_base + RTC_AES_SEL);
 	counter = readl(pdata->csr_base + RTC_CCVR);
 	tmp = readl(pdata->csr_base + RTC_CDR_LOW);
-	printk("%s_%d:counter:0x%lx\n", __func__, __LINE__, counter);
+	printk("%s_%d : counter : 0x%lx\n", __func__, __LINE__, counter);
 	spin_unlock(&spinlock_phytium_rtc);
 
 	rtc_time_to_tm(counter, tm);
@@ -125,7 +125,7 @@ static int phytium_rtc_alarm_irq_enabled(struct device *dev)
 {
 	struct phytium_rtc_dev *pdata = dev_get_drvdata(dev);
 
-	return readl(pdata->csr_base + RTC_CCR) & RTC_CCR_IE ? 1: 0;
+    return readl(pdata->csr_base + RTC_CCR) & RTC_CCR_IE ? 1: 0;
 }
 
 static int phytium_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alrm)
