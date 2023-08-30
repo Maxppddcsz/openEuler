@@ -35,7 +35,7 @@ static DEFINE_MUTEX(mutex);
 
 static unsigned long evm_set_key_flags;
 
-static const char evm_hmac[] = "hmac(sha1)";
+enum hash_algo evm_hash_algo __ro_after_init = HASH_ALGO_SHA1;
 
 /**
  * evm_set_key() - set EVM HMAC key from the kernel
@@ -76,7 +76,11 @@ static struct shash_desc *init_desc(char type, uint8_t hash_algo)
 	long rc;
 	const char *algo;
 	struct crypto_shash **tfm, *tmp_tfm;
+	char evm_hmac[CRYPTO_MAX_ALG_NAME];
 	struct shash_desc *desc;
+
+	snprintf(evm_hmac, sizeof(evm_hmac), "hmac(%s)",
+		 CONFIG_EVM_DEFAULT_HASH);
 
 	if (type == EVM_XATTR_HMAC) {
 		if (!(evm_initialized & EVM_INIT_HMAC)) {
@@ -154,7 +158,8 @@ static void hmac_add_misc(struct shash_desc *desc, struct inode *inode,
 	/* Don't include the inode or generation number in portable
 	 * signatures
 	 */
-	if (type != EVM_XATTR_PORTABLE_DIGSIG) {
+	if (type != EVM_XATTR_PORTABLE_DIGSIG &&
+	    type != EVM_IMA_XATTR_DIGEST_LIST) {
 		hmac_misc.ino = inode->i_ino;
 		hmac_misc.generation = inode->i_generation;
 	}
@@ -171,7 +176,8 @@ static void hmac_add_misc(struct shash_desc *desc, struct inode *inode,
 	hmac_misc.mode = inode->i_mode;
 	crypto_shash_update(desc, (const u8 *)&hmac_misc, sizeof(hmac_misc));
 	if ((evm_hmac_attrs & EVM_ATTR_FSUUID) &&
-	    type != EVM_XATTR_PORTABLE_DIGSIG)
+	    type != EVM_XATTR_PORTABLE_DIGSIG &&
+	    type != EVM_IMA_XATTR_DIGEST_LIST)
 		crypto_shash_update(desc, (u8 *)&inode->i_sb->s_uuid, UUID_SIZE);
 	crypto_shash_final(desc, digest);
 
@@ -337,7 +343,8 @@ static int evm_is_immutable(struct dentry *dentry, struct inode *inode)
 			rc = 0;
 		goto out;
 	}
-	if (xattr_data->type == EVM_XATTR_PORTABLE_DIGSIG)
+	if (xattr_data->type == EVM_XATTR_PORTABLE_DIGSIG ||
+		xattr_data->type == EVM_IMA_XATTR_DIGEST_LIST)
 		rc = 1;
 	else
 		rc = 0;
@@ -370,7 +377,7 @@ int evm_update_evmxattr(struct dentry *dentry, const char *xattr_name,
 	if (rc)
 		return -EPERM;
 
-	data.hdr.algo = HASH_ALGO_SHA1;
+	data.hdr.algo = evm_hash_algo;
 	rc = evm_calc_hmac(dentry, xattr_name, xattr_value,
 			   xattr_value_len, &data);
 	if (rc == 0) {
@@ -378,7 +385,8 @@ int evm_update_evmxattr(struct dentry *dentry, const char *xattr_name,
 		rc = __vfs_setxattr_noperm(&nop_mnt_idmap, dentry,
 					   XATTR_NAME_EVM,
 					   &data.hdr.xattr.data[1],
-					   SHA1_DIGEST_SIZE + 1, 0);
+					   hash_digest_size[evm_hash_algo] + 1,
+					   0);
 	} else if (rc == -ENODATA && (inode->i_opflags & IOP_XATTR)) {
 		rc = __vfs_removexattr(&nop_mnt_idmap, dentry, XATTR_NAME_EVM);
 	}
@@ -390,7 +398,7 @@ int evm_init_hmac(struct inode *inode, const struct xattr *lsm_xattr,
 {
 	struct shash_desc *desc;
 
-	desc = init_desc(EVM_XATTR_HMAC, HASH_ALGO_SHA1);
+	desc = init_desc(EVM_XATTR_HMAC, evm_hash_algo);
 	if (IS_ERR(desc)) {
 		pr_info("init_desc failed\n");
 		return PTR_ERR(desc);
@@ -403,7 +411,7 @@ int evm_init_hmac(struct inode *inode, const struct xattr *lsm_xattr,
 }
 
 /*
- * Get the key from the TPM for the SHA1-HMAC
+ * Get the key from the TPM for the HMAC
  */
 int evm_init_key(void)
 {
