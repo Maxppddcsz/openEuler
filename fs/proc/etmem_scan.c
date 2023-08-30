@@ -500,7 +500,7 @@ static int ept_idle_supports_cpu(struct kvm *kvm)
 		return ret;
 }
 
-#else
+#elif defined(CONFIG_ARM64)
 static int arm_pte_range(struct page_idle_ctrl *pic,
 			pmd_t *pmd, unsigned long addr, unsigned long end)
 {
@@ -623,6 +623,128 @@ static int arm_page_range(struct page_idle_ctrl *pic,
 	local_irq_enable();
 	return err;
 }
+
+#elif defined(CONFIG_LOONGARCH)
+static int loongarch_pte_range(struct page_idle_ctrl *pic,
+			pmd_t *pmd, unsigned long addr, unsigned long end)
+{
+	pte_t *pte;
+	enum ProcIdlePageType page_type;
+	int err = 0;
+
+	pte = pte_offset_kernel(pmd, addr);
+	do {
+		if (!pte_present(*pte))
+			page_type = PTE_HOLE;
+		else if (!test_and_clear_bit(_PAGE_MM_BIT_ACCESSED,
+					(unsigned long *) &pte->pte))
+			page_type = PTE_IDLE;
+		else
+			page_type = PTE_ACCESSED;
+
+		err = pic_add_page(pic, addr, addr + PAGE_SIZE, page_type);
+		if (err)
+			break;
+	} while (pte++, addr += PAGE_SIZE, addr != end);
+
+	return err;
+}
+
+static int loongarch_pmd_range(struct page_idle_ctrl *pic,
+			pud_t *pud, unsigned long addr, unsigned long end)
+{
+	pmd_t *pmd;
+	unsigned long next;
+	enum ProcIdlePageType page_type;
+	enum ProcIdlePageType pte_page_type;
+	int err = 0;
+
+	if (pic->flags & SCAN_HUGE_PAGE)
+		pte_page_type = PMD_IDLE_PTES;
+	else
+		pte_page_type = IDLE_PAGE_TYPE_MAX;
+
+	pmd = pmd_offset(pud, addr);
+	do {
+		next = pmd_addr_end(addr, end);
+		if (!pmd_present(*pmd))
+			page_type = PMD_HOLE;
+		else if (!pmd_huge(*pmd))
+			page_type = pte_page_type;
+		else if (!test_and_clear_bit(_PAGE_MM_BIT_ACCESSED,
+					(unsigned long *)pmd))
+			page_type = PMD_IDLE;
+		else
+			page_type = PMD_ACCESSED;
+
+		if (page_type != IDLE_PAGE_TYPE_MAX)
+			err = pic_add_page(pic, addr, next, page_type);
+		else
+			err = loongarch_pte_range(pic, pmd, addr, next);
+		if (err)
+			break;
+	} while (pmd++, addr = next, addr != end);
+
+	return err;
+}
+
+static int loongarch_pud_range(struct page_idle_ctrl *pic,
+			pgd_t *pgd, unsigned long addr, unsigned long end)
+{
+	pud_t *pud;
+	unsigned long next;
+	int err = 0;
+
+	pud = pud_offset(pgd, addr);
+	do {
+		next = pud_addr_end(addr, end);
+		if (!pud_present(*pud)) {
+			set_restart_gpa(next, "PUD_HOLE");
+			continue;
+		}
+
+		if (pud_huge(*pud))
+			err = pic_add_page(pic, addr, next, PUD_PRESENT);
+		else
+			err = loongarch_pmd_range(pic, pud, addr, next);
+		if (err)
+			break;
+	} while (pud++, addr = next, addr != end);
+
+	return err;
+}
+
+static int loongarch_page_range(struct page_idle_ctrl *pic,
+						   unsigned long addr,
+						   unsigned long end)
+{
+	pgd_t *pgd;
+	unsigned long next;
+	struct kvm *kvm = pic->kvm;
+	int err = 0;
+
+	WARN_ON(addr >= end);
+
+	spin_lock(&pic->kvm->mmu_lock);
+	pgd = kvm->arch.gpa_mm.pgd + pgd_index(addr);
+	spin_unlock(&pic->kvm->mmu_lock);
+
+	local_irq_disable();
+	do {
+		next = pgd_addr_end(addr, end);
+		if (!pgd_present(*pgd)) {
+			set_restart_gpa(next, "PGD_HOLE");
+			continue;
+		}
+
+		err = loongarch_pud_range(pic, pgd, addr, next);
+		if (err)
+			break;
+	} while (pgd++, addr = next, addr != end);
+
+	local_irq_enable();
+	return err;
+}
 #endif
 
 /*
@@ -713,8 +835,10 @@ static int vm_idle_walk_hva_range(struct page_idle_ctrl *pic,
 			pic->gpa_to_hva = start - gpa_addr;
 #ifdef CONFIG_ARM64
 			arm_page_range(pic, gpa_addr, gpa_addr + addr_range);
-#else
+#elif defined(CONFIG_X86_64)
 			ept_page_range(pic, gpa_addr, gpa_addr + addr_range);
+#elif defined(CONFIG_LOONGARCH)
+			loongarch_page_range(pic, gpa_addr, gpa_addr + addr_range);
 #endif
 			va_end = pic->gpa_to_hva + gpa_addr + addr_range;
 		}
@@ -819,7 +943,7 @@ static int page_scan_release(struct inode *inode, struct file *file)
 		ret = -EINVAL;
 		goto out;
 	}
-#ifdef CONFIG_X86_64
+#if defined(CONFIG_X86_64) || defined(CONFIG_LOONGARCH)
 	spin_lock(&kvm->mmu_lock);
 	kvm_flush_remote_tlbs(kvm);
 	spin_unlock(&kvm->mmu_lock);
@@ -834,8 +958,10 @@ static int mm_idle_pmd_large(pmd_t pmd)
 {
 #ifdef CONFIG_ARM64
 	return if_pmd_thp_or_huge(pmd);
-#else
+#elif defined(CONFIG_X86_64)
 	return pmd_large(pmd);
+#elif defined(CONFIG_LOONGARCH)
+	return pmd_huge(pmd);
 #endif
 }
 
