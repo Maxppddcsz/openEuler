@@ -3089,8 +3089,7 @@ static inline int is_expeller_level(struct task_group *tg)
 #ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
 static __always_inline int task_has_qos_idle_policy(struct task_struct *p)
 {
-	if (!qos_sched_enabled() ||
-	    !static_branch_likely(&qos_smt_expell_switch))
+	if (!qos_sched_enabled())
 		return 0;
 
 	return qos_idle_policy(task_group(p)->qos_level) && p->policy == SCHED_IDLE;

@@ -2716,6 +2716,15 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= proc_dointvec,
 	},
 #endif
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+	{
+		.procname       = "qos_smt_expell_switch",
+		.data           = &qos_smt_expell_switch.key,
+		.maxlen         = sizeof(qos_smt_expell_switch),
+		.mode           = 0644,
+		.proc_handler   = proc_do_static_key,
+	},
+#endif
 #ifdef CONFIG_QOS_SCHED_PRIO_LB
 	{
 		.procname	= "sched_prio_load_balance_enabled",
