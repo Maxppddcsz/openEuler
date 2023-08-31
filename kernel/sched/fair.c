@@ -5296,6 +5296,9 @@ static unsigned long weighted_cpuload(struct rq *rq);
 static inline bool prefer_cpus_valid(struct task_struct *p);
 
 int sysctl_affinity_adjust_delay_ms = 5000;
+nodemask_t smart_grid_preferred_nodemask;
+unsigned long *smart_grid_preferred_nodemask_bits =
+	nodes_addr(smart_grid_preferred_nodemask);
 
 struct static_key __smart_grid_used;
 
@@ -5494,90 +5497,6 @@ void stop_auto_affinity(struct auto_affinity *auto_affi)
 	mutex_unlock(&smart_grid_used_mutex);
 }
 
-static struct sched_group *sd_find_idlest_group(struct sched_domain *sd)
-{
-	struct sched_group *idlest = NULL, *group = sd->groups;
-	unsigned long min_runnable_load = ULONG_MAX;
-	unsigned long min_avg_load = ULONG_MAX;
-	int imbalance_scale = 100 + (sd->imbalance_pct-100)/2;
-	unsigned long imbalance = scale_load_down(NICE_0_LOAD) *
-				(sd->imbalance_pct-100) / 100;
-
-	do {
-		unsigned long load, avg_load, runnable_load;
-		int i;
-
-		avg_load = 0;
-		runnable_load = 0;
-
-		for_each_cpu(i, sched_group_span(group)) {
-			load = target_load(i, 0);
-			runnable_load += load;
-			avg_load += cfs_rq_load_avg(&cpu_rq(i)->cfs);
-		}
-
-		avg_load = (avg_load * SCHED_CAPACITY_SCALE) /
-					group->sgc->capacity;
-		runnable_load = (runnable_load * SCHED_CAPACITY_SCALE) /
-					group->sgc->capacity;
-
-		if (min_runnable_load > (runnable_load + imbalance)) {
-			min_runnable_load = runnable_load;
-			min_avg_load = avg_load;
-			idlest = group;
-		} else if ((runnable_load < (min_runnable_load + imbalance)) &&
-			   (100*min_avg_load > imbalance_scale*avg_load)) {
-			min_avg_load = avg_load;
-			idlest = group;
-		}
-	} while (group = group->next, group != sd->groups);
-
-	return idlest ? idlest : group;
-}
-
-static int group_find_idlest_cpu(struct sched_group *group)
-{
-	int least_loaded_cpu = cpumask_first(sched_group_span(group));
-	unsigned long load, min_load = ULONG_MAX;
-	unsigned int min_exit_latency = UINT_MAX;
-	u64 latest_idle_timestamp = 0;
-	int shallowest_idle_cpu = -1;
-	int i;
-
-	if (group->group_weight == 1)
-		return least_loaded_cpu;
-
-	for_each_cpu(i, sched_group_span(group)) {
-		if (sched_idle_cpu(i))
-			return i;
-
-		if (available_idle_cpu(i)) {
-			struct rq *rq = cpu_rq(i);
-			struct cpuidle_state *idle = idle_get_state(rq);
-
-			if (idle && idle->exit_latency < min_exit_latency) {
-				min_exit_latency = idle->exit_latency;
-				latest_idle_timestamp = rq->idle_stamp;
-				shallowest_idle_cpu = i;
-			} else if ((!idle ||
-				   idle->exit_latency == min_exit_latency) &&
-				   rq->idle_stamp > latest_idle_timestamp) {
-				latest_idle_timestamp = rq->idle_stamp;
-				shallowest_idle_cpu = i;
-			}
-		} else if (shallowest_idle_cpu == -1) {
-			load = weighted_cpuload(cpu_rq(i));
-			if (load < min_load) {
-				min_load = load;
-				least_loaded_cpu = i;
-			}
-		}
-	}
-
-	return shallowest_idle_cpu != -1 ? shallowest_idle_cpu :
-			least_loaded_cpu;
-}
-
 void free_affinity_domains(struct affinity_domain *ad)
 {
 	int i;
@@ -5612,14 +5531,72 @@ err:
 	return -ENOMEM;
 }
 
+struct nid_stats {
+	unsigned long util;
+	unsigned long compute_capacity;
+};
+
+static inline void update_nid_stats(struct nid_stats *ns, int nid)
+{
+	int cpu;
+
+	memset(ns, 0, sizeof(*ns));
+	for_each_cpu(cpu, cpumask_of_node(nid)) {
+		ns->compute_capacity += capacity_of(cpu);
+		ns->util += cpu_util(cpu);
+	}
+}
+
+static int find_idlest_nid(void)
+{
+	int nid, imbalance_pct, is_prefer;
+	unsigned long long util_min = UINT_MAX;
+	int idlest_is_prefer = 0;
+	struct nid_stats ns;
+	int idlest_nid = 0;
+
+	for_each_online_node(nid) {
+		if (!cpumask_intersects(cpumask_of_node(nid),
+				       housekeeping_cpumask(HK_FLAG_DOMAIN)))
+			continue;
+
+		update_nid_stats(&ns, nid);
+
+		if (node_isset(nid, smart_grid_preferred_nodemask)) {
+			if (ns.util * 100 <
+			    ns.compute_capacity * sysctl_sched_util_low_pct) {
+				idlest_nid = nid;
+				break;
+			}
+			is_prefer = 1;
+		} else {
+			is_prefer = 0;
+		}
+
+		if (is_prefer && !idlest_is_prefer)
+			imbalance_pct = 117; // higher 15%
+		else if (!is_prefer && idlest_is_prefer)
+			imbalance_pct = 85; // lower 15%
+		else
+			imbalance_pct = 100;
+
+		if (ns.util * 100 < util_min * imbalance_pct) {
+			util_min = ns.util * 100 / imbalance_pct;
+			idlest_nid = nid;
+			idlest_is_prefer = is_prefer;
+		}
+	}
+
+	return idlest_nid;
+}
+
 static int init_affinity_domains(struct affinity_domain *ad)
 {
-	struct sched_domain *sd = NULL, *tmp;
-	struct sched_group *idlest = NULL;
+	struct sched_domain *tmp;
+	int cpu, idlest_nid;
 	int ret = -ENOMEM;
 	int dcount = 0;
 	int i = 0;
-	int cpu;
 
 	for (i = 0; i < AD_LEVEL_MAX; i++) {
 		ad->domains[i] = kmalloc(sizeof(cpumask_t), GFP_KERNEL);
@@ -5631,18 +5608,18 @@ static int init_affinity_domains(struct affinity_domain *ad)
 	cpu = cpumask_first_and(cpu_active_mask,
 				housekeeping_cpumask(HK_FLAG_DOMAIN));
 	for_each_domain(cpu, tmp) {
-		sd = tmp;
 		dcount++;
 	}
 
-	if (!sd || dcount > AD_LEVEL_MAX) {
+	if (dcount > AD_LEVEL_MAX) {
 		rcu_read_unlock();
 		ret = -EINVAL;
 		goto err;
 	}
 
-	idlest = sd_find_idlest_group(sd);
-	cpu = group_find_idlest_cpu(idlest);
+	idlest_nid = find_idlest_nid();
+	cpu = cpumask_first_and(cpumask_of_node(idlest_nid),
+				housekeeping_cpumask(HK_FLAG_DOMAIN));
 	i = 0;
 	for_each_domain(cpu, tmp) {
 		cpumask_copy(ad->domains[i], sched_domain_span(tmp));
@@ -5710,6 +5687,24 @@ static void destroy_auto_affinity(struct task_group *tg)
 
 	kfree(tg->auto_affinity);
 	tg->auto_affinity = NULL;
+}
+
+int proc_cpu_affinity_domain_nodemask(struct ctl_table *table, int write,
+				      void __user *buffer, size_t *lenp,
+				      loff_t *ppos)
+{
+	int err;
+
+	mutex_lock(&smart_grid_used_mutex);
+
+	err = proc_do_large_bitmap(table, write, buffer, lenp, ppos);
+	if (!err && write)
+		nodes_and(smart_grid_preferred_nodemask,
+			  smart_grid_preferred_nodemask,
+			  node_online_map);
+
+	mutex_unlock(&smart_grid_used_mutex);
+	return err;
 }
 #else
 static void destroy_auto_affinity(struct task_group *tg) {}

@@ -509,6 +509,7 @@ extern void sched_offline_group(struct task_group *tg);
 extern void sched_move_task(struct task_struct *tsk);
 
 #ifdef CONFIG_QOS_SCHED_SMART_GRID
+extern nodemask_t smart_grid_preferred_nodemask;
 extern void start_auto_affinity(struct auto_affinity *auto_affi);
 extern void stop_auto_affinity(struct auto_affinity *auto_affi);
 extern int init_auto_affinity(struct task_group *tg);

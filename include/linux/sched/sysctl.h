@@ -38,6 +38,10 @@ extern int sysctl_sched_util_low_pct;
 
 #ifdef CONFIG_QOS_SCHED_SMART_GRID
 extern int sysctl_affinity_adjust_delay_ms;
+extern unsigned long *smart_grid_preferred_nodemask_bits;
+extern int proc_cpu_affinity_domain_nodemask(struct ctl_table *table, int write,
+					     void __user *buffer, size_t *lenp,
+					     loff_t *ppos);
 #endif
 
 enum sched_tunable_scaling {
