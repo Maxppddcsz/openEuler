@@ -181,6 +181,12 @@ struct address_space *hugetlb_page_mapping_lock_write(struct page *hpage);
 extern int sysctl_hugetlb_shm_group;
 extern struct list_head huge_boot_pages;
 
+#ifdef CONFIG_HUGETLBFS
+extern int sysctl_hugetlb_mig_noalloc;
+extern int sysctl_hugetlb_pmem_allocall;
+#endif
+
+
 /* arch callbacks */
 
 #ifndef CONFIG_HIGHPTE
