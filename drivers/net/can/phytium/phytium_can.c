@@ -1046,8 +1046,8 @@ static int phytium_can_close(struct net_device *dev)
  *
  * Return: 0 on success.
  */
-static netdev_tx_t phytium_can_start_xmit(struct sk_buff *skb, struct
-		net_device *dev)
+static netdev_tx_t phytium_can_start_xmit(struct sk_buff *skb, struct net_device 
+								*dev)
 {
 	struct phytium_can_dev *cdev = netdev_priv(dev);
 

@@ -45,8 +45,8 @@ static const struct phytium_can_pci_config phytium_can_pci_data = {
 	.tx_fifo_depth = 64,
 };
 
-static int phytium_can_pci_probe(struct pci_dev *pdev, const struct
-		pci_device_id *id)
+static int phytium_can_pci_probe(struct pci_dev *pdev, const
+				struct pci_device_id *id)
 {
 	const struct phytium_can_pci_config *cfg;
 	struct phytium_can_dev *cdev;
