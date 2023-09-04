@@ -616,6 +616,9 @@ struct vm_area_struct {
 #ifdef CONFIG_GMEM
 	struct vm_object *vm_obj;
 #endif
+#ifdef CONFIG_ASCEND_SHARE_POOL
+	struct sp_area *spa;
+#endif
 } __randomize_layout;
 
 #ifdef CONFIG_SCHED_MM_CID
@@ -854,6 +857,10 @@ struct mm_struct {
 	struct kvm *kvm;
 #endif
 	} __randomize_layout;
+
+#if IS_ENABLED(CONFIG_ASCEND_SHARE_POOL)
+	struct sp_group_master *sp_group_master;
+#endif
 
 	/*
 	 * The mm_cpumask needs to be at the end of mm_struct, because it
