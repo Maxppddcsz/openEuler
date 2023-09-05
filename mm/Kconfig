@@ -1244,6 +1244,13 @@ config HUGETLB_INSERT_PAGE
 	help
 	  This allowed a driver to insert hugetlb mapping into user address space.
 
+config EXTEND_HUGEPAGE_MAPPING
+	bool
+	help
+	  Introduce vmalloc/vmap/remap interfaces that handle only hugepages.
+	  This allow the user to do huge vmalloc and remap those hugepage range
+	  into userspace.
+
 source "mm/damon/Kconfig"
 
 endmenu
