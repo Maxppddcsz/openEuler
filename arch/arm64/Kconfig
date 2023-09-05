@@ -2365,6 +2365,7 @@ menuconfig ASCEND_FEATURES
 	depends on ARM64
 	select HUGETLB_INSERT_PAGE
 	select EXTEND_HUGEPAGE_MAPPING
+	select SHARE_POOL
 	help
 	  The Ascend chip use the Hisilicon DaVinci architecture, and mainly
 	  focus on AI and machine leanring area, contains many external features.
