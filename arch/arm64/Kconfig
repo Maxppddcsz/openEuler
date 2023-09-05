@@ -2368,3 +2368,17 @@ menuconfig ASCEND_FEATURES
 	  focus on AI and machine leanring area, contains many external features.
 	  Enable this config to enable selective list of these features.
 	  If unsure, say N
+
+if ASCEND_FEATURES
+
+config EXTEND_HUGEPAGE_MAPPING
+	bool "Extend for hugepages mapping"
+	depends on ARM64
+	default n
+	help
+	  Introduce vmalloc/vmap/remap interfaces that handle only hugepages.
+	  This allow the user to do huge vmalloc and remap those hugepage range
+	  into userspace.
+	  If unsure, say N
+
+endif # ASCEND_FEATURES
