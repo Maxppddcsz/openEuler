@@ -2206,6 +2206,11 @@ event_create_dir(struct dentry *parent, struct trace_event_file *file)
 		trace_create_file("filter", TRACE_MODE_WRITE, file->dir,
 				  file, &ftrace_event_filter_fops);
 
+#ifdef CONFIG_STACKTRACE
+		trace_create_file("stack_filter", TRACE_MODE_WRITE, file->dir,
+				  file, &event_stack_filter_fops);
+#endif
+
 		trace_create_file("trigger", TRACE_MODE_WRITE, file->dir,
 				  file, &event_trigger_fops);
 	}
