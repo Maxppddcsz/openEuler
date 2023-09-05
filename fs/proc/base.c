@@ -97,6 +97,7 @@
 #include <linux/resctrl.h>
 #include <linux/cn_proc.h>
 #include <linux/ksm.h>
+#include <linux/share_pool.h>
 #include <trace/events/oom.h>
 #include "internal.h"
 #include "fd.h"
@@ -3425,6 +3426,9 @@ static const struct pid_entry tgid_base_stuff[] = {
 	ONE("ksm_merging_pages",  S_IRUSR, proc_pid_ksm_merging_pages),
 	ONE("ksm_stat",  S_IRUSR, proc_pid_ksm_stat),
 #endif
+#ifdef CONFIG_ASCEND_SHARE_POOL
+	ONE("sp_group", 0444, proc_sp_group_state),
+#endif
 };
 
 static int proc_tgid_base_readdir(struct file *file, struct dir_context *ctx)
@@ -3769,6 +3773,9 @@ static const struct pid_entry tid_base_stuff[] = {
 #endif
 #ifdef CONFIG_QOS_SCHED_DYNAMIC_AFFINITY
 	REG("preferred_cpuset", 0644, proc_preferred_cpuset_operations),
+#endif
+#ifdef CONFIG_ASCEND_SHARE_POOL
+	ONE("sp_group", 0444, proc_sp_group_state),
 #endif
 };
 
