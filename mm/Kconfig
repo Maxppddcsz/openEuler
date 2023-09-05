@@ -1239,6 +1239,11 @@ config ETMEM
 	  high-performance storage media to release memory space and reduce
 	  memory costs.
 
+config HUGETLB_INSERT_PAGE
+	bool
+	help
+	  This allowed a driver to insert hugetlb mapping into user address space.
+
 source "mm/damon/Kconfig"
 
 endmenu
