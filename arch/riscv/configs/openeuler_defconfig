@@ -7157,3 +7157,8 @@ CONFIG_ARCH_USE_MEMTEST=y
 #
 # end of Rust hacking
 # end of Kernel hacking
+
+# enable openEuler livepatch
+CONFIG_LIVEPATCH=y
+CONFIG_SAMPLES=y
+CONFIG_SAMPLE_LIVEPATCH=m
