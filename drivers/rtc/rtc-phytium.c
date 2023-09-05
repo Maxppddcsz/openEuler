@@ -256,7 +256,7 @@ static int phytium_rtc_suspend(struct device *dev)
 	 * If this RTC alarm will be used for waking the system up,
 	 * don't disable it of course. Else we just disable the alarm
 	 * and await suspension.
-    */
+     */
 	irq = platform_get_irq(pdev, 0);
 	if (device_may_wakeup(&pdev->dev)) {
 		if (!enable_irq_wake(irq))
