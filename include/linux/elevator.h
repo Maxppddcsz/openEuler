@@ -280,6 +280,9 @@ enum {
 #define rq_entry_fifo(ptr)	list_entry((ptr), struct request, queuelist)
 #define rq_fifo_clear(rq)	list_del_init(&(rq)->queuelist)
 
+/* Supports scheduling on multiple hardware queues */
+#define ELEVATOR_F_MQ_AWARE		(1U << 1)
+
 #else /* CONFIG_BLOCK */
 
 static inline void load_default_elevator_module(void) { }
