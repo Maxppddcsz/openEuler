@@ -456,14 +456,6 @@ static ssize_t ima_write_policy(struct file *file, const char __user *buf,
 		goto out_free;
 
 	data[datalen] = '\0';
-
-	for (i = 0; data[i] != '\n' && data[i] != '\0'; i++) {
-		if (iscntrl(data[i])) {
-			pr_err_once("invalid path (control characters are not allowed)\n");
-			result = -EINVAL;
-			goto out_free;
-		}
-	}
 #else
 	data = memdup_user_nul(buf, datalen);
 	if (IS_ERR(data)) {
@@ -477,6 +469,15 @@ static ssize_t ima_write_policy(struct file *file, const char __user *buf,
 		goto out_free;
 
 	if (data[0] == '/') {
+		for (i = 0; data[i] != '\n' && data[i] != '\0'; i++) {
+			if (iscntrl(data[i])) {
+				pr_err_once("invalid path (control characters are not allowed)\n");
+				result = -EINVAL;
+				mutex_unlock(&ima_write_mutex);
+				goto out_free;
+			}
+		}
+
 #ifdef CONFIG_IMA_DIGEST_LIST
 		result = ima_read_file(data, dentry);
 	} else if (dentry == ima_policy) {
