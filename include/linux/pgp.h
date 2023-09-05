@@ -14,6 +14,9 @@
 #define _LINUX_PGP_H
 
 #include <linux/types.h>
+#ifdef CONFIG_IMA_DIGEST_LIST
+#include <linux/key.h>
+#endif
 
 struct pgp_key_ID {
 	u8 id[8];
@@ -213,4 +216,8 @@ enum pgp_literal_data_format {
 	PGP_LIT_FORMAT_TEXT_UTF8		= 0x75,
 };
 
+#ifdef CONFIG_IMA_DIGEST_LIST
+int __init preload_pgp_keys(const u8 *pgpdata, size_t pgpdatalen,
+			    struct key *keyring);
+#endif
 #endif /* _LINUX_PGP_H */
