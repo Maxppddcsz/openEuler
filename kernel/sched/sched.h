@@ -1213,6 +1213,39 @@ static inline bool is_migration_disabled(struct task_struct *p)
 #endif
 }
 
+#ifdef CONFIG_QOS_SCHED
+
+#ifdef CONFIG_QOS_SCHED_MULTILEVEL
+enum task_qos_level {
+	QOS_LEVEL_OFFLINE_EX = -2,
+	QOS_LEVEL_OFFLINE = -1,
+	QOS_LEVEL_ONLINE = 0,
+	QOS_LEVEL_HIGH = 1,
+	QOS_LEVEL_HIGH_EX = 2
+};
+#else
+enum task_qos_level {
+	QOS_LEVEL_OFFLINE = -1,
+	QOS_LEVEL_ONLINE = 0,
+};
+#endif
+
+static inline int is_high_level(long qos_level)
+{
+	return qos_level > QOS_LEVEL_ONLINE;
+}
+
+static inline int is_normal_level(long qos_level)
+{
+	return qos_level == QOS_LEVEL_ONLINE;
+}
+
+static inline int is_offline_level(long qos_level)
+{
+	return qos_level < QOS_LEVEL_ONLINE;
+}
+#endif
+
 DECLARE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
 #define cpu_rq(cpu)		(&per_cpu(runqueues, (cpu)))
