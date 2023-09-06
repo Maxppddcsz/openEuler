@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .109.0
-%global pkg_release         .136
+%global maintenance_release .110.0
+%global pkg_release         .137
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,21 @@ fi
 %endif
 
 %changelog
+* Wed Sep 06 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.110.0.137
+- !2002 [sync] PR-1911:  ksmbd: fix out-of-bound read in smb2_write
+- !1626 [sync] PR-1621:  fix three CVEs by backport mainline patchs
+- !1817 [sync] PR-1788:  exfat: check if filename entries exceeds max filename length
+- ksmbd: fix out-of-bound read in smb2_write
+- !1979 [sync] PR-1446:  Fix the default return value of dm_pool_dec_data_range()
+- Fix the default return value of dm_pool_dec_data_range()
+- !1384 [sync] PR-1346:  dm thin metadata: check fail_io before using data_sm
+- exfat: check if filename entries exceeds max filename length
+- ksmbd: fix racy issue from session setup and logoff
+- ksmbd: Fix spelling mistake "excceed" -> "exceeded"
+- ksmbd: limit pdu length size according to connection status
+- ksmbd: Implements sess->ksmbd_chann_list as xarray
+- dm thin metadata: check fail_io before using data_sm
+
 * Tue Aug 29 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.109.0.136
 - !1891 [sync] PR-1784:  tun/tap: fix CVE-2023-4194
 - !1885 [sync] PR-1815:  Bluetooth: L2CAP: Fix use-after-free in l2cap_sock_ready_cb
