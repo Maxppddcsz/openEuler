@@ -84,9 +84,15 @@ static int __init ima_add_boot_aggregate(void)
 		goto err_out;
 	}
 
+#ifdef CONFIG_IMA_DIGEST_LIST
 	result = ima_store_template(entry, violation, NULL,
 				    boot_aggregate_name,
 				    CONFIG_IMA_MEASURE_PCR_IDX, NULL);
+#else
+	result = ima_store_template(entry, violation, NULL,
+				    boot_aggregate_name,
+				    CONFIG_IMA_MEASURE_PCR_IDX);
+#endif
 	if (result < 0) {
 		ima_free_template_entry(entry);
 		audit_cause = "store_entry";
