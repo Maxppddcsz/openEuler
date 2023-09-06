@@ -45,8 +45,10 @@ static const struct ima_template_field supported_fields[] = {
 	{.field_id = "d-modsig", .field_init = ima_eventdigest_modsig_init,
 	 .field_show = ima_show_template_digest_ng},
 	{.field_id = "modsig", .field_init = ima_eventmodsig_init,
+#ifdef CONFIG_IMA_DIGEST_LIST
 	 .field_show = ima_show_template_sig},
 	{.field_id = "evmsig", .field_init = ima_eventevmsig_init,
+#endif
 	 .field_show = ima_show_template_sig},
 };
 
