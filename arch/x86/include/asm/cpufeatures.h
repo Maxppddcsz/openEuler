@@ -434,5 +434,6 @@
 #define X86_BUG_RETBLEED                X86_BUG(26) /* CPU is affected by RETBleed */
 #define X86_BUG_EIBRS_PBRSB            X86_BUG(28) /* EIBRS is vulnerable to Post Barrier RSB Pre dictions */
 #define X86_BUG_SMT_RSB            X86_BUG(29) /* CPU is vulnerable to Cross-Thread Return Address Predictions */
+#define X86_BUG_DIV0			X86_BUG(30) /* AMD DIV0 speculation bug */
 
 #endif /* _ASM_X86_CPUFEATURES_H */
