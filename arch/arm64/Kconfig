@@ -2126,6 +2126,14 @@ config ASCEND_CLEAR_HUGEPAGE_DISABLE
 	  Disable clear hugepage when alloc hugepages to improve the hugepage
 	  application performance.
 
+config ASCEND_SDEI
+	bool "asend sdei features"
+	default n
+	depends on ARM_SDE_INTERFACE
+	help
+	  SDEI features used in ascend scenarios, should be disabled in other
+	  board.
+
 endif
 
 endmenu
