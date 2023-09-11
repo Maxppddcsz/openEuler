@@ -6299,12 +6299,13 @@ EXPORT_SYMBOL_GPL(hugetlb_get_hstate);
 static struct page *hugetlb_alloc_hugepage_normal(struct hstate *h,
 		gfp_t gfp_mask, int nid)
 {
+	unsigned long flags;
 	struct page *page = NULL;
 
-	spin_lock(&hugetlb_lock);
+	spin_lock_irqsave(&hugetlb_lock, flags);
 	if (h->free_huge_pages - h->resv_huge_pages > 0)
 		page = dequeue_huge_page_nodemask(h, gfp_mask, nid, NULL, NULL);
-	spin_unlock(&hugetlb_lock);
+	spin_unlock_irqrestore(&hugetlb_lock, flags);
 
 	return page;
 }

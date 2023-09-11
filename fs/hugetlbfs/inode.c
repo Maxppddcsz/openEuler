@@ -128,9 +128,10 @@ static int hugetlb_checknode(struct vm_area_struct *vma, long nr)
 {
 	int nid;
 	int ret = 0;
+	unsigned long flags;
 	struct hstate *h = &default_hstate;
 
-	spin_lock(&hugetlb_lock);
+	spin_lock_irqsave(&hugetlb_lock, flags);
 
 	nid = vma->vm_flags >> CHECKNODE_BITS;
 
@@ -154,7 +155,7 @@ static int hugetlb_checknode(struct vm_area_struct *vma, long nr)
 	}
 
 err:
-	spin_unlock(&hugetlb_lock);
+	spin_unlock_irqrestore(&hugetlb_lock, flags);
 	return ret;
 }
 
