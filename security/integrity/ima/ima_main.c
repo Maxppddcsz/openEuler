@@ -600,18 +600,18 @@ int ima_file_mprotect(struct vm_area_struct *vma, unsigned long prot)
  */
 int ima_bprm_check(struct linux_binprm *bprm)
 {
-	int ret;
-	u32 secid;
+		int ret;
+		u32 secid;
 
-	security_current_getsecid_subj(&secid);
-	ret = process_measurement(bprm->file, current_cred(), secid, NULL, 0,
-				  MAY_EXEC, BPRM_CHECK);
-	if (ret)
-		return ret;
+		security_current_getsecid_subj(&secid);
+		ret = process_measurement(bprm->file, current_cred(), secid, NULL, 0,
+									MAY_EXEC, BPRM_CHECK);
+		if (ret)
+			return ret;
 
-	security_cred_getsecid(bprm->cred, &secid);
-	return process_measurement(bprm->file, bprm->cred, secid, NULL, 0,
-				   MAY_EXEC, CREDS_CHECK);
+		security_cred_getsecid(bprm->cred, &secid);
+		return process_measurement(bprm->file, bprm->cred, secid, NULL, 0,
+		MAY_EXEC, CREDS_CHECK);
 }
 
 /**
@@ -626,12 +626,24 @@ int ima_bprm_check(struct linux_binprm *bprm)
  */
 int ima_file_check(struct file *file, int mask)
 {
-	u32 secid;
+		u32 secid;
+#ifdef CONFIG_IMA_DIGEST_LIST
+		int rc;
+#endif
 
-	security_current_getsecid_subj(&secid);
+		security_current_getsecid_subj(&secid);
+#ifdef CONFIG_IMA_DIGEST_LIST
+		rc = process_measurement(file, current_cred(), secid, NULL, 0,
+									mask & (MAY_READ | MAY_WRITE | MAY_EXEC |
+											MAY_APPEND), FILE_CHECK);
+		if (ima_current_is_parser() && !rc)
+				ima_check_measured_appraised(file);
+		return rc;
+#else
 	return process_measurement(file, current_cred(), secid, NULL, 0,
 				   mask & (MAY_READ | MAY_WRITE | MAY_EXEC |
 					   MAY_APPEND), FILE_CHECK);
+#endif
 }
 EXPORT_SYMBOL_GPL(ima_file_check);
 
