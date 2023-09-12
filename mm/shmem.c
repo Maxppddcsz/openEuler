@@ -2421,8 +2421,10 @@ static int shmem_mfill_atomic_pte(struct mm_struct *dst_mm,
 				/* don't free the page */
 				return -ENOENT;
 			}
+
+			flush_dcache_page(page);
 		} else {		/* mfill_zeropage_atomic */
-			clear_highpage(page);
+			clear_user_highpage(page, dst_addr);
 		}
 	} else {
 		page = *pagep;
