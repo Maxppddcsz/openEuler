@@ -43,6 +43,8 @@ obj-y += irq/
 obj-y += rcu/
 obj-y += livepatch/
 obj-y += dma/
+obj-(CONFIG_XPU_SCHEDULE) += ucc_sched/
+obj-(CONFIG_XPU_UCC) += ucc/
 
 obj-$(CONFIG_CHECKPOINT_RESTORE) += kcmp.o
 obj-$(CONFIG_FREEZER) += freezer.o
