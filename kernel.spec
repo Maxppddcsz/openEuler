@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .110.0
-%global pkg_release         .137
+%global maintenance_release .111.0
+%global pkg_release         .138
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,35 @@ fi
 %endif
 
 %changelog
+* Wed Sep 13 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.111.0.138
+- !2143 [sync] PR-2126:  netfilter: nf_tables: skip immediate deactivate in _PREPARE_ERROR
+- !2107 [sync] PR-2090:  net/sched: sch_hfsc: Ensure inner classes have fsc curve
+- netfilter: nf_tables: skip immediate deactivate in _PREPARE_ERROR
+- !2105 [sync] PR-2092:  netfilter: nf_tables: skip bound chain on rule flush
+- !2108 [sync] PR-2085:  af_unix: Fix null-ptr-deref in unix_stream_sendpage().
+- !2113 [sync] PR-2097:  Fixed 4 CVEs of the ksmbd
+- !1779  nvme-pci: clear the prp2 field when not used
+- !2081 [sync] PR-2065:  dm: switch to precise io accounting
+- ksmbd: not allow guest user on multichannel
+- ksmbd: fix deadlock in ksmbd_find_crypto_ctx()
+- ksmbd: block asynchronous requests when making a delay on session setup
+- ksmbd: destroy expired sessions
+- af_unix: Fix null-ptr-deref in unix_stream_sendpage().
+- net/sched: sch_hfsc: Ensure inner classes have fsc curve
+- netfilter: nf_tables: skip bound chain on rule flush
+- !1925 [sync] PR-1883:  SUNRPC: don't pause on incomplete allocation
+- !1748 [sync] PR-1649: Enable TPM TIS customization
+- !1747 [sync] PR-1646: Fixed extioi hardware emulation bugs on loongarch
+- dm: switch to precise io accounting
+- !2057 [sync] PR-2055: Only enable unicast promisc when mac table full to fix the hns3 bug
+- SUNRPC: don't pause on incomplete allocation
+- net: hns3: only enable unicast promisc when mac table full
+- !2047 [sync] PR-1752:  ksmbd: validate session id and tree id in the compound request
+- ksmbd: validate session id and tree id in the compound request
+- nvme-pci: clear the prp2 field when not used
+- loongarch/config: Enable TPM TIS customization
+- loongarch/kvm: Fixed extioi hardware emulation bugs
+
 * Wed Sep 06 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.110.0.137
 - !2002 [sync] PR-1911:  ksmbd: fix out-of-bound read in smb2_write
 - !1626 [sync] PR-1621:  fix three CVEs by backport mainline patchs
