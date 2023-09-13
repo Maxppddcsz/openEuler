@@ -66,6 +66,7 @@
 #include <linux/kthread.h>
 #include <linux/sched.h>
 #include <linux/sched/init.h>
+#include <linux/ucc_sched/ucc_sched.h>
 #include <linux/signal.h>
 #include <linux/idr.h>
 #include <linux/kgdb.h>
@@ -599,6 +600,14 @@ asmlinkage __visible void __init start_kernel(void)
 	 * time - but meanwhile we still have a functioning scheduler.
 	 */
 	sched_init();
+
+#ifdef CONFIG_XPU_SCHEDULE
+	/*
+	 * Set up the ucc scheduler, to enable heterogeneous scheduling.
+	 */
+	ucc_sched_init();
+#endif
+
 	/*
 	 * Disable preemption - early bootup scheduling is extremely
 	 * fragile until we cpu_idle() for the first time.

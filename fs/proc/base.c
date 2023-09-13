@@ -770,7 +770,6 @@ static const struct file_operations proc_single_file_operations = {
 	.release	= single_release,
 };
 
-
 struct mm_struct *proc_mem_open(struct inode *inode, unsigned int mode)
 {
 	struct task_struct *task = get_proc_task(inode);
@@ -1542,6 +1541,99 @@ static const struct file_operations proc_pid_sched_operations = {
 	.write		= sched_write,
 	.llseek		= seq_lseek,
 	.release	= single_release,
+};
+
+#endif
+
+#ifdef CONFIG_XPU_SCHEDULE
+static ssize_t ucc_step_read(struct file *file, char __user *buf,
+			     size_t count, loff_t *ppos)
+{
+	struct task_struct *task;
+	char numbuf[PROC_NUMBUF];
+	ssize_t len;
+
+	task = get_proc_task(file_inode(file));
+	if (!task)
+		return -ESRCH;
+
+	len = snprintf(numbuf, sizeof(numbuf), "%u\n", task->ucc_step);
+
+	put_task_struct(task);
+
+	return simple_read_from_buffer(buf, count, ppos, numbuf, len);
+}
+
+static ssize_t ucc_step_write(struct file *file, const char __user *buf,
+			      size_t count, loff_t *offset)
+{
+	struct inode *inode = file_inode(file);
+	struct task_struct *p;
+	int err;
+	unsigned int ucc_step;
+
+	p = get_proc_task(inode);
+	if (!p)
+		return -ESRCH;
+
+	err = kstrtouint_from_user(buf, count, 0, &ucc_step);
+	if (err)
+		return err;
+
+	p->ucc_step = ucc_step;
+	put_task_struct(p);
+
+	return count;
+}
+
+static const struct file_operations ucc_step_operations = {
+	.write		= ucc_step_write,
+	.read		= ucc_step_read,
+};
+
+static ssize_t ucc_priority_read(struct file *file, char __user *buf,
+				 size_t count, loff_t *ppos)
+{
+	struct task_struct *task;
+	char numbuf[PROC_NUMBUF];
+	ssize_t len;
+
+	task = get_proc_task(file_inode(file));
+	if (!task)
+		return -ESRCH;
+
+	len = snprintf(numbuf, sizeof(numbuf), "%u\n", task->ucc_priority);
+
+	put_task_struct(task);
+
+	return simple_read_from_buffer(buf, count, ppos, numbuf, len);
+}
+
+static ssize_t ucc_priority_write(struct file *file, const char __user *buf,
+				  size_t count, loff_t *offset)
+{
+	struct inode *inode = file_inode(file);
+	struct task_struct *p;
+	int err;
+	unsigned int ucc_priority;
+
+	p = get_proc_task(inode);
+	if (!p)
+		return -ESRCH;
+
+	err = kstrtouint_from_user(buf, count, 0, &ucc_priority);
+	if (err)
+		return err;
+
+	p->ucc_priority = ucc_priority;
+	put_task_struct(p);
+
+	return count;
+}
+
+static const struct file_operations ucc_priority_operations = {
+	.write		= ucc_priority_write,
+	.read		= ucc_priority_read,
 };
 
 #endif
@@ -3151,6 +3243,10 @@ static const struct pid_entry tgid_base_stuff[] = {
 #ifdef CONFIG_ASCEND_SHARE_POOL
 	ONE("sp_group", S_IRUGO, proc_sp_group_state),
 #endif
+#ifdef CONFIG_XPU_SCHEDULE
+	REG("ucc_priority", 0644, ucc_priority_operations),
+	REG("ucc_step", 0644, ucc_step_operations),
+#endif
 };
 
 static int proc_tgid_base_readdir(struct file *file, struct dir_context *ctx)
@@ -3536,6 +3632,10 @@ static const struct pid_entry tid_base_stuff[] = {
 #endif
 #ifdef CONFIG_ASCEND_SHARE_POOL
 	ONE("sp_group", S_IRUGO, proc_sp_group_state),
+#endif
+#ifdef CONFIG_XPU_SCHEDULE
+	REG("ucc_priority", 0644, ucc_priority_operations),
+	REG("ucc_step", 0644, ucc_step_operations),
 #endif
 };
 

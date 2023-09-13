@@ -188,6 +188,10 @@ struct task_struct init_task
 		.fork_pid = 0,
 	},
 #endif
+#ifdef CONFIG_XPU_SCHEDULE
+	.ucc_priority = 1,
+	.ucc_step = 1,
+#endif
 };
 EXPORT_SYMBOL(init_task);
 

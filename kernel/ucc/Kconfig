@@ -1,0 +1,21 @@
+#
+# TODO: add description
+#
+
+config XPU_UCC
+	bool "ucc"
+	default n
+	depends on ARM64 || X86
+	help
+	  Say Y here if you want support for using XPU UCC. XPU UCC
+	  is helpfer for XPU schedule. The full name of UCC is
+	  Universal Converged Computing.
+
+
+config XPU_VSTREAM
+	bool "virtual submit queue and complete queue"
+	default n
+	depends on XPU_UCC
+	help
+	  virtual Submit Queue and Complete Queue support for XPU.
+	  It is used to help XPU schedule.
