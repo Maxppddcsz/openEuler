@@ -117,6 +117,10 @@ extern unsigned int sysctl_nr_open_min, sysctl_nr_open_max;
 extern int sysctl_nr_trim_pages;
 #endif
 
+#ifdef CONFIG_XPU_SCHEDULE
+extern int sysctl_ucc_sched_rcv_timeout_ms;
+#endif
+
 /* Constants used for minimum and  maximum */
 #ifdef CONFIG_LOCKUP_DETECTOR
 static int sixty = 60;
@@ -139,7 +143,7 @@ static int one_thousand = 1000;
 #ifdef CONFIG_PRINTK
 static int ten_thousand = 10000;
 #endif
-#if defined(CONFIG_QOS_SCHED) || defined(CONFIG_QOS_SCHED_SMART_GRID)
+#if defined(CONFIG_QOS_SCHED) || defined(CONFIG_QOS_SCHED_SMART_GRID) || defined(CONFIG_XPU_SCHEDULE)
 static int hundred_thousand = 100000;
 #endif
 #ifdef CONFIG_PERF_EVENTS
@@ -352,6 +356,17 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
 	},
+#ifdef CONFIG_XPU_SCHEDULE
+	{
+		.procname	= "ucc_sched_rcv_timeout",
+		.data		= &sysctl_ucc_sched_rcv_timeout_ms,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &hundred_thousand,
+	},
+#endif
 #ifdef CONFIG_SCHED_DEBUG
 	{
 		.procname	= "sched_min_granularity_ns",
