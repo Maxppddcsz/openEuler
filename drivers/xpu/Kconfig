@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: GPL-2.0
+
+menuconfig XPU_SCHEDULE
+	bool "xpu schedule"
+	default n
+	help
+	  Support xpu schedule, Say Y here if you want support for use
+	  xpu schedule.
+

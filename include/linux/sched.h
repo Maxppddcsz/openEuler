@@ -1281,6 +1281,9 @@ struct task_struct {
 #if !defined(__GENKSYMS__)
 #if defined(CONFIG_QOS_SCHED_SMART_GRID)
 	struct sched_grid_qos *grid_qos;
+#elif defined(CONFIG_XPU_SCHEDULE)
+	u32				ucc_priority;
+	u32				ucc_step;
 #else
 	KABI_RESERVE(8)
 #endif
