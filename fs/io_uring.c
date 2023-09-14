@@ -1310,6 +1310,8 @@ static void io_kill_timeouts(struct io_ring_ctx *ctx)
 
 static void __io_queue_deferred(struct io_ring_ctx *ctx)
 {
+	lockdep_assert_held(&ctx->completion_lock);
+
 	do {
 		struct io_defer_entry *de = list_first_entry(&ctx->defer_list,
 						struct io_defer_entry, list);
@@ -2181,7 +2183,14 @@ static void io_iopoll_complete(struct io_ring_ctx *ctx, unsigned int *nr_events,
 			io_req_free_batch(&rb, req);
 	}
 
-	io_commit_cqring(ctx);
+	io_flush_timeouts(ctx);
+	__io_commit_cqring(ctx);
+
+	spin_lock(&ctx->completion_lock);
+	if (unlikely(!list_empty(&ctx->defer_list)))
+		__io_queue_deferred(ctx);
+	spin_unlock(&ctx->completion_lock);
+
 	if (ctx->flags & IORING_SETUP_SQPOLL)
 		io_cqring_ev_posted(ctx);
 	io_req_free_batch_finish(ctx, &rb);
