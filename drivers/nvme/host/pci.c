@@ -63,6 +63,10 @@ MODULE_PARM_DESC(sgl_threshold,
 		"Use SGLs when average request segment size is larger or equal to "
 		"this size. Use 0 to disable SGLs.");
 
+static unsigned int doorbell_offset = 0x1000;
+module_param(doorbell_offset, uint, 0444);
+MODULE_PARM_DESC(doorbell_offset, "nvme doorbell offset in bar0, default 4k");
+
 static int io_queue_depth_set(const char *val, const struct kernel_param *kp);
 static const struct kernel_param_ops io_queue_depth_ops = {
 	.set = io_queue_depth_set,
@@ -1538,7 +1542,7 @@ static int nvme_alloc_admin_tags(struct nvme_dev *dev)
 
 static unsigned long db_bar_size(struct nvme_dev *dev, unsigned nr_io_queues)
 {
-	return NVME_REG_DBS + ((nr_io_queues + 1) * 8 * dev->db_stride);
+	return doorbell_offset + ((nr_io_queues + 1) * 8 * dev->db_stride);
 }
 
 static int nvme_remap_bar(struct nvme_dev *dev, unsigned long size)
@@ -1557,7 +1561,7 @@ static int nvme_remap_bar(struct nvme_dev *dev, unsigned long size)
 		return -ENOMEM;
 	}
 	dev->bar_mapped_size = size;
-	dev->dbs = dev->bar + NVME_REG_DBS;
+	dev->dbs = dev->bar + doorbell_offset;
 
 	return 0;
 }
@@ -2128,7 +2132,7 @@ static int nvme_pci_enable(struct nvme_dev *dev)
 	dev->q_depth = min_t(u32, NVME_CAP_MQES(dev->ctrl.cap) + 1,
 				io_queue_depth);
 	dev->db_stride = 1 << NVME_CAP_STRIDE(dev->ctrl.cap);
-	dev->dbs = dev->bar + 4096;
+	dev->dbs = dev->bar + doorbell_offset;
 
 	/*
 	 * Temporary fix for the Apple controller found in the MacBook8,1 and
@@ -2457,7 +2461,7 @@ static int nvme_dev_map(struct nvme_dev *dev)
 	if (pci_request_mem_regions(pdev, "nvme"))
 		return -ENODEV;
 
-	if (nvme_remap_bar(dev, NVME_REG_DBS + 4096))
+	if (nvme_remap_bar(dev, doorbell_offset + PAGE_SIZE))
 		goto release;
 
 	return 0;
