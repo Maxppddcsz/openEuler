@@ -487,6 +487,10 @@ struct request_queue {
 
 	const struct blk_mq_ops	*mq_ops;
 
+#ifdef __GENKSYMS__
+	unsigned int		*mq_map;
+#endif
+
 	/* sw queues */
 	struct blk_mq_ctx __percpu	*queue_ctx;
 	unsigned int		nr_queues;
