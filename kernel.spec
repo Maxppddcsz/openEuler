@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .111.0
-%global pkg_release         .138
+%global maintenance_release .112.0
+%global pkg_release         .139
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,32 @@ fi
 %endif
 
 %changelog
+* Wed Sep 20 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.112.0.139
+- !2214 [sync] PR-2210:  jbd2: Fix potential data lost in recovering journal raced with synchronizing fs bdev
+- !2231 [sync] PR-2086:  fix CVE-2023-20588
+- !2239 [sync] PR-2169:  net: sched: sch_qfq: Fix UAF in qfq_dequeue()
+- !2242 [sync] PR-2230:  media: ttusb-dec: fix memory leak in ttusb_dec_exit_dvb()
+- !2237  x86/speculation: Add force option to GDS mitigation
+- media: ttusb-dec: fix memory leak in ttusb_dec_exit_dvb()
+- net: sched: sch_qfq: Fix UAF in qfq_dequeue()
+- !2041 [sync] PR-1786: LoongArch: export lsx/lasx related struct to user space
+- x86: Move gds_ucode_mitigated() declaration to header
+- Documentation/x86: Fix backwards on/off logic about YMM support
+- KVM: Add GDS_NO support to KVM
+- x86/speculation: Add Kconfig option for GDS
+- x86/speculation: Add force option to GDS mitigation
+- x86/CPU/AMD: Fix the DIV(0) initial fix attempt
+- x86/CPU/AMD: Do not leak quotient data after a division by 0
+- !1877 [sync] PR-1826:  x86/speculation: Add Gather Data Sampling mitigation
+- jbd2: Fix potential data lost in recovering journal raced with synchronizing fs bdev
+- !2170 [sync] PR-2153:  netfilter: nftables: exthdr: fix 4-byte stack OOB write
+- netfilter: nftables: exthdr: fix 4-byte stack OOB write
+- !2149 [sync] PR-2095:  io_uring: ensure IOPOLL locks around deferred work
+- io_uring: ensure IOPOLL locks around deferred work
+- LoongArch: export lsx/lasx related struct to user space
+- x86/speculation: Add cpu_show_gds() prototype
+- x86/speculation: Add Gather Data Sampling mitigation
+
 * Wed Sep 13 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.111.0.138
 - !2143 [sync] PR-2126:  netfilter: nf_tables: skip immediate deactivate in _PREPARE_ERROR
 - !2107 [sync] PR-2090:  net/sched: sch_hfsc: Ensure inner classes have fsc curve
