@@ -57,7 +57,11 @@ module_param(disable_idle_d3, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(disable_idle_d3,
 		 "Disable using the PCI D3 low power state for idle, unused devices");
 
-static DEFINE_MUTEX(driver_lock);
+static bool enable_sriov;
+#ifdef CONFIG_PCI_IOV
+module_param(enable_sriov, bool, 0644);
+MODULE_PARM_DESC(enable_sriov, "Enable support for SR-IOV configuration.  Enabling SR-IOV on a PF typically requires support of the userspace PF driver, enabling VFs without such support may result in non-functional VFs or PF.");
+#endif
 
 static inline bool vfio_vga_disabled(void)
 {
@@ -211,6 +215,57 @@ static bool vfio_pci_nointx(struct pci_dev *pdev)
 	return false;
 }
 
+static void vfio_pci_probe_power_state(struct vfio_pci_device *vdev)
+{
+	struct pci_dev *pdev = vdev->pdev;
+	u16 pmcsr;
+
+	if (!pdev->pm_cap)
+		return;
+
+	pci_read_config_word(pdev, pdev->pm_cap + PCI_PM_CTRL, &pmcsr);
+
+	vdev->needs_pm_restore = !(pmcsr & PCI_PM_CTRL_NO_SOFT_RESET);
+}
+
+/*
+ * pci_set_power_state() wrapper handling devices which perform a soft reset on
+ * D3->D0 transition.  Save state prior to D0/1/2->D3, stash it on the vdev,
+ * restore when returned to D0.  Saved separately from pci_saved_state for use
+ * by PM capability emulation and separately from pci_dev internal saved state
+ * to avoid it being overwritten and consumed around other resets.
+ */
+int vfio_pci_set_power_state(struct vfio_pci_device *vdev, pci_power_t state)
+{
+	struct pci_dev *pdev = vdev->pdev;
+	bool needs_restore = false, needs_save = false;
+	int ret;
+
+	if (vdev->needs_pm_restore) {
+		if (pdev->current_state < PCI_D3hot && state >= PCI_D3hot) {
+			pci_save_state(pdev);
+			needs_save = true;
+		}
+
+		if (pdev->current_state >= PCI_D3hot && state <= PCI_D0)
+			needs_restore = true;
+	}
+
+	ret = pci_set_power_state(pdev, state);
+
+	if (!ret) {
+		/* D3 might be unsupported via quirk, skip unless in D3 */
+		if (needs_save && pdev->current_state >= PCI_D3hot) {
+			vdev->pm_save = pci_store_saved_state(pdev);
+		} else if (needs_restore) {
+			pci_load_and_free_saved_state(pdev, &vdev->pm_save);
+			pci_restore_state(pdev);
+		}
+	}
+
+	return ret;
+}
+
 static int vfio_pci_enable(struct vfio_pci_device *vdev)
 {
 	struct pci_dev *pdev = vdev->pdev;
@@ -218,7 +273,7 @@ static int vfio_pci_enable(struct vfio_pci_device *vdev)
 	u16 cmd;
 	u8 msix_pos;
 
-	pci_set_power_state(pdev, PCI_D0);
+	vfio_pci_set_power_state(vdev, PCI_D0);
 
 	/* Don't allow our initial saved state to include busmaster */
 	pci_clear_master(pdev);
@@ -395,16 +450,55 @@ out:
 	vfio_pci_try_bus_reset(vdev);
 
 	if (!disable_idle_d3)
-		pci_set_power_state(pdev, PCI_D3hot);
+		vfio_pci_set_power_state(vdev, PCI_D3hot);
+}
+
+static struct pci_driver vfio_pci_driver;
+
+static struct vfio_pci_device *get_pf_vdev(struct vfio_pci_device *vdev,
+					   struct vfio_device **pf_dev)
+{
+	struct pci_dev *physfn = pci_physfn(vdev->pdev);
+
+	if (!vdev->pdev->is_virtfn)
+		return NULL;
+
+	*pf_dev = vfio_device_get_from_dev(&physfn->dev);
+	if (!*pf_dev)
+		return NULL;
+
+	if (pci_dev_driver(physfn) != &vfio_pci_driver) {
+		vfio_device_put(*pf_dev);
+		return NULL;
+	}
+
+	return vfio_device_data(*pf_dev);
+}
+
+static void vfio_pci_vf_token_user_add(struct vfio_pci_device *vdev, int val)
+{
+	struct vfio_device *pf_dev;
+	struct vfio_pci_device *pf_vdev = get_pf_vdev(vdev, &pf_dev);
+
+	if (!pf_vdev)
+		return;
+
+	mutex_lock(&pf_vdev->vf_token->lock);
+	pf_vdev->vf_token->users += val;
+	WARN_ON(pf_vdev->vf_token->users < 0);
+	mutex_unlock(&pf_vdev->vf_token->lock);
+
+	vfio_device_put(pf_dev);
 }
 
 static void vfio_pci_release(void *device_data)
 {
 	struct vfio_pci_device *vdev = device_data;
 
-	mutex_lock(&driver_lock);
+	mutex_lock(&vdev->reflck->lock);
 
 	if (!(--vdev->refcnt)) {
+		vfio_pci_vf_token_user_add(vdev, -1);
 		vfio_spapr_pci_eeh_release(vdev->pdev);
 		vfio_pci_disable(vdev);
 		mutex_lock(&vdev->igate);
@@ -422,7 +516,7 @@ static void vfio_pci_release(void *device_data)
 		mutex_unlock(&vdev->igate);
 	}
 
-	mutex_unlock(&driver_lock);
+	mutex_unlock(&vdev->reflck->lock);
 
 	module_put(THIS_MODULE);
 }
@@ -435,7 +529,7 @@ static int vfio_pci_open(void *device_data)
 	if (!try_module_get(THIS_MODULE))
 		return -ENODEV;
 
-	mutex_lock(&driver_lock);
+	mutex_lock(&vdev->reflck->lock);
 
 	if (!vdev->refcnt) {
 		ret = vfio_pci_enable(vdev);
@@ -443,10 +537,11 @@ static int vfio_pci_open(void *device_data)
 			goto error;
 
 		vfio_spapr_pci_eeh_open(vdev->pdev);
+		vfio_pci_vf_token_user_add(vdev, 1);
 	}
 	vdev->refcnt++;
 error:
-	mutex_unlock(&driver_lock);
+	mutex_unlock(&vdev->reflck->lock);
 	if (ret)
 		module_put(THIS_MODULE);
 	return ret;
@@ -1142,6 +1237,65 @@ hot_reset_release:
 
 		return vfio_pci_ioeventfd(vdev, ioeventfd.offset,
 					  ioeventfd.data, count, ioeventfd.fd);
+	} else if (cmd == VFIO_DEVICE_FEATURE) {
+		struct vfio_device_feature feature;
+		uuid_t uuid;
+
+		minsz = offsetofend(struct vfio_device_feature, flags);
+
+		if (copy_from_user(&feature, (void __user *)arg, minsz))
+			return -EFAULT;
+
+		if (feature.argsz < minsz)
+			return -EINVAL;
+
+		/* Check unknown flags */
+		if (feature.flags & ~(VFIO_DEVICE_FEATURE_MASK |
+				      VFIO_DEVICE_FEATURE_SET |
+				      VFIO_DEVICE_FEATURE_GET |
+				      VFIO_DEVICE_FEATURE_PROBE))
+			return -EINVAL;
+
+		/* GET & SET are mutually exclusive except with PROBE */
+		if (!(feature.flags & VFIO_DEVICE_FEATURE_PROBE) &&
+		    (feature.flags & VFIO_DEVICE_FEATURE_SET) &&
+		    (feature.flags & VFIO_DEVICE_FEATURE_GET))
+			return -EINVAL;
+
+		switch (feature.flags & VFIO_DEVICE_FEATURE_MASK) {
+		case VFIO_DEVICE_FEATURE_PCI_VF_TOKEN:
+			if (!vdev->vf_token)
+				return -ENOTTY;
+
+			/*
+			 * We do not support GET of the VF Token UUID as this
+			 * could expose the token of the previous device user.
+			 */
+			if (feature.flags & VFIO_DEVICE_FEATURE_GET)
+				return -EINVAL;
+
+			if (feature.flags & VFIO_DEVICE_FEATURE_PROBE)
+				return 0;
+
+			/* Don't SET unless told to do so */
+			if (!(feature.flags & VFIO_DEVICE_FEATURE_SET))
+				return -EINVAL;
+
+			if (feature.argsz < minsz + sizeof(uuid))
+				return -EINVAL;
+
+			if (copy_from_user(&uuid, (void __user *)(arg + minsz),
+					   sizeof(uuid)))
+				return -EFAULT;
+
+			mutex_lock(&vdev->vf_token->lock);
+			uuid_copy(&vdev->vf_token->uuid, &uuid);
+			mutex_unlock(&vdev->vf_token->lock);
+
+			return 0;
+		default:
+			return -ENOTTY;
+		}
 	}
 
 	return -ENOTTY;
@@ -1485,6 +1639,150 @@ static void vfio_pci_request(void *device_data, unsigned int count)
 	mutex_unlock(&vdev->igate);
 }
 
+static int vfio_pci_validate_vf_token(struct vfio_pci_device *vdev,
+				      bool vf_token, uuid_t *uuid)
+{
+	/*
+	 * There's always some degree of trust or collaboration between SR-IOV
+	 * PF and VFs, even if just that the PF hosts the SR-IOV capability and
+	 * can disrupt VFs with a reset, but often the PF has more explicit
+	 * access to deny service to the VF or access data passed through the
+	 * VF.  We therefore require an opt-in via a shared VF token (UUID) to
+	 * represent this trust.  This both prevents that a VF driver might
+	 * assume the PF driver is a trusted, in-kernel driver, and also that
+	 * a PF driver might be replaced with a rogue driver, unknown to in-use
+	 * VF drivers.
+	 *
+	 * Therefore when presented with a VF, if the PF is a vfio device and
+	 * it is bound to the vfio-pci driver, the user needs to provide a VF
+	 * token to access the device, in the form of appending a vf_token to
+	 * the device name, for example:
+	 *
+	 * "0000:04:10.0 vf_token=bd8d9d2b-5a5f-4f5a-a211-f591514ba1f3"
+	 *
+	 * When presented with a PF which has VFs in use, the user must also
+	 * provide the current VF token to prove collaboration with existing
+	 * VF users.  If VFs are not in use, the VF token provided for the PF
+	 * device will act to set the VF token.
+	 *
+	 * If the VF token is provided but unused, an error is generated.
+	 */
+	if (!vdev->pdev->is_virtfn && !vdev->vf_token && !vf_token)
+		return 0; /* No VF token provided or required */
+
+	if (vdev->pdev->is_virtfn) {
+		struct vfio_device *pf_dev;
+		struct vfio_pci_device *pf_vdev = get_pf_vdev(vdev, &pf_dev);
+		bool match;
+
+		if (!pf_vdev) {
+			if (!vf_token)
+				return 0; /* PF is not vfio-pci, no VF token */
+
+			pci_info_ratelimited(vdev->pdev,
+				"VF token incorrectly provided, PF not bound to vfio-pci\n");
+			return -EINVAL;
+		}
+
+		if (!vf_token) {
+			vfio_device_put(pf_dev);
+			pci_info_ratelimited(vdev->pdev,
+				"VF token required to access device\n");
+			return -EACCES;
+		}
+
+		mutex_lock(&pf_vdev->vf_token->lock);
+		match = uuid_equal(uuid, &pf_vdev->vf_token->uuid);
+		mutex_unlock(&pf_vdev->vf_token->lock);
+
+		vfio_device_put(pf_dev);
+
+		if (!match) {
+			pci_info_ratelimited(vdev->pdev,
+				"Incorrect VF token provided for device\n");
+			return -EACCES;
+		}
+	} else if (vdev->vf_token) {
+		mutex_lock(&vdev->vf_token->lock);
+		if (vdev->vf_token->users) {
+			if (!vf_token) {
+				mutex_unlock(&vdev->vf_token->lock);
+				pci_info_ratelimited(vdev->pdev,
+					"VF token required to access device\n");
+				return -EACCES;
+			}
+
+			if (!uuid_equal(uuid, &vdev->vf_token->uuid)) {
+				mutex_unlock(&vdev->vf_token->lock);
+				pci_info_ratelimited(vdev->pdev,
+					"Incorrect VF token provided for device\n");
+				return -EACCES;
+			}
+		} else if (vf_token) {
+			uuid_copy(&vdev->vf_token->uuid, uuid);
+		}
+
+		mutex_unlock(&vdev->vf_token->lock);
+	} else if (vf_token) {
+		pci_info_ratelimited(vdev->pdev,
+			"VF token incorrectly provided, not a PF or VF\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+#define VF_TOKEN_ARG "vf_token="
+
+static int vfio_pci_match(void *device_data, char *buf)
+{
+	struct vfio_pci_device *vdev = device_data;
+	bool vf_token = false;
+	uuid_t uuid;
+	int ret;
+
+	if (strncmp(pci_name(vdev->pdev), buf, strlen(pci_name(vdev->pdev))))
+		return 0; /* No match */
+
+	if (strlen(buf) > strlen(pci_name(vdev->pdev))) {
+		buf += strlen(pci_name(vdev->pdev));
+
+		if (*buf != ' ')
+			return 0; /* No match: non-whitespace after name */
+
+		while (*buf) {
+			if (*buf == ' ') {
+				buf++;
+				continue;
+			}
+
+			if (!vf_token && !strncmp(buf, VF_TOKEN_ARG,
+						  strlen(VF_TOKEN_ARG))) {
+				buf += strlen(VF_TOKEN_ARG);
+
+				if (strlen(buf) < UUID_STRING_LEN)
+					return -EINVAL;
+
+				ret = uuid_parse(buf, &uuid);
+				if (ret)
+					return ret;
+
+				vf_token = true;
+				buf += UUID_STRING_LEN;
+			} else {
+				/* Unknown/duplicate option */
+				return -EINVAL;
+			}
+		}
+	}
+
+	ret = vfio_pci_validate_vf_token(vdev, vf_token, &uuid);
+	if (ret)
+		return ret;
+
+	return 1; /* Match */
+}
+
 static const struct vfio_device_ops vfio_pci_ops = {
 	.name		= "vfio-pci",
 	.open		= vfio_pci_open,
@@ -1494,7 +1792,40 @@ static const struct vfio_device_ops vfio_pci_ops = {
 	.write		= vfio_pci_write,
 	.mmap		= vfio_pci_mmap,
 	.request	= vfio_pci_request,
+	.match		= vfio_pci_match,
 };
+
+static int vfio_pci_reflck_attach(struct vfio_pci_device *vdev);
+static void vfio_pci_reflck_put(struct vfio_pci_reflck *reflck);
+static struct pci_driver vfio_pci_driver;
+
+static int vfio_pci_bus_notifier(struct notifier_block *nb,
+				 unsigned long action, void *data)
+{
+	struct vfio_pci_device *vdev = container_of(nb,
+						    struct vfio_pci_device, nb);
+	struct device *dev = data;
+	struct pci_dev *pdev = to_pci_dev(dev);
+	struct pci_dev *physfn = pci_physfn(pdev);
+
+	if (action == BUS_NOTIFY_ADD_DEVICE &&
+	    pdev->is_virtfn && physfn == vdev->pdev) {
+		pci_info(vdev->pdev, "Captured SR-IOV VF %s driver_override\n",
+			 pci_name(pdev));
+		pdev->driver_override = kasprintf(GFP_KERNEL, "%s",
+						  vfio_pci_ops.name);
+	} else if (action == BUS_NOTIFY_BOUND_DRIVER &&
+		   pdev->is_virtfn && physfn == vdev->pdev) {
+		struct pci_driver *drv = pci_dev_driver(pdev);
+
+		if (drv && drv != &vfio_pci_driver)
+			pci_warn(vdev->pdev,
+				 "VF %s bound to driver %s while PF bound to vfio-pci\n",
+				 pci_name(pdev), drv->name);
+	}
+
+	return 0;
+}
 
 static int vfio_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
@@ -1506,12 +1837,12 @@ static int vfio_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		return -EINVAL;
 
 	/*
-	 * Prevent binding to PFs with VFs enabled, this too easily allows
-	 * userspace instance with VFs and PFs from the same device, which
-	 * cannot work.  Disabling SR-IOV here would initiate removing the
-	 * VFs, which would unbind the driver, which is prone to blocking
-	 * if that VF is also in use by vfio-pci.  Just reject these PFs
-	 * and let the user sort it out.
+	 * Prevent binding to PFs with VFs enabled, the VFs might be in use
+	 * by the host or other users.  We cannot capture the VFs if they
+	 * already exist, nor can we track VF users.  Disabling SR-IOV here
+	 * would initiate removing the VFs, which would unbind the driver,
+	 * which is prone to blocking if that VF is also in use by vfio-pci.
+	 * Just reject these PFs and let the user sort it out.
 	 */
 	if (pci_num_vf(pdev)) {
 		pci_warn(pdev, "Cannot bind to PF with SR-IOV enabled\n");
@@ -1546,11 +1877,46 @@ static int vfio_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		return ret;
 	}
 
+	ret = vfio_pci_reflck_attach(vdev);
+	if (ret) {
+		vfio_del_group_dev(&pdev->dev);
+		vfio_iommu_group_put(group, &pdev->dev);
+		kfree(vdev);
+		return ret;
+	}
+
+	if (pdev->is_physfn) {
+		vdev->vf_token = kzalloc(sizeof(*vdev->vf_token), GFP_KERNEL);
+		if (!vdev->vf_token) {
+			vfio_pci_reflck_put(vdev->reflck);
+			vfio_del_group_dev(&pdev->dev);
+			vfio_iommu_group_put(group, &pdev->dev);
+			kfree(vdev);
+			return -ENOMEM;
+		}
+
+		vdev->nb.notifier_call = vfio_pci_bus_notifier;
+		ret = bus_register_notifier(&pci_bus_type, &vdev->nb);
+		if (ret) {
+			kfree(vdev->vf_token);
+			vfio_pci_reflck_put(vdev->reflck);
+			vfio_del_group_dev(&pdev->dev);
+			vfio_iommu_group_put(group, &pdev->dev);
+			kfree(vdev);
+			return ret;
+		}
+
+		mutex_init(&vdev->vf_token->lock);
+		uuid_gen(&vdev->vf_token->uuid);
+	}
+
 	if (vfio_pci_is_vga(pdev)) {
 		vga_client_register(pdev, vdev, NULL, vfio_pci_set_vga_decode);
 		vga_set_legacy_decoding(pdev,
 					vfio_pci_set_vga_decode(vdev, false));
 	}
+
+	vfio_pci_probe_power_state(vdev);
 
 	if (!disable_idle_d3) {
 		/*
@@ -1562,8 +1928,8 @@ static int vfio_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		 * be able to get to D3.  Therefore first do a D0 transition
 		 * before going to D3.
 		 */
-		pci_set_power_state(pdev, PCI_D0);
-		pci_set_power_state(pdev, PCI_D3hot);
+		vfio_pci_set_power_state(vdev, PCI_D0);
+		vfio_pci_set_power_state(vdev, PCI_D3hot);
 	}
 
 	return ret;
@@ -1573,13 +1939,31 @@ static void vfio_pci_remove(struct pci_dev *pdev)
 {
 	struct vfio_pci_device *vdev;
 
+	pci_disable_sriov(pdev);
+
 	vdev = vfio_del_group_dev(&pdev->dev);
 	if (!vdev)
 		return;
 
+	if (vdev->vf_token) {
+		WARN_ON(vdev->vf_token->users);
+		mutex_destroy(&vdev->vf_token->lock);
+		kfree(vdev->vf_token);
+	}
+
+	if (vdev->nb.notifier_call)
+		bus_unregister_notifier(&pci_bus_type, &vdev->nb);
+
+	vfio_pci_reflck_put(vdev->reflck);
+
 	vfio_iommu_group_put(pdev->dev.iommu_group, &pdev->dev);
 	kfree(vdev->region);
 	mutex_destroy(&vdev->ioeventfds_lock);
+
+	if (!disable_idle_d3)
+		vfio_pci_set_power_state(vdev, PCI_D0);
+
+	kfree(vdev->pm_save);
 	kfree(vdev);
 
 	if (vfio_pci_is_vga(pdev)) {
@@ -1588,9 +1972,6 @@ static void vfio_pci_remove(struct pci_dev *pdev)
 				VGA_RSRC_NORMAL_IO | VGA_RSRC_NORMAL_MEM |
 				VGA_RSRC_LEGACY_IO | VGA_RSRC_LEGACY_MEM);
 	}
-
-	if (!disable_idle_d3)
-		pci_set_power_state(pdev, PCI_D0);
 }
 
 static pci_ers_result_t vfio_pci_aer_err_detected(struct pci_dev *pdev,
@@ -1621,22 +2002,135 @@ static pci_ers_result_t vfio_pci_aer_err_detected(struct pci_dev *pdev,
 	return PCI_ERS_RESULT_CAN_RECOVER;
 }
 
+static int vfio_pci_sriov_configure(struct pci_dev *pdev, int nr_virtfn)
+{
+	struct vfio_pci_device *vdev;
+	struct vfio_device *device;
+	int ret = 0;
+
+	might_sleep();
+
+	if (!enable_sriov)
+		return -ENOENT;
+
+	device = vfio_device_get_from_dev(&pdev->dev);
+	if (!device)
+		return -ENODEV;
+
+	vdev = vfio_device_data(device);
+	if (!vdev) {
+		vfio_device_put(device);
+		return -ENODEV;
+	}
+
+	if (nr_virtfn == 0)
+		pci_disable_sriov(pdev);
+	else
+		ret = pci_enable_sriov(pdev, nr_virtfn);
+
+	vfio_device_put(device);
+
+	return ret < 0 ? ret : nr_virtfn;
+}
+
 static const struct pci_error_handlers vfio_err_handlers = {
 	.error_detected = vfio_pci_aer_err_detected,
 };
 
 static struct pci_driver vfio_pci_driver = {
-	.name		= "vfio-pci",
-	.id_table	= NULL, /* only dynamic ids */
-	.probe		= vfio_pci_probe,
-	.remove		= vfio_pci_remove,
-	.err_handler	= &vfio_err_handlers,
+	.name			= "vfio-pci",
+	.id_table		= NULL, /* only dynamic ids */
+	.probe			= vfio_pci_probe,
+	.remove			= vfio_pci_remove,
+	.sriov_configure	= vfio_pci_sriov_configure,
+	.err_handler		= &vfio_err_handlers,
 };
 
-static int vfio_pci_get_devs(struct pci_dev *pdev, void *data)
+static DEFINE_MUTEX(reflck_lock);
+
+static struct vfio_pci_reflck *vfio_pci_reflck_alloc(void)
+{
+	struct vfio_pci_reflck *reflck;
+
+	reflck = kzalloc(sizeof(*reflck), GFP_KERNEL);
+	if (!reflck)
+		return ERR_PTR(-ENOMEM);
+
+	kref_init(&reflck->kref);
+	mutex_init(&reflck->lock);
+
+	return reflck;
+}
+
+static void vfio_pci_reflck_get(struct vfio_pci_reflck *reflck)
+{
+	kref_get(&reflck->kref);
+}
+
+static int vfio_pci_reflck_find(struct pci_dev *pdev, void *data)
+{
+	struct vfio_pci_reflck **preflck = data;
+	struct vfio_device *device;
+	struct vfio_pci_device *vdev;
+
+	device = vfio_device_get_from_dev(&pdev->dev);
+	if (!device)
+		return 0;
+
+	if (pci_dev_driver(pdev) != &vfio_pci_driver) {
+		vfio_device_put(device);
+		return 0;
+	}
+
+	vdev = vfio_device_data(device);
+
+	if (vdev->reflck) {
+		vfio_pci_reflck_get(vdev->reflck);
+		*preflck = vdev->reflck;
+		vfio_device_put(device);
+		return 1;
+	}
+
+	vfio_device_put(device);
+	return 0;
+}
+
+static int vfio_pci_reflck_attach(struct vfio_pci_device *vdev)
+{
+	bool slot = !pci_probe_reset_slot(vdev->pdev->slot);
+
+	mutex_lock(&reflck_lock);
+
+	if (pci_is_root_bus(vdev->pdev->bus) ||
+	    vfio_pci_for_each_slot_or_bus(vdev->pdev, vfio_pci_reflck_find,
+					  &vdev->reflck, slot) <= 0)
+		vdev->reflck = vfio_pci_reflck_alloc();
+
+	mutex_unlock(&reflck_lock);
+
+	return PTR_ERR_OR_ZERO(vdev->reflck);
+}
+
+static void vfio_pci_reflck_release(struct kref *kref)
+{
+	struct vfio_pci_reflck *reflck = container_of(kref,
+						      struct vfio_pci_reflck,
+						      kref);
+
+	kfree(reflck);
+	mutex_unlock(&reflck_lock);
+}
+
+static void vfio_pci_reflck_put(struct vfio_pci_reflck *reflck)
+{
+	kref_put_mutex(&reflck->kref, vfio_pci_reflck_release, &reflck_lock);
+}
+
+static int vfio_pci_get_unused_devs(struct pci_dev *pdev, void *data)
 {
 	struct vfio_devices *devs = data;
 	struct vfio_device *device;
+	struct vfio_pci_device *vdev;
 
 	if (devs->cur_index == devs->max_index)
 		return -ENOSPC;
@@ -1683,16 +2177,28 @@ static int vfio_pci_try_zap_and_vma_lock_cb(struct pci_dev *pdev, void *data)
 		return -EBUSY;
 	}
 
+	vdev = vfio_device_data(device);
+
+	/* Fault if the device is not unused */
+	if (vdev->refcnt) {
+		vfio_device_put(device);
+		return -EBUSY;
+	}
+
 	devs->devices[devs->cur_index++] = device;
 	return 0;
 }
 
 /*
- * Attempt to do a bus/slot reset if there are devices affected by a reset for
- * this device that are needs_reset and all of the affected devices are unused
- * (!refcnt).  Callers are required to hold driver_lock when calling this to
- * prevent device opens and concurrent bus reset attempts.  We prevent device
- * unbinds by acquiring and holding a reference to the vfio_device.
+ * If a bus or slot reset is available for the provided device and:
+ *  - All of the devices affected by that bus or slot reset are unused
+ *    (!refcnt)
+ *  - At least one of the affected devices is marked dirty via
+ *    needs_reset (such as by lack of FLR support)
+ * Then attempt to perform that bus or slot reset.  Callers are required
+ * to hold vdev->reflck->lock, protecting the bus/slot reset group from
+ * concurrent opens.  A vfio_device reference is acquired for each device
+ * to prevent unbinds during the reset operation.
  *
  * NB: vfio-core considers a group to be viable even if some devices are
  * bound to drivers like pci-stub or pcieport.  Here we require all devices
@@ -1703,7 +2209,7 @@ static void vfio_pci_try_bus_reset(struct vfio_pci_device *vdev)
 {
 	struct vfio_devices devs = { .cur_index = 0 };
 	int i = 0, ret = -EINVAL;
-	bool needs_reset = false, slot = false;
+	bool slot = false;
 	struct vfio_pci_device *tmp;
 
 	if (!pci_probe_reset_slot(vdev->pdev->slot))
@@ -1721,28 +2227,36 @@ static void vfio_pci_try_bus_reset(struct vfio_pci_device *vdev)
 		return;
 
 	if (vfio_pci_for_each_slot_or_bus(vdev->pdev,
-					  vfio_pci_get_devs, &devs, slot))
+					  vfio_pci_get_unused_devs,
+					  &devs, slot))
 		goto put_devs;
 
+	/* Does at least one need a reset? */
 	for (i = 0; i < devs.cur_index; i++) {
 		tmp = vfio_device_data(devs.devices[i]);
-		if (tmp->needs_reset)
-			needs_reset = true;
-		if (tmp->refcnt)
-			goto put_devs;
+		if (tmp->needs_reset) {
+			ret = pci_reset_bus(vdev->pdev);
+			break;
+		}
 	}
-
-	if (needs_reset)
-		ret = pci_reset_bus(vdev->pdev);
 
 put_devs:
 	for (i = 0; i < devs.cur_index; i++) {
 		tmp = vfio_device_data(devs.devices[i]);
-		if (!ret)
+
+		/*
+		 * If reset was successful, affected devices no longer need
+		 * a reset and we should return all the collateral devices
+		 * to low power.  If not successful, we either didn't reset
+		 * the bus or timed out waiting for it, so let's not touch
+		 * the power state.
+		 */
+		if (!ret) {
 			tmp->needs_reset = false;
 
-		if (!tmp->refcnt && !disable_idle_d3)
-			pci_set_power_state(tmp->pdev, PCI_D3hot);
+			if (tmp != vdev && !disable_idle_d3)
+				vfio_pci_set_power_state(tmp, PCI_D3hot);
+		}
 
 		vfio_device_put(devs.devices[i]);
 	}

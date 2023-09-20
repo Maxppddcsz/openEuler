@@ -15,6 +15,8 @@
 #include <linux/pci.h>
 #include <linux/irqbypass.h>
 #include <linux/types.h>
+#include <linux/uuid.h>
+#include <linux/notifier.h>
 
 #ifndef VFIO_PCI_PRIVATE_H
 #define VFIO_PCI_PRIVATE_H
@@ -76,6 +78,18 @@ struct vfio_pci_dummy_resource {
 	struct list_head	res_next;
 };
 
+struct vfio_pci_reflck {
+	struct kref		kref;
+	struct mutex		lock;
+};
+ 
+struct vfio_pci_vf_token {
+	struct mutex		lock;
+	uuid_t			uuid;
+	int			users;
+};
+
+
 struct vfio_pci_mmap_vma {
 	struct vm_area_struct	*vma;
 	struct list_head	vma_next;
@@ -108,7 +122,10 @@ struct vfio_pci_device {
 	bool			has_vga;
 	bool			needs_reset;
 	bool			nointx;
+	bool			needs_pm_restore;
 	struct pci_saved_state	*pci_saved_state;
+	struct pci_saved_state	*pm_save;
+	struct vfio_pci_reflck	*reflck;
 	int			refcnt;
 	int			ioeventfds_nr;
 	struct eventfd_ctx	*err_trigger;
@@ -119,6 +136,8 @@ struct vfio_pci_device {
 	struct mutex		vma_lock;
 	struct list_head	vma_list;
 	struct rw_semaphore	memory_lock;
+	struct vfio_pci_vf_token	*vf_token;
+	struct notifier_block	nb;
 };
 
 #define is_intx(vdev) (vdev->irq_type == VFIO_PCI_INTX_IRQ_INDEX)
@@ -157,6 +176,9 @@ extern int vfio_pci_register_dev_region(struct vfio_pci_device *vdev,
 					unsigned int type, unsigned int subtype,
 					const struct vfio_pci_regops *ops,
 					size_t size, u32 flags, void *data);
+
+extern int vfio_pci_set_power_state(struct vfio_pci_device *vdev,
+				    pci_power_t state);
 
 extern bool __vfio_pci_memory_enabled(struct vfio_pci_device *vdev);
 extern void vfio_pci_zap_and_down_write_memory_lock(struct vfio_pci_device
