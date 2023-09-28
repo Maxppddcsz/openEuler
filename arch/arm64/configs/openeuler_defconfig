@@ -6206,6 +6206,7 @@ CONFIG_TEE=m
 CONFIG_ROH=m
 CONFIG_ROH_HNS=m
 CONFIG_UB=m
+CONFIG_UB_UDMA_HNS3=y
 # end of Device Drivers
 
 #

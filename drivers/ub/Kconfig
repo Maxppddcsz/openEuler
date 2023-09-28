@@ -6,3 +6,5 @@ menuconfig UB
 	help
 	  Core support for Unified Bus (UB).
 	  To compile UB core as module, choose M here.
+
+source "drivers/ub/hw/hns3/Kconfig"
