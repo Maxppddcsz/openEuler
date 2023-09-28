@@ -442,6 +442,13 @@ config NODES_SHIFT
 	default "6"
 	depends on NUMA
 
+config VA_BITS_40
+	bool "40-bits"
+	default y
+	depends on 64BIT
+	help
+	  Support a maximum at least 40 bits of application virtual memory.
+
 config ARCH_FORCE_MAX_ORDER
 	int "Maximum zone order"
 	default "13" if PAGE_SIZE_64KB
