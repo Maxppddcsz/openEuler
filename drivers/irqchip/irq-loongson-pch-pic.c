@@ -33,6 +33,10 @@
 #define PIC_COUNT		(PIC_COUNT_PER_REG * PIC_REG_COUNT)
 #define PIC_REG_IDX(irq_id)	((irq_id) / PIC_COUNT_PER_REG)
 #define PIC_REG_BIT(irq_id)	((irq_id) % PIC_COUNT_PER_REG)
+#define PIC_COUNT_PER_REG64	64
+#define PIC_REG64_COUNT		1
+#define PIC_REG64_IDX(irq_id)	((irq_id) / PIC_COUNT_PER_REG64)
+#define PIC_REG64_BIT(irq_id)	((irq_id) % PIC_COUNT_PER_REG64)
 
 static int nr_pics;
 
@@ -93,8 +97,8 @@ static void pch_pic_unmask_irq(struct irq_data *d)
 {
 	struct pch_pic *priv = irq_data_get_irq_chip_data(d);
 
-	writel(BIT(PIC_REG_BIT(d->hwirq)),
-			priv->base + PCH_PIC_CLR + PIC_REG_IDX(d->hwirq) * 4);
+	writeq(BIT(PIC_REG64_BIT(d->hwirq)),
+			priv->base + PCH_PIC_CLR + PIC_REG64_IDX(d->hwirq) * 8);
 
 	irq_chip_unmask_parent(d);
 	pch_pic_bitclr(priv, PCH_PIC_MASK, d->hwirq);
@@ -141,8 +145,8 @@ static void pch_pic_ack_irq(struct irq_data *d)
 
 	reg = readl(priv->base + PCH_PIC_EDGE + PIC_REG_IDX(d->hwirq) * 4);
 	if (reg & BIT(PIC_REG_BIT(d->hwirq))) {
-		writel(BIT(PIC_REG_BIT(d->hwirq)),
-			priv->base + PCH_PIC_CLR + PIC_REG_IDX(d->hwirq) * 4);
+		writeq(BIT(PIC_REG64_BIT(d->hwirq)),
+			priv->base + PCH_PIC_CLR + PIC_REG64_IDX(d->hwirq) * 8);
 	}
 	irq_chip_ack_parent(d);
 }
@@ -235,13 +239,15 @@ static void pch_pic_reset(struct pch_pic *priv)
 	for (i = 0; i < PIC_REG_COUNT; i++) {
 		/* Clear IRQ cause registers, mask all interrupts */
 		writel_relaxed(0xFFFFFFFF, priv->base + PCH_PIC_MASK + 4 * i);
-		writel_relaxed(0xFFFFFFFF, priv->base + PCH_PIC_CLR + 4 * i);
 		/* Clear auto bounce, we don't need that */
 		writel_relaxed(0, priv->base + PCH_PIC_AUTO0 + 4 * i);
 		writel_relaxed(0, priv->base + PCH_PIC_AUTO1 + 4 * i);
 		/* Enable HTMSI transformer */
 		writel_relaxed(0xFFFFFFFF, priv->base + PCH_PIC_HTMSI_EN + 4 * i);
 	}
+
+	for (i = 0; i < PIC_REG64_COUNT; i++)
+		writeq_relaxed((u64)-1, priv->base + PCH_PIC_CLR + 8 * i);
 }
 
 static int pch_pic_suspend(void)
@@ -406,13 +412,11 @@ static int __init acpi_cascade_irqdomain_init(void)
 int __init pch_pic_acpi_init(struct irq_domain *parent,
 					struct acpi_madt_bio_pic *acpi_pchpic)
 {
-	int ret, vec_base;
+	int ret;
 	struct fwnode_handle *domain_handle;
 
 	if (find_pch_pic(acpi_pchpic->gsi_base) >= 0)
 		return 0;
-
-	vec_base = acpi_pchpic->gsi_base - GSI_MIN_PCH_IRQ;
 
 	domain_handle = irq_domain_alloc_fwnode(&acpi_pchpic->address);
 	if (!domain_handle) {
@@ -421,7 +425,7 @@ int __init pch_pic_acpi_init(struct irq_domain *parent,
 	}
 
 	ret = pch_pic_init(acpi_pchpic->address, acpi_pchpic->size,
-				vec_base, parent, domain_handle, acpi_pchpic->gsi_base);
+				0, parent, domain_handle, acpi_pchpic->gsi_base);
 
 	if (ret < 0) {
 		irq_domain_free_fwnode(domain_handle);
