@@ -466,7 +466,11 @@ struct task_group {
 #else
 	KABI_RESERVE(2)
 #endif
+#ifdef CONFIG_QOS_SCHED
+	KABI_USE(3, struct mutex *offline_mutex)
+#else
 	KABI_RESERVE(3)
+#endif
 	KABI_RESERVE(4)
 };
 
