@@ -516,7 +516,7 @@ struct sched_entity {
 	struct sched_avg		avg;
 #endif
 
-#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+#ifdef CONFIG_QOS_SCHED
 	KABI_USE(1, long qos_idle)
 #else
 	KABI_RESERVE(1)

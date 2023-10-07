@@ -655,7 +655,7 @@ struct cfs_rq {
 	unsigned int		forceidle_seq;
 	KABI_FILL_HOLE(unsigned int kabi_hole)
 	u64			min_vruntime_fi;
-#elif defined CONFIG_QOS_SCHED_SMT_EXPELLER && !defined(__GENKSYMS__)
+#elif defined CONFIG_QOS_SCHED && !defined(__GENKSYMS__)
 	union {
 		unsigned int            qos_idle_h_nr_running; /* qos_level：-1 */
 		unsigned long           qos_idle_h_nr_running_padding;
@@ -3086,11 +3086,10 @@ static inline int is_expeller_level(struct task_group *tg)
 }
 #endif
 
-#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+#ifdef CONFIG_QOS_SCHED
 static __always_inline int task_has_qos_idle_policy(struct task_struct *p)
 {
-	if (!qos_sched_enabled() ||
-	    !static_branch_likely(&qos_smt_expell_switch))
+	if (!qos_sched_enabled())
 		return 0;
 
 	return qos_idle_policy(task_group(p)->qos_level) && p->policy == SCHED_IDLE;
