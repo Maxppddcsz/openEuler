@@ -952,6 +952,12 @@ static pg_data_t __ref *hotadd_new_pgdat(int nid, u64 start)
 	free_area_init_core_hotplug(nid);
 	pgdat->per_cpu_nodestats = alloc_percpu(struct per_cpu_nodestat);
 
+	if (!pgdat->per_cpu_nodestats) {
+		arch_refresh_nodedata(nid, NULL);
+		arch_free_nodedata(pgdat);
+		return NULL;
+	}
+
 	/*
 	 * The node we allocated has no zone fallback lists. For avoiding
 	 * to access not-initialized zonelist, build here.
