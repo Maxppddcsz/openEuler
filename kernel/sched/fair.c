@@ -5069,7 +5069,7 @@ static bool throttle_cfs_rq(struct cfs_rq *cfs_rq)
 	struct cfs_bandwidth *cfs_b = tg_cfs_bandwidth(cfs_rq->tg);
 	struct sched_entity *se;
 	long task_delta, idle_task_delta, dequeue = 1;
-#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+#ifdef CONFIG_QOS_SCHED
 	long qos_idle_delta;
 #endif
 
@@ -5103,7 +5103,7 @@ static bool throttle_cfs_rq(struct cfs_rq *cfs_rq)
 
 	task_delta = cfs_rq->h_nr_running;
 	idle_task_delta = cfs_rq->idle_h_nr_running;
-#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+#ifdef CONFIG_QOS_SCHED
 	qos_idle_delta = cfs_rq->qos_idle_h_nr_running;
 #endif
 
@@ -5122,7 +5122,7 @@ static bool throttle_cfs_rq(struct cfs_rq *cfs_rq)
 
 		qcfs_rq->h_nr_running -= task_delta;
 		qcfs_rq->idle_h_nr_running -= idle_task_delta;
-#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+#ifdef CONFIG_QOS_SCHED
 		qcfs_rq->qos_idle_h_nr_running -= qos_idle_delta;
 #endif
 
@@ -5152,7 +5152,7 @@ void unthrottle_cfs_rq(struct cfs_rq *cfs_rq)
 	struct cfs_bandwidth *cfs_b = tg_cfs_bandwidth(cfs_rq->tg);
 	struct sched_entity *se;
 	long task_delta, idle_task_delta;
-#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+#ifdef CONFIG_QOS_SCHED
 	long qos_idle_delta;
 #endif
 
@@ -5183,7 +5183,7 @@ void unthrottle_cfs_rq(struct cfs_rq *cfs_rq)
 
 	task_delta = cfs_rq->h_nr_running;
 	idle_task_delta = cfs_rq->idle_h_nr_running;
-#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+#ifdef CONFIG_QOS_SCHED
 	qos_idle_delta = cfs_rq->qos_idle_h_nr_running;
 #endif
 	for_each_sched_entity(se) {
@@ -5194,7 +5194,7 @@ void unthrottle_cfs_rq(struct cfs_rq *cfs_rq)
 
 		cfs_rq->h_nr_running += task_delta;
 		cfs_rq->idle_h_nr_running += idle_task_delta;
-#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+#ifdef CONFIG_QOS_SCHED
 		cfs_rq->qos_idle_h_nr_running += qos_idle_delta;
 #endif
 
@@ -5211,7 +5211,7 @@ void unthrottle_cfs_rq(struct cfs_rq *cfs_rq)
 
 		cfs_rq->h_nr_running += task_delta;
 		cfs_rq->idle_h_nr_running += idle_task_delta;
-#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+#ifdef CONFIG_QOS_SCHED
 		cfs_rq->qos_idle_h_nr_running += qos_idle_delta;
 #endif
 
@@ -5864,7 +5864,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	int task_new = !(flags & ENQUEUE_WAKEUP);
 	unsigned int prev_nr = rq->cfs.h_nr_running;
 
-#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+#ifdef CONFIG_QOS_SCHED
 	int qos_idle_h_nr_running;
 
 	se->qos_idle = task_has_qos_idle_policy(p);
@@ -5895,7 +5895,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 		cfs_rq->h_nr_running++;
 		cfs_rq->idle_h_nr_running += idle_h_nr_running;
-#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+#ifdef CONFIG_QOS_SCHED
 		cfs_rq->qos_idle_h_nr_running += qos_idle_h_nr_running;
 #endif
 
@@ -5915,7 +5915,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 		cfs_rq->h_nr_running++;
 		cfs_rq->idle_h_nr_running += idle_h_nr_running;
-#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+#ifdef CONFIG_QOS_SCHED
 		cfs_rq->qos_idle_h_nr_running += qos_idle_h_nr_running;
 #endif
 
@@ -5996,7 +5996,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	unsigned int prev_nr = rq->cfs.h_nr_running;
 	bool was_sched_idle = sched_idle_rq(rq);
 
-#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+#ifdef CONFIG_QOS_SCHED
 	int qos_idle_h_nr_running = se->qos_idle ? 1 : 0;
 
 	se->qos_idle = 0;
@@ -6010,7 +6010,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 		cfs_rq->h_nr_running--;
 		cfs_rq->idle_h_nr_running -= idle_h_nr_running;
-#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+#ifdef CONFIG_QOS_SCHED
 		cfs_rq->qos_idle_h_nr_running -= qos_idle_h_nr_running;
 #endif
 
@@ -6042,7 +6042,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 		cfs_rq->h_nr_running--;
 		cfs_rq->idle_h_nr_running -= idle_h_nr_running;
-#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+#ifdef CONFIG_QOS_SCHED
 		cfs_rq->qos_idle_h_nr_running -= qos_idle_h_nr_running;
 #endif
 
@@ -7933,6 +7933,14 @@ static __always_inline int unthrottle_qos_cfs_rqs(int cpu)
 	return res;
 }
 
+static bool qos_sched_idle_cpu(int this_cpu)
+{
+	struct rq *rq = cpu_rq(this_cpu);
+
+	return unlikely(rq->nr_running &&
+			rq->nr_running == rq->cfs.qos_idle_h_nr_running);
+}
+
 static __always_inline bool check_qos_cfs_rq(struct cfs_rq *cfs_rq)
 {
 	if (!qos_sched_enabled())
@@ -7943,8 +7951,8 @@ static __always_inline bool check_qos_cfs_rq(struct cfs_rq *cfs_rq)
 	}
 
 	if (unlikely(cfs_rq && is_offline_level(cfs_rq->tg->qos_level) &&
-		!sched_idle_cpu(smp_processor_id()) &&
-		cfs_rq->h_nr_running == cfs_rq->idle_h_nr_running)) {
+		!qos_sched_idle_cpu(smp_processor_id()) &&
+		cfs_rq->h_nr_running == cfs_rq->qos_idle_h_nr_running)) {
 
 		if (!rq_of(cfs_rq)->online)
 			return false;
@@ -8103,14 +8111,6 @@ static bool qos_smt_check_siblings_status(int this_cpu)
 	}
 
 	return false;
-}
-
-static bool qos_sched_idle_cpu(int this_cpu)
-{
-	struct rq *rq = cpu_rq(this_cpu);
-
-	return unlikely(rq->nr_running == rq->cfs.qos_idle_h_nr_running &&
-			rq->nr_running);
 }
 
 static __always_inline bool qos_smt_expelled(int this_cpu)
