@@ -2784,6 +2784,8 @@ static bool rtl8192_adapter_start(struct net_device *dev)
 	write_nic_byte_E(dev, 0x5e, 0x80);
 	write_nic_byte(dev, 0x17, 0x37);
 	mdelay(10);
+	if (!priv->pFirmware)
+		return false;
 	priv->pFirmware->firmware_status = FW_STATUS_0_INIT;
 	/* config CPUReset Register */
 	/* Firmware Reset or not? */
