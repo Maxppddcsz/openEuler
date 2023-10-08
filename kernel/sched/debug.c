@@ -627,6 +627,14 @@ void print_cfs_rq(struct seq_file *m, int cpu, struct cfs_rq *cfs_rq)
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	print_cfs_group_stats(m, cpu, cfs_rq->tg);
 #endif
+#ifdef CONFIG_QOS_SCHED
+        if (qos_sched_enabled() && cfs_rq->h_nr_running)
+                SEQ_printf(m, "  .%-30s: %d\n", "h_nr_running",
+                                cfs_rq->h_nr_running);
+        if (qos_sched_enabled() && cfs_rq->qos_idle_h_nr_running)
+                SEQ_printf(m, "  .%-30s: %d\n", "qos_idle_h_nr_running",
+                                cfs_rq->qos_idle_h_nr_running);
+#endif
 }
 
 void print_rt_rq(struct seq_file *m, int cpu, struct rt_rq *rt_rq)
