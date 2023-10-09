@@ -8301,7 +8301,7 @@ pick_next_task_fair(struct rq *rq, struct task_struct *prev, struct rq_flags *rf
 
 again:
 #ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
-	if (qos_smt_expelled(this_cpu) && !__this_cpu_read(qos_cpu_overload)) {
+	if (qos_smt_expelled(this_cpu) && !__this_cpu_read(qos_cpu_overload) && rq->online) {
 		__this_cpu_write(qos_smt_status, CPU_SMT_EXPELLED);
 
 		if (!qos_timer_is_activated(this_cpu))
