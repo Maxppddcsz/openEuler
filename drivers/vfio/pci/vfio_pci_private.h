@@ -15,6 +15,7 @@
 #include <linux/pci.h>
 #include <linux/irqbypass.h>
 #include <linux/types.h>
+#include <linux/vfio_pci_migration.h>
 
 #ifndef VFIO_PCI_PRIVATE_H
 #define VFIO_PCI_PRIVATE_H
@@ -55,7 +56,7 @@ struct vfio_pci_device;
 struct vfio_pci_region;
 
 struct vfio_pci_regops {
-	size_t	(*rw)(struct vfio_pci_device *vdev, char __user *buf,
+	ssize_t	(*rw)(struct vfio_pci_device *vdev, char __user *buf,
 		      size_t count, loff_t *ppos, bool iswrite);
 	void	(*release)(struct vfio_pci_device *vdev,
 			   struct vfio_pci_region *region);
@@ -173,4 +174,15 @@ static inline int vfio_pci_igd_init(struct vfio_pci_device *vdev)
 	return -ENODEV;
 }
 #endif
+
+extern bool vfio_dev_migration_is_supported(struct pci_dev *pdev);
+extern int vfio_pci_migration_init(struct vfio_pci_device *vdev);
+extern void vfio_pci_migration_exit(struct vfio_pci_device *vdev);
+extern int vfio_pci_device_log_start(struct vfio_pci_device *vdev,
+	struct vf_migration_log_info *log_info);
+extern int vfio_pci_device_log_stop(struct vfio_pci_device *vdev,
+	uint32_t uuid);
+extern int vfio_pci_device_log_status_query(struct vfio_pci_device *vdev);
+extern int vfio_pci_device_init(struct pci_dev *pdev);
+extern void vfio_pci_device_uninit(struct pci_dev *pdev);
 #endif /* VFIO_PCI_PRIVATE_H */
