@@ -36,6 +36,11 @@ struct mdev_device {
 	bool active;
 };
 
+struct mdev_device_wapper {
+	struct mdev_device mdev;
+	struct device *iommu_device;
+};
+
 #define to_mdev_device(dev)	container_of(dev, struct mdev_device, dev)
 #define dev_is_mdev(d)		((d)->bus == &mdev_bus_type)
 
