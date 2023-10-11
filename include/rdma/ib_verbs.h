@@ -1608,10 +1608,12 @@ struct ib_srq {
 		};
 	} ext;
 
+#ifndef __GENKSYMS__
 	/*
 	 * Implementation details of the RDMA core, don't use in drivers:
 	 */
 	struct rdma_restrack_entry res;
+#endif
 };
 
 enum ib_raw_packet_caps {
@@ -2548,8 +2550,6 @@ struct ib_device_ops {
 	int (*fill_res_qp_entry)(struct sk_buff *msg, struct ib_qp *ibqp);
 	int (*fill_res_qp_entry_raw)(struct sk_buff *msg, struct ib_qp *ibqp);
 	int (*fill_res_cm_id_entry)(struct sk_buff *msg, struct rdma_cm_id *id);
-	int (*fill_res_srq_entry)(struct sk_buff *msg, struct ib_srq *ib_srq);
-	int (*fill_res_srq_entry_raw)(struct sk_buff *msg, struct ib_srq *ib_srq);
 
 	/* Device lifecycle callbacks */
 	/*
@@ -2619,6 +2619,11 @@ struct ib_device_ops {
 	DECLARE_RDMA_OBJ_SIZE(ib_srq);
 	DECLARE_RDMA_OBJ_SIZE(ib_ucontext);
 	DECLARE_RDMA_OBJ_SIZE(ib_xrcd);
+
+#ifndef __GENKSYMS__
+	int (*fill_res_srq_entry)(struct sk_buff *msg, struct ib_srq *ib_srq);
+	int (*fill_res_srq_entry_raw)(struct sk_buff *msg, struct ib_srq *ib_srq);
+#endif
 };
 
 struct ib_core_device {
