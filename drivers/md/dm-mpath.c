@@ -1004,7 +1004,7 @@ static int parse_hw_handler(struct dm_arg_set *as, struct multipath *m)
 			ret = -ENOMEM;
 			goto fail;
 		}
-		j = sprintf(p, "%d", hw_argc - 1);
+		j = sprintf(p, "%u", hw_argc - 1);
 		for (i = 0, p+=j+1; i <= hw_argc - 2; i++, p+=j+1)
 			j = sprintf(p, "%s", as->argv[i]);
 	}
