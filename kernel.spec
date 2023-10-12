@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .112.0
-%global pkg_release         .139
+%global maintenance_release .113.0
+%global pkg_release         .140
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,51 @@ fi
 %endif
 
 %changelog
+* Wed Oct 11 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.113.0.140
+- !2391  netfilter: nf_tables: disallow rule removal from chain binding
+- netfilter: nf_tables: disallow rule removal from chain binding
+- !2389  nf_table LTS
+- netfilter: nf_tables: disallow rule addition to bound chain via NFTA_RULE_CHAIN_ID
+- netfilter: nf_tables: skip bound chain on rule flush
+- netfilter: nf_tables: skip immediate deactivate in _PREPARE_ERROR
+- netfilter: nf_tables: unbind non-anonymous set if rule construction fails
+- netfilter: nf_tables: drop map element references from preparation phase
+- netfilter: nftables: rename set element data activation/deactivation functions
+- netfilter: nf_tables: reject unbound chain set before commit phase
+- netfilter: nf_tables: reject unbound anonymous set before commit phase
+- netfilter: nf_tables: add NFT_TRANS_PREPARE_ERROR to deal with bound set/chain
+- netfilter: nf_tables: fix chain binding transaction logic
+- netfilter: nf_tables: incorrect error path handling with NFT_MSG_NEWRULE
+- netfilter: nf_tables: use net_generic infra for transaction data
+- Revert "netfilter: nf_tables: disallow rule addition to bound chain via NFTA_RULE_CHAIN_ID"
+- Revert "netfilter: nf_tables: skip bound chain on rule flush"
+- Revert "netfilter: nf_tables: incorrect error path handling with NFT_MSG_NEWRULE"
+- Revert "netfilter: nf_tables: fix chain binding transaction logic"
+- Revert "netfilter: nf_tables: add NFT_TRANS_PREPARE_ERROR to deal with bound set/chain"
+- Revert "netfilter: nf_tables: skip immediate deactivate in _PREPARE_ERROR"
+- Revert "netfilter: nf_tables: unbind non-anonymous set if rule construction fails"
+- !2378 [sync] PR-2359:  netfilter: ipset: add the missing IP_SET_HASH_WITH_NET0 macro for ip_set_hash_netportnet.c
+- netfilter: ipset: add the missing IP_SET_HASH_WITH_NET0 macro for ip_set_hash_netportnet.c
+- !2299 [sync] PR-2287:  scsi: lpfc: Fix ioremap issues in lpfc_sli4_pci_mem_setup()
+- !2297 [sync] PR-2286:  scsi: lpfc: Prevent lpfc_debugfs_lockstat_write() buffer overflow
+- scsi: lpfc: Fix ioremap issues in lpfc_sli4_pci_mem_setup()
+- scsi: lpfc: Prevent lpfc_debugfs_lockstat_write() buffer overflow
+- !2273 [sync] PR-2156:  drm: add inspur drm driver support
+- !2238 [sync] PR-2163:  Fix the two problems when using binutil 2.41.
+- !2277 [sync] PR-2269:  etmem: Fixed an issue where the module reference counting is incorrect
+- etmem: Fixed an issue where the module reference counting is incorrect
+- !2124 [sync] PR-1778:  nvme-pci: fix DMA direction of unmapping integrity data
+- !2186  nvme-pci: fix timeout request state check
+- !2188  nvme-pci: fix mempool alloc size
+- drm: add inspur drm driver support
+- !2249 [sync] PR-2224:  ext4: fix rec_len verify error
+- ext4: fix rec_len verify error
+- LoongArch: Fix module relocation error with binutils 2.41
+- LoongArch: Fix the write_fcsr() macro
+- nvme-pci: fix mempool alloc size
+- nvme-pci: fix timeout request state check
+- nvme-pci: fix DMA direction of unmapping integrity data
+
 * Wed Sep 20 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.112.0.139
 - !2214 [sync] PR-2210:  jbd2: Fix potential data lost in recovering journal raced with synchronizing fs bdev
 - !2231 [sync] PR-2086:  fix CVE-2023-20588
