@@ -126,6 +126,8 @@ struct vhost_net_virtqueue {
 	struct vhost_net_buf rxq;
 	/* Batched XDP buffs */
 	struct xdp_buff *xdp;
+	u64 tx_time;
+	u64 tx_interval;
 };
 
 struct vhost_net {
@@ -311,6 +313,8 @@ static void vhost_net_vq_reset(struct vhost_net *n)
 		n->vqs[i].ubufs = NULL;
 		n->vqs[i].vhost_hlen = 0;
 		n->vqs[i].sock_hlen = 0;
+		n->vqs[i].tx_time = 0;
+		n->vqs[i].tx_interval = 1000000; /* 1ms */
 		vhost_net_buf_init(&n->vqs[i].rxq);
 	}
 
@@ -456,6 +460,19 @@ static void vhost_net_signal_used(struct vhost_net_virtqueue *nvq)
 	nvq->done_idx = 0;
 }
 
+static void vhost_update_tx_interval(struct vhost_net_virtqueue *nvq)
+{
+	u64 time = ktime_get_mono_fast_ns();
+
+	if (likely(nvq->tx_time != 0)) {
+		u64 d = time - nvq->tx_time;
+		/* 0.25 * interval + 0.75 * delta */
+		nvq->tx_interval =  (nvq->tx_interval >> 2) + (d - (d >> 2));
+	}
+
+	nvq->tx_time = time;
+}
+
 static void vhost_tx_batch(struct vhost_net *net,
 			   struct vhost_net_virtqueue *nvq,
 			   struct socket *sock,
@@ -489,6 +506,7 @@ static void vhost_tx_batch(struct vhost_net *net,
 	}
 
 signal_used:
+	vhost_update_tx_interval(nvq);
 	vhost_net_signal_used(nvq);
 	nvq->batched_xdp = 0;
 }
@@ -782,6 +800,7 @@ static void handle_tx_copy(struct vhost_net *net, struct socket *sock)
 	int err;
 	int sent_pkts = 0;
 	bool sock_can_batch = (sock->sk->sk_sndbuf == INT_MAX);
+	int last_done_idx = 0;
 
 	do {
 		bool busyloop_intr = false;
@@ -798,6 +817,13 @@ static void handle_tx_copy(struct vhost_net *net, struct socket *sock)
 		if (head == vq->num) {
 			if (unlikely(busyloop_intr)) {
 				vhost_poll_queue(&vq->poll);
+			} else if (nvq->tx_interval < 50000 &&
+				   ktime_get_mono_fast_ns() - nvq->tx_time < 50000) {
+				/* Update TX interval if we get some packets */
+				if (last_done_idx < nvq->done_idx)
+					vhost_update_tx_interval(nvq);
+				last_done_idx = nvq->done_idx;
+				continue;
 			} else if (unlikely(vhost_enable_notify(&net->dev,
 								vq))) {
 				vhost_disable_notify(&net->dev, vq);
