@@ -681,7 +681,7 @@ static void init_reg_v3_hw(struct hisi_hba *hisi_hba)
 				     0x30f4240);
 		hisi_sas_phy_write32(hisi_hba, i, AIP_LIMIT, 0x2ffff);
 
-		/* set value through firmware for the latest HBA */
+		/* set value through firmware for 920B and later version */
 		if (pdev->revision < 0x30) {
 			hisi_sas_phy_write32(hisi_hba, i, SAS_SSP_CON_TIMER_CFG, 0x32);
 			hisi_sas_phy_write32(hisi_hba, i, SERDES_CFG, 0xffc00);
