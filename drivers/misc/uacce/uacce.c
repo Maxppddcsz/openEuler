@@ -88,7 +88,6 @@ static int uacce_put_queue(struct uacce_queue *q)
 		uacce->ops->put_queue(q);
 
 	q->state = UACCE_Q_ZOMBIE;
-	atomic_dec(&uacce->ref);
 
 	return 0;
 }
@@ -378,6 +377,7 @@ static int uacce_fops_release(struct inode *inode, struct file *filep)
 	struct uacce_device *uacce = q->uacce;
 
 	mutex_lock(&uacce->mutex);
+	atomic_dec(&uacce->ref);
 	uacce_put_queue(q);
 	uacce_unbind_queue(q);
 	list_del(&q->list);
