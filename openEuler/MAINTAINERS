@@ -118,6 +118,13 @@ F:	Documentation/devicetree/bindings/scsi/hisilicon-sas.txt
 F:	drivers/scsi/hisi_sas/
 F:	drivers/ata/ahci.c
 
+HISILICON HIBMC GPU DRIVER
+M:      Shi Yongbang <shiyongbang@huawei.com>
+S:      Maintained
+W:      http://www.hisilicon.com
+T:      git git://github.com/hisilicon/linux-hisi.git
+F:      drivers/gpu/drm/hisilicon/hibmc/
+
 KERNEL VIRTUAL MACHINE (KVM)
 M:	zhukeqian1@huawei.com
 M:	yuzenghui@huawei.com
