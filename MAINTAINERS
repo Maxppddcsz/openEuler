@@ -5751,6 +5751,12 @@ T:	git git://people.freedesktop.org/~sroland/linux
 F:	drivers/gpu/drm/vmwgfx/
 F:	include/uapi/drm/vmwgfx_drm.h
 
+M:      Shi Yongbang <shiyongbang@huawei.com>
+S:      Maintained
+W:      http://www.hisilicon.com
+T:      git git://github.com/hisilicon/linux-hisi.git
+F:      drivers/gpu/drm/hisilicon/hibmc
+
 DRM DRIVERS
 M:	David Airlie <airlied@linux.ie>
 M:	Daniel Vetter <daniel@ffwll.ch>
