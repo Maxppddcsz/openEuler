@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .113.0
-%global pkg_release         .140
+%global maintenance_release .114.0
+%global pkg_release         .141
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,12 @@ fi
 %endif
 
 %changelog
+* Tue Oct 17 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.114.0.141
+- !2420 [sync] PR-2323:  net/sched: Retire rsvp classifier
+- net/sched: Retire rsvp classifier
+- !2366 [sync] PR-2282:  sdei_watchdog: Avoid exception during sdei handler
+- sdei_watchdog: Avoid exception during sdei handler
+
 * Wed Oct 11 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.113.0.140
 - !2391  netfilter: nf_tables: disallow rule removal from chain binding
 - netfilter: nf_tables: disallow rule removal from chain binding
