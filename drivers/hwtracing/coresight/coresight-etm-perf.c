@@ -20,6 +20,7 @@
 
 #include "coresight-etm-perf.h"
 #include "coresight-priv.h"
+#include "coresight-trace-id.h"
 
 static struct pmu etm_pmu;
 static bool etm_perf_up;
@@ -175,7 +176,11 @@ static void free_event_data(struct work_struct *work)
 		if (!(IS_ERR_OR_NULL(*ppath)))
 			coresight_release_path(*ppath);
 		*ppath = NULL;
+		coresight_trace_id_put_cpu_id(cpu);
 	}
+
+	/* mark perf event as done for trace id allocator */
+	coresight_trace_id_perf_stop();
 
 	free_percpu(event_data->path);
 	kfree(event_data);
@@ -228,6 +233,7 @@ static void *etm_setup_aux(struct perf_event *event, void **pages,
 {
 	u32 id;
 	int cpu = event->cpu;
+	int trace_id;
 	cpumask_t *mask;
 	struct coresight_device *sink = NULL;
 	struct etm_event_data *event_data = NULL;
@@ -242,6 +248,9 @@ static void *etm_setup_aux(struct perf_event *event, void **pages,
 		id = (u32)event->attr.config2;
 		sink = coresight_get_sink_by_id(id);
 	}
+
+	/* tell the trace ID allocator that a perf event is starting up */
+	coresight_trace_id_perf_start();
 
 	mask = &event_data->mask;
 
@@ -284,6 +293,13 @@ static void *etm_setup_aux(struct perf_event *event, void **pages,
 		 */
 		path = coresight_build_path(csdev, sink);
 		if (IS_ERR(path)) {
+			cpumask_clear_cpu(cpu, mask);
+			continue;
+		}
+
+		/* ensure we can allocate a trace ID for this CPU */
+		trace_id = coresight_trace_id_get_cpu_id(cpu);
+		if (!IS_VALID_CS_TRACE_ID(trace_id)) {
 			cpumask_clear_cpu(cpu, mask);
 			continue;
 		}
