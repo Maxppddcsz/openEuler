@@ -9,3 +9,5 @@ menuconfig UB
 	  Currently it only support arm64 structure.
 	  Default option is close.
 	  To compile UB core as module, choose M here.
+
+source "drivers/ub/hw/hns3/Kconfig"
