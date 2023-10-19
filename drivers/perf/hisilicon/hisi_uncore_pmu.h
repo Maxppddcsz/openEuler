@@ -59,16 +59,20 @@ struct hisi_uncore_ops {
 	void (*disable_counter_int)(struct hisi_pmu *, struct hw_perf_event *);
 	void (*start_counters)(struct hisi_pmu *);
 	void (*stop_counters)(struct hisi_pmu *);
+#ifndef __GENKSYMS__
 	u32 (*get_int_status)(struct hisi_pmu *hisi_pmu);
 	void (*clear_int_status)(struct hisi_pmu *hisi_pmu, int idx);
 	void (*enable_filter)(struct perf_event *event);
 	void (*disable_filter)(struct perf_event *event);
+#endif
 };
 
 struct hisi_pmu_hwevents {
 	struct perf_event *hw_events[HISI_MAX_COUNTERS];
 	DECLARE_BITMAP(used_mask, HISI_MAX_COUNTERS);
+#ifndef __GENKSYMS__
 	const struct attribute_group **attr_groups;
+#endif
 };
 
 /* Generic pmu struct for different pmu types */
@@ -84,20 +88,27 @@ struct hisi_pmu {
 	struct device *dev;
 	struct hlist_node node;
 	int sccl_id;
+#ifndef __GENKSYMS__
 	int sicl_id;
+#endif
 	int ccl_id;
 	void __iomem *base;
 	/* the ID of the PMU modules */
 	u32 index_id;
+#ifndef __GENKSYMS__
 	/* For DDRC PMU v2: each DDRC has more than one DMC */
 	u32 sub_id;
+#endif
 	int num_counters;
 	int counter_bits;
 	/* check event code range */
 	int check_event;
+#ifndef __GENKSYMS__
 	u32 identifier;
+#endif
 };
 
+int hisi_uncore_pmu_counter_valid(struct hisi_pmu *hisi_pmu, int idx);
 int hisi_uncore_pmu_get_event_idx(struct perf_event *event);
 void hisi_uncore_pmu_read(struct perf_event *event);
 int hisi_uncore_pmu_add(struct perf_event *event, int flags);
