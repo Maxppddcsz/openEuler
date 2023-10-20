@@ -49,6 +49,12 @@ enum rdma_restrack_type {
 	 * @RDMA_RESTRACK_COUNTER: Statistic Counter
 	 */
 	RDMA_RESTRACK_COUNTER,
+#ifndef __GENKSYMS__
+	/**
+	 * @RDMA_RESTRACK_SRQ: Shared receive queue (SRQ)
+	 */
+	RDMA_RESTRACK_SRQ,
+#endif
 	/**
 	 * @RDMA_RESTRACK_MAX: Last entry, used for array dclarations
 	 */
