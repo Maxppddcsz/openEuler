@@ -35,6 +35,10 @@
 
 #include <asm/syscall.h>	/* for syscall_get_* */
 
+#ifdef CONFIG_SECDETECTOR
+#include <linux/secDetector.h>
+#endif
+
 /*
  * Access another process' address space via ptrace.
  * Source/target buffer must be kernel space,
@@ -416,6 +420,20 @@ static int ptrace_attach(struct task_struct *task, long request,
 	} else {
 		flags = PT_PTRACED;
 	}
+
+#ifdef CONFIG_SECDETECTOR
+	if (secDetector_enable && trace_secDetector_chkapievent_enabled()) {
+		int sec_ret = 0;
+		struct secDetector_api sec_api = {
+			.api_name = "ptrace",
+			.cur_task = current,
+			.arg_task = task
+		};
+		trace_secDetector_chkapievent(&sec_api, SECDETECTOR_API_PTRACE, &sec_ret);
+		if (sec_ret != 0)
+			return sec_ret;
+	}
+#endif
 
 	audit_ptrace(task);
 

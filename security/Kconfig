@@ -290,5 +290,13 @@ config SECURITY_BOOT_INIT
        help
          No support init and rdinit parameters in cmdline
 
+config SECDETECTOR
+	bool "secDetector support"
+	depends on TRACEPOINTS
+	default y
+	help
+	  secDetector means Kernel Intrusion Detection System.
+          Say yes heare to support the feature.
+          If unsure, say N.
 endmenu
 

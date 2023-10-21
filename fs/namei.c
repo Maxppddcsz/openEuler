@@ -40,6 +40,10 @@
 #include <linux/init_task.h>
 #include <linux/uaccess.h>
 
+#ifdef CONFIG_SECDETECTOR
+#include <linux/secDetector.h>
+#endif
+
 #include "internal.h"
 #include "mount.h"
 
@@ -3468,6 +3472,15 @@ struct file *do_filp_open(int dfd, struct filename *pathname,
 	if (unlikely(filp == ERR_PTR(-ESTALE)))
 		filp = path_openat(&nd, op, flags | LOOKUP_REVAL);
 	restore_nameidata();
+#ifdef CONFIG_SECDETECTOR
+	if (secDetector_enable && trace_secDetector_chkfsevent_enabled()) {
+		struct secDetector_file sf = {
+			.file = filp,
+			.opflag = op->open_flag
+		};
+		trace_secDetector_chkfsevent(&sf, SECDETECTOR_FILE_OPEN, NULL);
+	}
+#endif
 	return filp;
 }
 
@@ -3649,6 +3662,23 @@ static long do_mknodat(int dfd, const char __user *filename, umode_t mode,
 	struct path path;
 	int error;
 	unsigned int lookup_flags = 0;
+
+#ifdef CONFIG_SECDETECTOR
+	if (secDetector_enable && trace_secDetector_chkapievent_enabled()) {
+		int sec_ret = 0;
+		struct secDetector_api sec_api = {
+			.api_name = "do_mknodat",
+			.cur_task = current,
+			.dfd = dfd,
+			.pipe_name = filename,
+			.mode = mode,
+			.dev = dev
+		};
+		trace_secDetector_chkapievent(&sec_api, SECDETECTOR_API_MKNOD, &sec_ret);
+		if (sec_ret != 0)
+			return sec_ret;
+	}
+#endif
 
 	error = may_mknod(mode);
 	if (error)
@@ -3887,6 +3917,18 @@ int vfs_unlink(struct inode *dir, struct dentry *dentry, struct inode **delegate
 	if (!dir->i_op->unlink)
 		return -EPERM;
 
+#ifdef CONFIG_SECDETECTOR
+		if (secDetector_enable && trace_secDetector_chkfsevent_enabled()) {
+			int sec_ret = 0;
+			struct secDetector_file sf = {
+				.dentry = dentry,
+				.dir = dir,
+			};
+			trace_secDetector_chkfsevent(&sf, SECDETECTOR_FILE_UNLINK_PRE, &sec_ret);
+			if (sec_ret)
+				return sec_ret;
+		}
+#endif
 	inode_lock(target);
 	if (IS_SWAPFILE(target))
 		error = -EPERM;
@@ -3911,9 +3953,25 @@ out:
 	/* We don't d_delete() NFS sillyrenamed files--they still exist. */
 	if (!error && dentry->d_flags & DCACHE_NFSFS_RENAMED) {
 		fsnotify_unlink(dir, dentry);
+#ifdef CONFIG_SECDETECTOR
+		if (secDetector_enable && trace_secDetector_chkfsevent_enabled()) {
+			struct secDetector_file sf = {
+				.dentry = dentry
+			};
+			trace_secDetector_chkfsevent(&sf, SECDETECTOR_FILE_UNLINK_NFS, NULL);
+		}
+#endif
 	} else if (!error) {
 		fsnotify_link_count(target);
 		d_delete_notify(dir, dentry);
+#ifdef CONFIG_SECDETECTOR
+		if (secDetector_enable && trace_secDetector_chkfsevent_enabled()) {
+			struct secDetector_file sf = {
+				.dentry = dentry
+			};
+			trace_secDetector_chkfsevent(&sf, SECDETECTOR_FILE_UNLINK, NULL);
+		}
+#endif
 	}
 
 	return error;
@@ -4347,6 +4405,24 @@ int vfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	if (error)
 		return error;
 
+#ifdef CONFIG_SECDETECTOR
+		if (secDetector_enable && trace_secDetector_chkfsevent_enabled()) {
+			int sec_ret = 0;
+			struct secDetector_file sf = {
+				.file = NULL,
+				.dentry = old_dentry,
+				.new_dentry = new_dentry,
+				.rename_flag = flags,
+				.name = old_name.name.name,
+				.oldinode = old_dir,
+				.newinode = new_dir
+			};
+			trace_secDetector_chkfsevent(&sf, SECDETECTOR_FILE_RENAME_PRE, &sec_ret);
+			if (sec_ret)
+				return sec_ret;
+		}
+#endif
+
 	take_dentry_name_snapshot(&old_name, old_dentry);
 	dget(new_dentry);
 	if (!is_dir || (flags & RENAME_EXCHANGE))
@@ -4412,6 +4488,20 @@ out:
 			fsnotify_move(new_dir, old_dir, &old_dentry->d_name,
 				      new_is_dir, NULL, new_dentry);
 		}
+#ifdef CONFIG_SECDETECTOR
+		if (secDetector_enable && trace_secDetector_chkfsevent_enabled()) {
+			struct secDetector_file sf = {
+				.file = NULL,
+				.dentry = old_dentry,
+				.new_dentry = new_dentry,
+				.rename_flag = flags,
+				.name = old_name.name.name,
+				.oldinode = old_dir,
+				.newinode = new_dir
+			};
+			trace_secDetector_chkfsevent(&sf, SECDETECTOR_FILE_RENAME, NULL);
+		}
+#endif
 	}
 	release_dentry_name_snapshot(&old_name);
 
