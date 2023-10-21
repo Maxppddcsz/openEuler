@@ -27,6 +27,10 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/fs.h>
 
+#ifdef CONFIG_SECDETECTOR
+#include <linux/secdetector.h>
+#endif
+
 const struct file_operations generic_ro_fops = {
 	.llseek		= generic_file_llseek,
 	.read_iter	= generic_file_read_iter,
@@ -484,6 +488,19 @@ ssize_t vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
 	ret = rw_verify_area(READ, file, pos, count);
 	if (ret)
 		return ret;
+
+#ifdef CONFIG_SECDETECTOR
+	if (secdetector_enable && trace_secdetector_chkfsevent_enabled()) {
+		int sec_ret = 0;
+		struct secdetector_file sf = { .file = file };
+
+		trace_secdetector_chkfsevent(&sf, SECDETECTOR_FILE_READ_PRE,
+					     &sec_ret);
+		if (sec_ret)
+			return sec_ret;
+	}
+#endif
+
 	if (count > MAX_RW_COUNT)
 		count =  MAX_RW_COUNT;
 
@@ -496,6 +513,15 @@ ssize_t vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
 	if (ret > 0) {
 		fsnotify_access(file);
 		add_rchar(current, ret);
+#ifdef CONFIG_SECDETECTOR
+		if (secdetector_enable &&
+		    trace_secdetector_chkfsevent_enabled()) {
+			struct secdetector_file sf = { .file = file };
+
+			trace_secdetector_chkfsevent(&sf, SECDETECTOR_FILE_READ,
+						     NULL);
+		}
+#endif
 	}
 	inc_syscr(current);
 	return ret;
@@ -593,6 +619,17 @@ ssize_t vfs_write(struct file *file, const char __user *buf, size_t count, loff_
 	ret = rw_verify_area(WRITE, file, pos, count);
 	if (ret)
 		return ret;
+#ifdef CONFIG_SECDETECTOR
+	if (secdetector_enable && trace_secdetector_chkfsevent_enabled()) {
+		int sec_ret = 0;
+		struct secdetector_file sf = { .file = file };
+
+		trace_secdetector_chkfsevent(&sf, SECDETECTOR_FILE_WRITE_PRE,
+					     &sec_ret);
+		if (sec_ret)
+			return sec_ret;
+	}
+#endif
 	if (count > MAX_RW_COUNT)
 		count =  MAX_RW_COUNT;
 	file_start_write(file);
@@ -605,6 +642,16 @@ ssize_t vfs_write(struct file *file, const char __user *buf, size_t count, loff_
 	if (ret > 0) {
 		fsnotify_modify(file);
 		add_wchar(current, ret);
+#ifdef CONFIG_SECDETECTOR
+		if (secdetector_enable &&
+		    trace_secdetector_chkfsevent_enabled()) {
+			struct secdetector_file sf = { .file = file,
+						       .buf = buf,
+						       .buf_len = count };
+			trace_secdetector_chkfsevent(
+				&sf, SECDETECTOR_FILE_WRITE, NULL);
+		}
+#endif
 	}
 	inc_syscw(current);
 	file_end_write(file);
@@ -705,7 +752,7 @@ ssize_t ksys_pwrite64(unsigned int fd, const char __user *buf,
 	f = fdget(fd);
 	if (f.file) {
 		ret = -ESPIPE;
-		if (f.file->f_mode & FMODE_PWRITE)  
+		if (f.file->f_mode & FMODE_PWRITE)
 			ret = vfs_write(f.file, buf, count, &pos);
 		fdput(f);
 	}

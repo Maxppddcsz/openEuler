@@ -269,12 +269,22 @@ static inline void task_sig(struct seq_file *m, struct task_struct *p)
 	int num_threads = 0;
 	unsigned int qsize = 0;
 	unsigned long qlim = 0;
+#ifdef CONFIG_SECDETECTOR
+	pid_t eppid1 = 0, eppid2 = 0;
+	char *epexe1 = NULL;
+	char *epexe2 = NULL;
+#endif
 
 	sigemptyset(&pending);
 	sigemptyset(&shpending);
 	sigemptyset(&blocked);
 	sigemptyset(&ignored);
 	sigemptyset(&caught);
+
+#ifdef CONFIG_SECDETECTOR
+	epexe1 = kzalloc(PATH_MAX, GFP_KERNEL);
+	epexe2 = kzalloc(PATH_MAX, GFP_KERNEL);
+#endif
 
 	if (lock_task_sighand(p, &flags)) {
 		pending = p->pending.signal;
@@ -286,9 +296,25 @@ static inline void task_sig(struct seq_file *m, struct task_struct *p)
 		qsize = atomic_read(&__task_cred(p)->user->sigpending);
 		rcu_read_unlock();
 		qlim = task_rlimit(p, RLIMIT_SIGPENDING);
+#ifdef CONFIG_SECDETECTOR
+		if (p->signal->secdetector_process) {
+			if (epexe1 && p->signal->secdetector_process->epexe1)
+				strcpy(epexe1, p->signal->secdetector_process->epexe1);
+			if (epexe2 && p->signal->secdetector_process->epexe2)
+				strcpy(epexe2, p->signal->secdetector_process->epexe2);
+			eppid1 = p->signal->secdetector_process->eppid1;
+			eppid2 = p->signal->secdetector_process->eppid2;
+		}
+#endif
 		unlock_task_sighand(p, &flags);
 	}
 
+#ifdef CONFIG_SECDETECTOR
+	seq_printf(m, "eppid1: %d\n", eppid1);
+	seq_printf(m, "eppid2: %d\n", eppid2);
+	seq_printf(m, "epexe1: %s\n", epexe1 ?: "NULL");
+	seq_printf(m, "epexe2: %s\n", epexe2 ?: "NULL");
+#endif
 	seq_put_decimal_ull(m, "Threads:\t", num_threads);
 	seq_put_decimal_ull(m, "\nSigQ:\t", qsize);
 	seq_put_decimal_ull(m, "/", qlim);
@@ -299,6 +325,10 @@ static inline void task_sig(struct seq_file *m, struct task_struct *p)
 	render_sigset_t(m, "SigBlk:\t", &blocked);
 	render_sigset_t(m, "SigIgn:\t", &ignored);
 	render_sigset_t(m, "SigCgt:\t", &caught);
+#ifdef CONFIG_SECDETECTOR
+	kfree(epexe1);
+	kfree(epexe2);
+#endif
 }
 
 static void render_cap_t(struct seq_file *m, const char *header,
