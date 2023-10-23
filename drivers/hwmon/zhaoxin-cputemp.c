@@ -25,7 +25,6 @@
 #include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/hwmon.h>
-#include <linux/hwmon-vid.h>
 #include <linux/sysfs.h>
 #include <linux/hwmon-sysfs.h>
 #include <linux/err.h>
@@ -34,24 +33,35 @@
 #include <linux/platform_device.h>
 #include <linux/cpu.h>
 #include <asm/msr.h>
-#include <asm/processor.h>
+#include <linux/processor.h>
 #include <asm/cpu_device_id.h>
+
+#define DRIVER_VERSION "2.0.0"
 
 #define DRVNAME	"zhaoxin_cputemp"
 
-enum { SHOW_TEMP, SHOW_LABEL, SHOW_NAME };
+enum { SHOW_TEMP, SHOW_LABEL, SHOW_NAME, SHOW_CRIT, SHOW_MAX };
+
+/*
+ * Functions declaration
+ */
 
 struct zhaoxin_cputemp_data {
 	struct device *hwmon_dev;
 	const char *name;
-	u8 vrm;
 	u32 id;
+	u32 msr_index;
 	u32 msr_temp;
-	u32 msr_vid;
+	u32 msr_crit;
+	u32 msr_max;
 };
 
+/*
+ * Sysfs stuff
+ */
+
 static ssize_t show_name(struct device *dev, struct device_attribute
-			  *devattr, char *buf)
+			*devattr, char *buf)
 {
 	int ret;
 	struct sensor_device_attribute *attr = to_sensor_dev_attr(devattr);
@@ -64,43 +74,63 @@ static ssize_t show_name(struct device *dev, struct device_attribute
 	return ret;
 }
 
-static ssize_t show_temp(struct device *dev,
-			 struct device_attribute *devattr, char *buf)
+static int temperature_access(struct zhaoxin_cputemp_data *data,
+				u32 *l, u32 *h);
+
+static ssize_t show_temp(struct device *dev, struct device_attribute
+			*devattr, char *buf)
 {
 	struct zhaoxin_cputemp_data *data = dev_get_drvdata(dev);
 	u32 eax, edx;
 	int err;
 
-	err = rdmsr_safe_on_cpu(data->id, data->msr_temp, &eax, &edx);
+	err = temperature_access(data, &eax, &edx);
 	if (err)
 		return -EAGAIN;
 
 	return sprintf(buf, "%lu\n", ((unsigned long)eax & 0xffffff) * 1000);
 }
 
-static ssize_t cpu0_vid_show(struct device *dev,
-			     struct device_attribute *devattr, char *buf)
+static ssize_t show_crit(struct device *dev, struct device_attribute *devattr,
+			 char *buf)
 {
 	struct zhaoxin_cputemp_data *data = dev_get_drvdata(dev);
 	u32 eax, edx;
 	int err;
 
-	err = rdmsr_safe_on_cpu(data->id, data->msr_vid, &eax, &edx);
+	err = rdmsr_safe_on_cpu(data->id, data->msr_crit, &eax, &edx);
 	if (err)
 		return -EAGAIN;
 
-	return sprintf(buf, "%d\n", vid_from_reg(~edx & 0x7f, data->vrm));
+	return sprintf(buf, "%lu\n", ((unsigned long)eax & 0xff) * 1000);
 }
 
-static SENSOR_DEVICE_ATTR(temp1_input, S_IRUGO, show_temp, NULL,
+static ssize_t show_max(struct device *dev, struct device_attribute *devattr,
+			 char *buf)
+{
+	struct zhaoxin_cputemp_data *data = dev_get_drvdata(dev);
+	u32 eax, edx;
+	int err;
+
+	err = rdmsr_safe_on_cpu(data->id, data->msr_max, &eax, &edx);
+	if (err)
+		return -EAGAIN;
+	return sprintf(buf, "%lu\n", ((unsigned long)eax & 0xff) * 1000);
+}
+
+static SENSOR_DEVICE_ATTR(temp1_input, 0444, show_temp, NULL,
 			  SHOW_TEMP);
-static SENSOR_DEVICE_ATTR(temp1_label, S_IRUGO, show_name, NULL, SHOW_LABEL);
-static SENSOR_DEVICE_ATTR(name, S_IRUGO, show_name, NULL, SHOW_NAME);
+static SENSOR_DEVICE_ATTR(temp1_label, 0444, show_name, NULL, SHOW_LABEL);
+static SENSOR_DEVICE_ATTR(name, 0444, show_name, NULL, SHOW_NAME);
+static SENSOR_DEVICE_ATTR(temp1_crit, 0444, show_crit, NULL, SHOW_CRIT);
+static SENSOR_DEVICE_ATTR(temp1_max, 0444, show_max, NULL, SHOW_MAX);
 
 static struct attribute *zhaoxin_cputemp_attributes[] = {
 	&sensor_dev_attr_name.dev_attr.attr,
 	&sensor_dev_attr_temp1_label.dev_attr.attr,
 	&sensor_dev_attr_temp1_input.dev_attr.attr,
+	&sensor_dev_attr_temp1_crit.dev_attr.attr,
+	&sensor_dev_attr_temp1_max.dev_attr.attr,
 	NULL
 };
 
@@ -108,14 +138,33 @@ static const struct attribute_group zhaoxin_cputemp_group = {
 	.attrs = zhaoxin_cputemp_attributes,
 };
 
-/* Optional attributes */
-static DEVICE_ATTR_RO(cpu0_vid);
+static int temperature_access(struct zhaoxin_cputemp_data *data, u32 *l, u32 *h)
+{
+	int err;
+	*l = 0x19;
+	if (data->msr_index) {
+		err = wrmsr_safe_on_cpu(data->id, data->msr_index, *l, *h);
+		if (err) {
+			pr_info("Unable to write TEMPERATURE INDEX MSR\n");
+			return err;
+		}
+	}
+	*l = 0;
+	err = rdmsr_safe_on_cpu(data->id, data->msr_temp, l, h);
+	if (err) {
+		pr_info("Unable to read TEMPERATURE DATA MSR\n");
+		return err;
+	}
+	return 0;
+
+}
 
 static int zhaoxin_cputemp_probe(struct platform_device *pdev)
 {
 	struct zhaoxin_cputemp_data *data;
 	int err;
 	u32 eax, edx;
+	struct cpuinfo_x86 *c = &cpu_data(pdev->id);
 
 	data = devm_kzalloc(&pdev->dev, sizeof(struct zhaoxin_cputemp_data),
 			    GFP_KERNEL);
@@ -124,11 +173,20 @@ static int zhaoxin_cputemp_probe(struct platform_device *pdev)
 
 	data->id = pdev->id;
 	data->name = "zhaoxin_cputemp";
+	if (c->x86_model == 0x6b) {
+		data->msr_index = 0x174c;
+		data->msr_temp  = 0x174d;
+		data->msr_crit  = 0x175b;
+		data->msr_max   = 0x175a;
+	} else {
+		data->msr_index = 0;
+		data->msr_temp = 0x1423;
+		data->msr_crit = 0x1416;
+		data->msr_max = 0x1415;
 
-	data->msr_temp = 0x1423;
-
+	}
 	/* test if we can access the TEMPERATURE MSR */
-	err = rdmsr_safe_on_cpu(data->id, data->msr_temp, &eax, &edx);
+	err = temperature_access(data, &eax, &edx);
 	if (err) {
 		dev_err(&pdev->dev,
 			"Unable to access TEMPERATURE MSR, giving up\n");
@@ -141,16 +199,8 @@ static int zhaoxin_cputemp_probe(struct platform_device *pdev)
 	if (err)
 		return err;
 
-	if (data->msr_vid)
-		data->vrm = vid_which_vrm();
-
-	if (data->vrm) {
-		err = device_create_file(&pdev->dev, &dev_attr_cpu0_vid);
-		if (err)
-			goto exit_remove;
-	}
-
-	data->hwmon_dev = hwmon_device_register(&pdev->dev);
+	data->hwmon_dev = hwmon_device_register_with_info(&pdev->dev,
+			data->name, data, NULL, NULL);
 	if (IS_ERR(data->hwmon_dev)) {
 		err = PTR_ERR(data->hwmon_dev);
 		dev_err(&pdev->dev, "Class registration failed (%d)\n",
@@ -161,8 +211,6 @@ static int zhaoxin_cputemp_probe(struct platform_device *pdev)
 	return 0;
 
 exit_remove:
-	if (data->vrm)
-		device_remove_file(&pdev->dev, &dev_attr_cpu0_vid);
 	sysfs_remove_group(&pdev->dev.kobj, &zhaoxin_cputemp_group);
 	return err;
 }
@@ -172,8 +220,6 @@ static int zhaoxin_cputemp_remove(struct platform_device *pdev)
 	struct zhaoxin_cputemp_data *data = platform_get_drvdata(pdev);
 
 	hwmon_device_unregister(data->hwmon_dev);
-	if (data->vrm)
-		device_remove_file(&pdev->dev, &dev_attr_cpu0_vid);
 	sysfs_remove_group(&pdev->dev.kobj, &zhaoxin_cputemp_group);
 	return 0;
 }
@@ -253,10 +299,13 @@ static int zhaoxin_cputemp_down_prep(unsigned int cpu)
 	mutex_unlock(&pdev_list_mutex);
 	return 0;
 }
-
-static const struct x86_cpu_id __initconst cputemp_ids[] = {
-	{ X86_VENDOR_CENTAUR, 7, X86_MODEL_ANY, },
-	{ X86_VENDOR_ZHAOXIN, 7, X86_MODEL_ANY, },
+static const struct x86_cpu_id cputemp_ids[] __initconst = {
+	{X86_VENDOR_CENTAUR, 7, 0x3b, },
+	{X86_VENDOR_ZHAOXIN, 7, 0x3b, },
+	{X86_VENDOR_CENTAUR, 7, 0x5b, },
+	{X86_VENDOR_ZHAOXIN, 7, 0x5b, },
+	{X86_VENDOR_CENTAUR, 7, 0x6b, },
+	{X86_VENDOR_ZHAOXIN, 7, 0x6b, },
 	{}
 };
 MODULE_DEVICE_TABLE(x86cpu, cputemp_ids);
@@ -270,12 +319,14 @@ static int __init zhaoxin_cputemp_init(void)
 	if (!x86_match_cpu(cputemp_ids))
 		return -ENODEV;
 
+	pr_info("With cputemp patch v%s\n", DRIVER_VERSION);
+
 	err = platform_driver_register(&zhaoxin_cputemp_driver);
 	if (err)
 		goto exit;
 
 	err = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN, "hwmon/zhaoxin:online",
-				zhaoxin_cputemp_online, zhaoxin_cputemp_down_prep);
+					zhaoxin_cputemp_online, zhaoxin_cputemp_down_prep);
 	if (err < 0)
 		goto exit_driver_unreg;
 	zhaoxin_temp_online = err;
@@ -306,6 +357,7 @@ static void __exit zhaoxin_cputemp_exit(void)
 
 MODULE_DESCRIPTION("Zhaoxin CPU temperature monitor");
 MODULE_LICENSE("GPL");
+MODULE_VERSION(DRIVER_VERSION);
 
 module_init(zhaoxin_cputemp_init)
 module_exit(zhaoxin_cputemp_exit)
