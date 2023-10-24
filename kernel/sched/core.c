@@ -8569,6 +8569,13 @@ static inline int alloc_qos_sched_group(struct task_group *tg,
 #ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
 	tg->smt_expell = parent->smt_expell;
 #endif
+	tg->offline_mutex = kzalloc(sizeof(struct mutex), GFP_KERNEL);
+
+	if (!tg->offline_mutex)
+		return 0;
+
+	mutex_init(tg->offline_mutex);
+
 	return 1;
 }
 
@@ -9503,6 +9510,7 @@ static inline s64 cpu_smt_expell_read(struct cgroup_subsys_state *css,
 #endif
 
 #ifdef CONFIG_QOS_SCHED
+
 static int tg_change_scheduler(struct task_group *tg, void *data)
 {
 	int policy;
@@ -9512,6 +9520,7 @@ static int tg_change_scheduler(struct task_group *tg, void *data)
 	s64 qos_level = *(s64 *)data;
 	struct cgroup_subsys_state *css = &tg->css;
 
+	mutex_lock(tg->offline_mutex);
 	tg->qos_level = qos_level;
 	if (is_offline_level(qos_level))
 		policy = SCHED_IDLE;
@@ -9529,6 +9538,7 @@ static int tg_change_scheduler(struct task_group *tg, void *data)
 		sched_setscheduler(tsk, policy, &param);
 	}
 	css_task_iter_end(&it);
+	mutex_unlock(tg->offline_mutex);
 
 	return 0;
 }
@@ -9552,7 +9562,7 @@ static int cpu_qos_write(struct cgroup_subsys_state *css,
 		goto done;
 
 #ifdef CONFIG_QOS_SCHED_MULTILEVEL
-	if (!is_normal_level(tg->qos_level))
+	if (is_offline_level(tg->qos_level) && !is_offline_level(qos_level))
 #else
 	if (tg->qos_level == -1 && qos_level == 0)
 #endif
@@ -9566,7 +9576,16 @@ static int cpu_qos_write(struct cgroup_subsys_state *css,
 	cpus_read_unlock();
 
 	rcu_read_lock();
+#ifdef CONFIG_QOS_SCHED_MULTILEVEL
+	if (is_offline_level(tg->qos_level) == is_offline_level(qos_level)) {
+		mutex_lock(tg->offline_mutex);
+		tg->qos_level = qos_level;
+		mutex_unlock(tg->offline_mutex);
+	} else
+		walk_tg_tree_from(tg, tg_change_scheduler, tg_nop, (void *)(&qos_level));
+#else
 	walk_tg_tree_from(tg, tg_change_scheduler, tg_nop, (void *)(&qos_level));
+#endif
 	rcu_read_unlock();
 done:
 	return 0;
