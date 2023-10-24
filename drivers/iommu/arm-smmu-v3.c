@@ -3075,9 +3075,27 @@ static void arm_smmu_put_resv_regions(struct device *dev,
 #define IS_HISI_PTT_DEVICE(pdev)   ((pdev)->vendor == PCI_VENDOR_ID_HUAWEI && \
 				     (pdev)->device == 0xa12e)
 
-static int arm_smmu_device_domain_type(struct device *dev, unsigned int *type)
+#ifdef CONFIG_SMMU_BYPASS_DEV
+static int arm_smmu_bypass_dev_domain_type(struct device *dev)
 {
 	int i;
+	struct pci_dev *pdev = to_pci_dev(dev);
+
+	for (i = 0; i < smmu_bypass_devices_num; i++) {
+		if ((smmu_bypass_devices[i].vendor == pdev->vendor) &&
+		    (smmu_bypass_devices[i].device == pdev->device)) {
+			dev_info(dev, "device 0x%hx:0x%hx uses identity mapping.",
+				 pdev->vendor, pdev->device);
+			return IOMMU_DOMAIN_IDENTITY;
+		}
+	}
+
+	return 0;
+}
+#endif
+
+static int arm_smmu_device_domain_type(struct device *dev, unsigned int *type)
+{
 	struct pci_dev *pdev;
 
 	if (!dev_is_pci(dev))
@@ -3091,15 +3109,8 @@ static int arm_smmu_device_domain_type(struct device *dev, unsigned int *type)
 	}
 
 #ifdef CONFIG_SMMU_BYPASS_DEV
-	for (i = 0; i < smmu_bypass_devices_num; i++) {
-		if ((smmu_bypass_devices[i].vendor == pdev->vendor)
-			&& (smmu_bypass_devices[i].device == pdev->device)) {
-			dev_info(dev, "device 0x%hx:0x%hx uses identity mapping.",
-				pdev->vendor, pdev->device);
-			*type = IOMMU_DOMAIN_IDENTITY;
-			return 0;
-		}
-	}
+	*type = arm_smmu_bypass_dev_domain_type(dev);
+	return 0;
 #endif
 	return -ERANGE;
 }
