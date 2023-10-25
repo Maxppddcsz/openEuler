@@ -791,6 +791,21 @@ config CRYPTO_DEV_ZHAOXIN_SM3
 	  If unsure say M. The compiled module will be
 	  called zhaoxin_gmi_sm3.
 
+config CRYPTO_DEV_ZHAOXIN_SM4
+	tristate "Zhaoxin GMI driver for SM4 algorithm"
+	depends on CRYPTO
+	default m
+	select CRYPTO_SIMD
+	select CRYPTO_SKCIPHER
+	select CRYPTO_ALGAPI
+	help
+	  Use Zhaoxin GMI for SM4 algorithm.
+
+	  Available in ZX-C+ and newer CPUs.
+
+	  If unsure say M. The compiled module will be
+	  called zhaoxin_gmi_sm4.
+
 config CRYPTO_DEV_MEDIATEK
 	tristate "MediaTek's EIP97 Cryptographic Engine driver"
 	depends on (ARM && ARCH_MEDIATEK) || COMPILE_TEST
