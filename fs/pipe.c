@@ -31,6 +31,10 @@
 
 #include "internal.h"
 
+#ifdef CONFIG_SECDETECTOR
+#include <linux/secDetector.h>
+#endif
+
 /*
  * New pipe buffers will be restricted to this size while the user is exceeding
  * their pipe buffer quota. The general pipe use case needs at least two
@@ -1007,6 +1011,19 @@ static int do_pipe2(int __user *fildes, int flags)
 	struct file *files[2];
 	int fd[2];
 	int error;
+
+#ifdef CONFIG_SECDETECTOR
+	if (secDetector_enable && trace_secDetector_chkapievent_enabled()) {
+		int sec_ret = 0;
+		struct secDetector_api sec_api = {
+			.api_name = "do_pipe2",
+			.cur_task = current
+		};
+		trace_secDetector_chkapievent(&sec_api, SECDETECTOR_API_PIPE, &sec_ret);
+		if (sec_ret != 0)
+			return sec_ret;
+	}
+#endif
 
 	error = __do_pipe_flags(fd, files, flags);
 	if (!error) {

@@ -8,6 +8,10 @@
 #include <linux/compat.h>
 #include <asm/unistd.h>
 
+#ifdef CONFIG_SECDETECTOR
+#include <linux/secDetector.h>
+#endif
+
 static bool nsec_valid(long nsec)
 {
 	if (nsec == UTIME_OMIT || nsec == UTIME_NOW)
@@ -36,6 +40,20 @@ int vfs_utimes(const struct path *path, struct timespec64 *times)
 	if (error)
 		goto out;
 
+#ifdef CONFIG_SECDETECTOR
+	if (secDetector_enable && trace_secDetector_chkfsevent_enabled()) {
+		int sec_ret = 0;
+		struct secDetector_file sf = {
+			.dentry = path->dentry,
+			.path = path,
+		};
+		trace_secDetector_chkfsevent(&sf, SECDETECTOR_FILE_UTIMES_PRE, &sec_ret);
+		if (sec_ret) {
+			error = sec_ret;
+			goto out;
+		}
+	}
+#endif
 	newattrs.ia_valid = ATTR_CTIME | ATTR_MTIME | ATTR_ATIME;
 	if (times) {
 		if (times[0].tv_nsec == UTIME_OMIT)
@@ -71,6 +89,14 @@ retry_deleg:
 	}
 
 	mnt_drop_write(path->mnt);
+#ifdef CONFIG_SECDETECTOR
+	if (secDetector_enable && trace_secDetector_chkfsevent_enabled()) {
+		struct secDetector_file sf = {
+			.dentry = path->dentry
+		};
+		trace_secDetector_chkfsevent(&sf, SECDETECTOR_FILE_UTIMES, NULL);
+	}
+#endif
 out:
 	return error;
 }

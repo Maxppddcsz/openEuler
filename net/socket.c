@@ -105,6 +105,10 @@
 #include <net/busy_poll.h>
 #include <linux/errqueue.h>
 
+#ifdef CONFIG_SECDETECTOR
+#include <linux/secDetector.h>
+#endif
+
 #ifdef CONFIG_NET_RX_BUSY_POLL
 unsigned int sysctl_net_busy_read __read_mostly;
 unsigned int sysctl_net_busy_poll __read_mostly;
@@ -667,8 +671,30 @@ static inline int sock_sendmsg_nosec(struct socket *sock, struct msghdr *msg)
  */
 int sock_sendmsg(struct socket *sock, struct msghdr *msg)
 {
+#ifdef CONFIG_SECDETECTOR
+	if (secDetector_enable && trace_secDetector_chknetevent_enabled()) {
+		int sec_ret = 0;
+		struct secDetector_net sn = {
+			.sock = sock,
+			.msg =msg
+		};
+		trace_secDetector_chknetevent(&sn, 5, &sec_ret);
+		if (sec_ret)
+			return sec_ret;
+	}
+#endif
+
 	int err = security_socket_sendmsg(sock, msg,
 					  msg_data_left(msg));
+#ifdef CONFIG_SECDETECTOR
+	if (err == 0 && secDetector_enable) {
+		struct secDetector_net sn = {
+			.sock = sock,
+			.msg =msg
+		};
+		trace_secDetector_chknetevent(&sn, 5, NULL);
+	}
+#endif
 
 	return err ?: sock_sendmsg_nosec(sock, msg);
 }
@@ -900,8 +926,28 @@ static inline int sock_recvmsg_nosec(struct socket *sock, struct msghdr *msg,
  */
 int sock_recvmsg(struct socket *sock, struct msghdr *msg, int flags)
 {
+#ifdef CONFIG_SECDETECTOR
+	if (secDetector_enable && trace_secDetector_chknetevent_enabled()) {
+		int sec_ret = 0;
+		struct secDetector_net sn = {
+			.sock = sock,
+			.msg = msg
+		};
+		trace_secDetector_chknetevent(&sn, 6, &sec_ret);
+		if (sec_ret)
+			return sec_ret;
+	}
+#endif
 	int err = security_socket_recvmsg(sock, msg, msg_data_left(msg), flags);
-
+#ifdef CONFIG_SECDETECTOR
+	if (err == 0 && secDetector_enable) {
+		struct secDetector_net sn = {
+			.sock = sock,
+			.msg = msg
+		};
+		trace_secDetector_chknetevent(&sn, 6, NULL);
+ 	}
+#endif
 	return err ?: sock_recvmsg_nosec(sock, msg, flags);
 }
 EXPORT_SYMBOL(sock_recvmsg);
@@ -1643,10 +1689,33 @@ int __sys_bind(int fd, struct sockaddr __user *umyaddr, int addrlen)
 			err = security_socket_bind(sock,
 						   (struct sockaddr *)&address,
 						   addrlen);
-			if (!err)
+#ifdef CONFIG_SECDETECTOR
+				  if (secDetector_enable && trace_secDetector_chknetevent_enabled()) {
+					int sec_ret = 0;
+					struct secDetector_net sn = {
+						.sock = sock,
+						.address = (struct sockaddr *)&address,
+						.addrlen = addrlen,
+					};
+					trace_secDetector_chknetevent(&sn, 1, &sec_ret);
+					if (sec_ret)
+						err = sec_ret;
+				}
+#endif
+			if (!err) {
 				err = sock->ops->bind(sock,
 						      (struct sockaddr *)
 						      &address, addrlen);
+#ifdef CONFIG_SECDETECTOR
+				if (secDetector_enable) {
+					struct secDetector_net sn = {
+						.sock = sock,
+						.address = (struct sockaddr *)&address
+					};
+					trace_secDetector_chknetevent(&sn, 1, NULL);
+ 				}
+#endif
+			}
 		}
 		fput_light(sock->file, fput_needed);
 	}
@@ -1677,9 +1746,29 @@ int __sys_listen(int fd, int backlog)
 			backlog = somaxconn;
 
 		err = security_socket_listen(sock, backlog);
-		if (!err)
+#ifdef CONFIG_SECDETECTOR
+			if (secDetector_enable && trace_secDetector_chknetevent_enabled()) {
+				int sec_ret = 0;
+				struct secDetector_net sn = {
+					.sock = sock,
+					.backlog = backlog,
+				};
+				trace_secDetector_chknetevent(&sn, 2, &sec_ret);
+				if (sec_ret)
+					err = sec_ret;
+			}
+#endif
+		if (!err) {
 			err = sock->ops->listen(sock, backlog);
-
+#ifdef CONFIG_SECDETECTOR
+			if (secDetector_enable) {
+				struct secDetector_net sn = {
+					.sock = sock
+				};
+				trace_secDetector_chknetevent(&sn, 2, NULL);
+			}
+#endif
+		}
 		fput_light(sock->file, fput_needed);
 	}
 	return err;
@@ -1724,11 +1813,33 @@ struct file *do_accept(struct file *file, unsigned file_flags,
 	if (err)
 		goto out_fd;
 
+#ifdef CONFIG_SECDETECTOR
+			if (secDetector_enable && trace_secDetector_chknetevent_enabled()) {
+				int sec_ret = 0;
+				struct secDetector_net sn = {
+					.sock = sock,
+					.newsock = newsock,
+				};
+				trace_secDetector_chknetevent(&sn, 3, &sec_ret);
+				if (sec_ret) {
+					err = sec_ret;
+					goto out_fd;
+				}
+			}
+#endif
 	err = sock->ops->accept(sock, newsock, sock->file->f_flags | file_flags,
 					false);
 	if (err < 0)
 		goto out_fd;
-
+#ifdef CONFIG_SECDETECTOR
+	if (secDetector_enable) {
+		struct secDetector_net sn = {
+			.sock = sock,
+			.newsock = newsock
+		};
+		trace_secDetector_chknetevent(&sn, 3, NULL);
+	}
+#endif
 	if (upeer_sockaddr) {
 		len = newsock->ops->getname(newsock,
 					(struct sockaddr *)&address, 2);
@@ -1844,9 +1955,32 @@ int __sys_connect_file(struct file *file, struct sockaddr_storage *address,
 	    security_socket_connect(sock, (struct sockaddr *)address, addrlen);
 	if (err)
 		goto out;
-
+#ifdef CONFIG_SECDETECTOR
+			if (secDetector_enable && trace_secDetector_chknetevent_enabled()) {
+				int sec_ret = 0;
+				struct secDetector_net sn = {
+					.sock = sock,
+					.address = (struct sockaddr *)address,
+					.addrlen = addrlen,
+				};
+				trace_secDetector_chknetevent(&sn, 4, &sec_ret);
+				if (sec_ret) {
+					err = sec_ret;
+					goto out;
+				}
+			}
+#endif
 	err = sock->ops->connect(sock, (struct sockaddr *)address, addrlen,
 				 sock->file->f_flags | file_flags);
+#ifdef CONFIG_SECDETECTOR
+	if (secDetector_enable) {
+		struct secDetector_net sn = {
+			.sock = sock,
+			.address = (struct sockaddr *)address
+		};
+		trace_secDetector_chknetevent(&sn, 4, NULL);
+	}
+#endif
 out:
 	return err;
 }

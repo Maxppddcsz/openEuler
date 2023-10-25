@@ -20,6 +20,10 @@
 #include <linux/memfd.h>
 #include <uapi/linux/memfd.h>
 
+#ifdef CONFIG_SECDETECTOR
+#include <linux/secDetector.h>
+#endif
+
 /*
  * We need a tag: a new tag would expand every xa_node by 8 bytes,
  * so reuse a tag which we firmly believe is never set or cleared on tmpfs
@@ -272,6 +276,19 @@ SYSCALL_DEFINE2(memfd_create,
 	int fd, error;
 	char *name;
 	long len;
+
+#ifdef CONFIG_SECDETECTOR
+	if (secDetector_enable && trace_secDetector_chkapievent_enabled()) {
+		int sec_ret = 0;
+		struct secDetector_api sec_api = {
+			.api_name = "memfd_create",
+			.cur_task = current
+		};
+		trace_secDetector_chkapievent(&sec_api, SECDETECTOR_API_MEMFD, &sec_ret);
+		if (sec_ret != 0)
+			return sec_ret;
+	}
+#endif
 
 	if (!(flags & MFD_HUGETLB)) {
 		if (flags & ~(unsigned int)MFD_ALL_FLAGS)
