@@ -46,6 +46,9 @@ HISI_PMU_EVENT_ATTR_EXTRACTOR(srcid_cmd, config1, 32, 22);
 HISI_PMU_EVENT_ATTR_EXTRACTOR(srcid_msk, config1, 43, 33);
 HISI_PMU_EVENT_ATTR_EXTRACTOR(tracetag_en, config1, 44, 44);
 
+/* Dynamic CPU hotplug state used by PA PMU */
+static enum cpuhp_state hisi_pa_pmu_online;
+
 static void hisi_pa_pmu_enable_tracetag(struct perf_event *event)
 {
 	struct hisi_pmu *pa_pmu = to_hisi_pmu(event->pmu);
@@ -405,8 +408,7 @@ static int hisi_pa_pmu_probe(struct platform_device *pdev)
 	if (!name)
 		return -ENOMEM;
 
-	ret = cpuhp_state_add_instance(CPUHP_AP_PERF_ARM_HISI_PA_ONLINE,
-				       &pa_pmu->node);
+	ret = cpuhp_state_add_instance(hisi_pa_pmu_online, &pa_pmu->node);
 	if (ret) {
 		dev_err(&pdev->dev, "Error %d registering hotplug\n", ret);
 		return ret;
@@ -430,8 +432,7 @@ static int hisi_pa_pmu_probe(struct platform_device *pdev)
 	ret = perf_pmu_register(&pa_pmu->pmu, name, -1);
 	if (ret) {
 		dev_err(pa_pmu->dev, "PMU register failed, ret = %d\n", ret);
-		cpuhp_state_remove_instance(CPUHP_AP_PERF_ARM_HISI_PA_ONLINE,
-					    &pa_pmu->node);
+		cpuhp_state_remove_instance(hisi_pa_pmu_online, &pa_pmu->node);
 		return ret;
 	}
 
@@ -444,8 +445,8 @@ static int hisi_pa_pmu_remove(struct platform_device *pdev)
 	struct hisi_pmu *pa_pmu = platform_get_drvdata(pdev);
 
 	perf_pmu_unregister(&pa_pmu->pmu);
-	cpuhp_state_remove_instance_nocalls(CPUHP_AP_PERF_ARM_HISI_PA_ONLINE,
-					    &pa_pmu->node);
+	cpuhp_state_remove_instance_nocalls(hisi_pa_pmu_online, &pa_pmu->node);
+
 	return 0;
 }
 
@@ -463,18 +464,20 @@ static int __init hisi_pa_pmu_module_init(void)
 {
 	int ret;
 
-	ret = cpuhp_setup_state_multi(CPUHP_AP_PERF_ARM_HISI_PA_ONLINE,
-				      "AP_PERF_ARM_HISI_PA_ONLINE",
+	ret = cpuhp_setup_state_multi(CPUHP_AP_ONLINE_DYN,
+				      "perf/hisi/pa:online",
 				      hisi_uncore_pmu_online_cpu,
 				      hisi_uncore_pmu_offline_cpu);
-	if (ret) {
+	if (ret < 0) {
 		pr_err("PA PMU: cpuhp state setup failed, ret = %d\n", ret);
 		return ret;
 	}
 
+	hisi_pa_pmu_online = ret;
+
 	ret = platform_driver_register(&hisi_pa_pmu_driver);
 	if (ret)
-		cpuhp_remove_multi_state(CPUHP_AP_PERF_ARM_HISI_PA_ONLINE);
+		cpuhp_remove_multi_state(hisi_pa_pmu_online);
 
 	return ret;
 }
@@ -483,7 +486,7 @@ module_init(hisi_pa_pmu_module_init);
 static void __exit hisi_pa_pmu_module_exit(void)
 {
 	platform_driver_unregister(&hisi_pa_pmu_driver);
-	cpuhp_remove_multi_state(CPUHP_AP_PERF_ARM_HISI_PA_ONLINE);
+	cpuhp_remove_multi_state(hisi_pa_pmu_online);
 }
 module_exit(hisi_pa_pmu_module_exit);
 

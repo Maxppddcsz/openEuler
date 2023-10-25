@@ -48,6 +48,9 @@ HISI_PMU_EVENT_ATTR_EXTRACTOR(srcid_cmd, config1, 32, 22);
 HISI_PMU_EVENT_ATTR_EXTRACTOR(srcid_msk, config1, 43, 33);
 HISI_PMU_EVENT_ATTR_EXTRACTOR(tracetag_en, config1, 44, 44);
 
+/* Dynamic CPU hotplug state used by SLLC PMU */
+static enum cpuhp_state hisi_sllc_pmu_online;
+
 static bool tgtid_is_valid(u32 max, u32 min)
 {
 	return max > 0 && max >= min;
@@ -438,8 +441,7 @@ static int hisi_sllc_pmu_probe(struct platform_device *pdev)
 	if (!name)
 		return -ENOMEM;
 
-	ret = cpuhp_state_add_instance(CPUHP_AP_PERF_ARM_HISI_SLLC_ONLINE,
-				       &sllc_pmu->node);
+	ret = cpuhp_state_add_instance(hisi_sllc_pmu_online, &sllc_pmu->node);
 	if (ret) {
 		dev_err(&pdev->dev, "Error %d registering hotplug\n", ret);
 		return ret;
@@ -463,8 +465,7 @@ static int hisi_sllc_pmu_probe(struct platform_device *pdev)
 	ret = perf_pmu_register(&sllc_pmu->pmu, name, -1);
 	if (ret) {
 		dev_err(sllc_pmu->dev, "PMU register failed, ret = %d\n", ret);
-		cpuhp_state_remove_instance(CPUHP_AP_PERF_ARM_HISI_SLLC_ONLINE,
-					    &sllc_pmu->node);
+		cpuhp_state_remove_instance(hisi_sllc_pmu_online, &sllc_pmu->node);
 		return ret;
 	}
 
@@ -478,8 +479,8 @@ static int hisi_sllc_pmu_remove(struct platform_device *pdev)
 	struct hisi_pmu *sllc_pmu = platform_get_drvdata(pdev);
 
 	perf_pmu_unregister(&sllc_pmu->pmu);
-	cpuhp_state_remove_instance_nocalls(CPUHP_AP_PERF_ARM_HISI_SLLC_ONLINE,
-					    &sllc_pmu->node);
+	cpuhp_state_remove_instance_nocalls(hisi_sllc_pmu_online,  &sllc_pmu->node);
+
 	return 0;
 }
 
@@ -497,18 +498,20 @@ static int __init hisi_sllc_pmu_module_init(void)
 {
 	int ret;
 
-	ret = cpuhp_setup_state_multi(CPUHP_AP_PERF_ARM_HISI_SLLC_ONLINE,
-				      "AP_PERF_ARM_HISI_SLLC_ONLINE",
+	ret = cpuhp_setup_state_multi(CPUHP_AP_ONLINE_DYN,
+				      "perf/hisi/sllc:online",
 				      hisi_uncore_pmu_online_cpu,
 				      hisi_uncore_pmu_offline_cpu);
-	if (ret) {
+	if (ret < 0) {
 		pr_err("SLLC PMU: cpuhp state setup failed, ret = %d\n", ret);
 		return ret;
 	}
 
+	hisi_sllc_pmu_online = ret;
+
 	ret = platform_driver_register(&hisi_sllc_pmu_driver);
 	if (ret)
-		cpuhp_remove_multi_state(CPUHP_AP_PERF_ARM_HISI_SLLC_ONLINE);
+		cpuhp_remove_multi_state(hisi_sllc_pmu_online);
 
 	return ret;
 }
@@ -517,7 +520,7 @@ module_init(hisi_sllc_pmu_module_init);
 static void __exit hisi_sllc_pmu_module_exit(void)
 {
 	platform_driver_unregister(&hisi_sllc_pmu_driver);
-	cpuhp_remove_multi_state(CPUHP_AP_PERF_ARM_HISI_SLLC_ONLINE);
+	cpuhp_remove_multi_state(hisi_sllc_pmu_online);
 }
 module_exit(hisi_sllc_pmu_module_exit);
 
