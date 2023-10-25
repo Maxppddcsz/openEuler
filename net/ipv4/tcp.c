@@ -860,7 +860,6 @@ ssize_t tcp_splice_read(struct socket *sock, loff_t *ppos,
 	}
 
 	release_sock(sk);
-	sk_defer_free_flush(sk);
 
 	if (spliced)
 		return spliced;
@@ -1595,20 +1594,6 @@ void tcp_cleanup_rbuf(struct sock *sk, int copied)
 		tcp_send_ack(sk);
 }
 
-void __sk_defer_free_flush(struct sock *sk)
-{
-	struct llist_node *head;
-	struct sk_buff *skb, *n;
-
-	head = llist_del_all(&sk->defer_list);
-	llist_for_each_entry_safe(skb, n, head, ll_node) {
-		prefetch(n);
-		skb_mark_not_on_list(skb);
-		__kfree_skb(skb);
-	}
-}
-EXPORT_SYMBOL(__sk_defer_free_flush);
-
 static void tcp_eat_recv_skb(struct sock *sk, struct sk_buff *skb)
 {
 	__skb_unlink(skb, &sk->sk_receive_queue);
@@ -1616,11 +1601,7 @@ static void tcp_eat_recv_skb(struct sock *sk, struct sk_buff *skb)
 		sock_rfree(skb);
 		skb->destructor = NULL;
 		skb->sk = NULL;
-		if (!skb_queue_empty(&sk->sk_receive_queue) ||
-			!llist_empty(&sk->defer_list)) {
-			llist_add(&skb->ll_node, &sk->defer_list);
-			return;
-		}
+		return skb_attempt_defer_free(skb);
 	}
 	__kfree_skb(skb);
 }
@@ -2278,7 +2259,6 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
 			release_sock(sk);
 			lock_sock(sk);
 		} else {
-			sk_defer_free_flush(sk);
 			sk_wait_data(sk, &timeo, last);
 		}
 
@@ -2367,7 +2347,6 @@ found_fin_ok:
 	tcp_cleanup_rbuf(sk, copied);
 
 	release_sock(sk);
-	sk_defer_free_flush(sk);s
 
 	if (cmsg_flags) {
 		if (cmsg_flags & 2)
@@ -2382,7 +2361,6 @@ found_fin_ok:
 
 out:
 	release_sock(sk);
-	sk_defer_free_flush(sk);
 	return err;
 
 recv_urg:
@@ -2904,7 +2882,6 @@ int tcp_disconnect(struct sock *sk, int flags)
 		sk->sk_frag.offset = 0;
 	}
 
-	sk_defer_free_flush(sk);
 	sk->sk_error_report(sk);
 	return 0;
 }
@@ -3998,7 +3975,6 @@ static int do_tcp_getsockopt(struct sock *sk, int level,
 		lock_sock(sk);
 		err = tcp_zerocopy_receive(sk, &zc);
 		release_sock(sk);
-		sk_defer_free_flush(sk);
 		if (len >= offsetofend(struct tcp_zerocopy_receive, err))
 			goto zerocopy_rcv_sk_err;
 		switch (len) {
