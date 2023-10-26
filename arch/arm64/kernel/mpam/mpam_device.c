@@ -540,6 +540,7 @@ static void mpam_disable_irqs(void)
 static void mpam_enable(struct work_struct *work)
 {
 	int err;
+	static atomic_t once;
 	unsigned long flags;
 	struct mpam_device *dev;
 	bool all_devices_probed = true;
@@ -557,7 +558,7 @@ static void mpam_enable(struct work_struct *work)
 	}
 	mutex_unlock(&mpam_devices_lock);
 
-	if (!all_devices_probed)
+	if (!all_devices_probed || atomic_fetch_inc(&once))
 		return;
 
 	mutex_lock(&mpam_devices_lock);
@@ -596,11 +597,9 @@ static void mpam_enable(struct work_struct *work)
 		pr_err("Failed to setup/init resctrl\n");
 	mutex_unlock(&mpam_devices_lock);
 
-	local_irq_disable();
 	mpam_cpuhp_state = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN,
 						"mpam:online", mpam_cpu_online,
 						mpam_cpu_offline);
-	local_irq_enable();
 	if (mpam_cpuhp_state <= 0)
 		pr_err("Failed to re-register 'dyn' cpuhp callbacks");
 	mutex_unlock(&mpam_cpuhp_lock);
