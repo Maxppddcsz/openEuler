@@ -82,6 +82,16 @@ static const char *const hwcap_str[] = {
 	"ilrcpc",
 	"flagm",
 	"ssbs",
+	"sb",
+	"paca",
+	"pacg",
+	"dcpodp",
+	"sve2",
+	"sveaes",
+	"svepmull",
+	"svebitperm",
+	"svesha3",
+	"svesm4",
 	NULL
 };
 
