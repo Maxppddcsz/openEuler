@@ -288,6 +288,13 @@ config CRYPTO_SM2
 	  http://www.oscca.gov.cn/sca/xxgk/2010-12/17/content_1002386.shtml
 	  http://www.gmbz.org.cn/main/bzlb.html
 
+config CRYPTO_ZHAOXIN_GMI_SM2
+       tristate "SM2 algorithm (Zhaoxin GMI instruction)"
+       select CRYPTO_AKCIPHER
+       select CRYPTO_MANAGER
+       help
+         SM2 (ShangMi 2) public key algorithm by Zhaoxin GMI Instruction.
+
 config CRYPTO_CURVE25519
 	tristate "Curve25519 algorithm"
 	select CRYPTO_KPP
