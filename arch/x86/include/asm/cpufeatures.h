@@ -13,7 +13,7 @@
 /*
  * Defines x86 CPU feature bits
  */
-#define NCAPINTS			19	   /* N 32-bit words worth of info */
+#define NCAPINTS			20	   /* N 32-bit words worth of info */
 #define NBUGINTS			1	   /* N 32-bit bug flags */
 #define NEXTBUGINTS			1	   /* N 32-bit extended bug flags */
 /*
@@ -444,6 +444,8 @@
 #define X86_FEATURE_CORE_CAPABILITIES	(18*32+30) /* "" IA32_CORE_CAPABILITIES MSR */
 #define X86_FEATURE_SPEC_CTRL_SSBD	(18*32+31) /* "" Speculative Store Bypass Disable */
 
+/* VIA/Cyrix/Centaur-defined CPU features, CPUID level 0xC0000006, word 20 */
+#define X86_FEATURE_ZXPAUSE            (19*32 + 0) /* ZHAOXIN ZXPAUSE */
 
 /*
  * BUG word(s)
