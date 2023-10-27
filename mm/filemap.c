@@ -2294,6 +2294,8 @@ generic_file_buffered_read_readpage(struct kiocb *iocb,
 				    struct page *page)
 {
 	struct file_ra_state *ra = &filp->f_ra;
+	bool workingset = PageWorkingset(page);
+	unsigned long pflags;
 	int error;
 
 	if (iocb->ki_flags & (IOCB_NOIO | IOCB_NOWAIT)) {
@@ -2308,8 +2310,13 @@ generic_file_buffered_read_readpage(struct kiocb *iocb,
 	 * PG_error will be set again if readpage fails.
 	 */
 	ClearPageError(page);
+
 	/* Start the actual read. The read will unlock the page. */
+	if (unlikely(workingset))
+		psi_memstall_enter(&pflags);
 	error = mapping->a_ops->readpage(filp, page);
+	if (unlikely(workingset))
+		psi_memstall_leave(&pflags);
 
 	if (unlikely(error)) {
 		put_page(page);
