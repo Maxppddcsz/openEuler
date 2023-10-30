@@ -1347,6 +1347,13 @@ static struct ctl_table kern_table[] = {
 		.extra1         = &zero,
 		.extra2		= &hundred_thousand,
 	},
+	{
+		.procname	= "affinity_preferred_nodes",
+		.data		= &smart_grid_preferred_nodemask_bits,
+		.maxlen		= MAX_NUMNODES,
+		.mode		= 0644,
+		.proc_handler	= proc_cpu_affinity_domain_nodemask,
+	},
 #endif
 	{ }
 };
