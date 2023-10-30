@@ -29,6 +29,7 @@
 #include <linux/iommu.h>
 #include <linux/numa.h>
 #include <linux/limits.h>
+#include <linux/pkram.h>
 #include <asm/irq_remapping.h>
 #include <asm/iommu_table.h>
 
@@ -1054,8 +1055,40 @@ static void dmar_free_seq_id(struct intel_iommu *iommu)
 	}
 }
 
+static bool pkram_iommu_state_loaded;
+
+static int iommu_keepalive_restore_state(struct intel_iommu *iommu,
+					 struct intel_iommu_state *state)
+{
+	int ret;
+
+	iommu->keepalive = true;
+	iommu->domain_ids = state->domain_ids;
+	iommu->seq_id = state->seq_id;
+	set_bit(iommu->seq_id, dmar_seq_ids);
+	sprintf(iommu->name, "dmar%d", iommu->seq_id);
+
+	iommu->root_entry = page_address(state->root_entry_page);
+
+	ret = dmar_keepalive_restore_qi(iommu, state);
+	if (ret)
+		return ret;
+
+	ret = iommu_keepalive_restore_ir_table(iommu, state);
+	if (ret)
+		goto free_qi;
+
+	list_splice(&state->devinfo_list, &iommu->devinfo_list);
+	INIT_LIST_HEAD(&state->devinfo_list);
+	return 0;
+free_qi:
+	kfree(iommu->qi);
+	return ret;
+}
+
 static int alloc_iommu(struct dmar_drhd_unit *drhd)
 {
+	struct intel_iommu_state *iommu_state;
 	struct intel_iommu *iommu;
 	u32 ver, sts;
 	int agaw = -1;
@@ -1067,11 +1100,23 @@ static int alloc_iommu(struct dmar_drhd_unit *drhd)
 		return -EINVAL;
 	}
 
+	if (!pkram_iommu_state_loaded) {
+		intel_iommu_pkram_load();
+		pkram_iommu_state_loaded = true;
+	}
+
 	iommu = kzalloc(sizeof(*iommu), GFP_KERNEL);
 	if (!iommu)
 		return -ENOMEM;
+	INIT_LIST_HEAD(&iommu->devinfo_list);
 
-	if (dmar_alloc_seq_id(iommu) < 0) {
+	iommu_state = find_intel_iommu_state(drhd->segment,
+					     drhd->reg_base_addr);
+	if (iommu_state) {
+		err = iommu_keepalive_restore_state(iommu, iommu_state);
+		if (err)
+			goto error;
+	} else if (dmar_alloc_seq_id(iommu) < 0) {
 		pr_err("Failed to allocate seq_id\n");
 		err = -ENOSPC;
 		goto error;
@@ -1167,13 +1212,8 @@ error:
 	return err;
 }
 
-static void free_iommu(struct intel_iommu *iommu)
+static void free_iommu_irq(struct intel_iommu *iommu)
 {
-	if (intel_iommu_enabled && !iommu->drhd->ignored) {
-		iommu_device_unregister(&iommu->iommu);
-		iommu_device_sysfs_remove(&iommu->iommu);
-	}
-
 	if (iommu->irq) {
 		if (iommu->pr_irq) {
 			free_irq(iommu->pr_irq, iommu);
@@ -1184,10 +1224,20 @@ static void free_iommu(struct intel_iommu *iommu)
 		dmar_free_hwirq(iommu->irq);
 		iommu->irq = 0;
 	}
+}
+
+static void free_iommu(struct intel_iommu *iommu)
+{
+	if (intel_iommu_enabled && !iommu->drhd->ignored) {
+		iommu_device_unregister(&iommu->iommu);
+		iommu_device_sysfs_remove(&iommu->iommu);
+	}
+
+	free_iommu_irq(iommu);
 
 	if (iommu->qi) {
 		free_page((unsigned long)iommu->qi->desc);
-		kfree(iommu->qi->desc_status);
+		free_page((unsigned long)iommu->qi->desc_status);
 		kfree(iommu->qi);
 	}
 
@@ -1614,6 +1664,33 @@ static void __dmar_enable_qi(struct intel_iommu *iommu)
 	raw_spin_unlock_irqrestore(&iommu->register_lock, flags);
 }
 
+int dmar_keepalive_restore_qi(struct intel_iommu *iommu,
+			      struct intel_iommu_state *state)
+{
+	struct q_inval *qi;
+
+	/*
+	 * queued invalidation is already setup and enabled.
+	 */
+	if (iommu->qi)
+		return 0;
+
+	iommu->qi = kmalloc(sizeof(*qi), GFP_ATOMIC);
+	if (!iommu->qi)
+		return -ENOMEM;
+
+	qi = iommu->qi;
+	qi->desc = page_address(state->qi_desc_page);
+	qi->desc_status = page_address(state->qi_desc_status);
+	qi->free_head = state->qi_free_head;
+	qi->free_tail = state->qi_free_tail;
+	qi->free_cnt = state->qi_free_cnt;
+
+	raw_spin_lock_init(&qi->q_lock);
+
+	return 0;
+}
+
 /*
  * Enable Queued Invalidation interface. This is a must to support
  * interrupt-remapping. Also used by DMA-remapping, which replaces
@@ -1622,7 +1699,7 @@ static void __dmar_enable_qi(struct intel_iommu *iommu)
 int dmar_enable_qi(struct intel_iommu *iommu)
 {
 	struct q_inval *qi;
-	struct page *desc_page;
+	struct page *page;
 
 	if (!ecap_qis(iommu->ecap))
 		return -ENOENT;
@@ -1643,23 +1720,33 @@ int dmar_enable_qi(struct intel_iommu *iommu)
 	 * Need two pages to accommodate 256 descriptors of 256 bits each
 	 * if the remapping hardware supports scalable mode translation.
 	 */
-	desc_page = alloc_pages_node(iommu->node, GFP_ATOMIC | __GFP_ZERO,
+	if (pkram_available())
+		page = pkram_alloc_pages(1);
+	else
+		page = alloc_pages_node(iommu->node, GFP_ATOMIC | __GFP_ZERO,
 				     !!ecap_smts(iommu->ecap));
-	if (!desc_page) {
+	if (!page) {
 		kfree(qi);
 		iommu->qi = NULL;
 		return -ENOMEM;
 	}
 
-	qi->desc = page_address(desc_page);
+	qi->desc = page_address(page);
 
-	qi->desc_status = kcalloc(QI_LENGTH, sizeof(int), GFP_ATOMIC);
-	if (!qi->desc_status) {
-		free_page((unsigned long) qi->desc);
+	if (pkram_available())
+		page = pkram_alloc_page();
+	else
+		page = alloc_page(GFP_ATOMIC | __GFP_ZERO);
+	if (!page) {
+		if (pkram_available())
+			pkram_free_pages(virt_to_page(qi->desc), 1);
+		else
+			free_page((unsigned long) qi->desc);
 		kfree(qi);
 		iommu->qi = NULL;
 		return -ENOMEM;
 	}
+	qi->desc_status = page_address(page);
 
 	raw_spin_lock_init(&qi->q_lock);
 
@@ -1972,6 +2059,17 @@ int dmar_set_interrupt(struct intel_iommu *iommu)
 	if (ret)
 		pr_err("Can't request irq\n");
 	return ret;
+}
+
+void iommu_disable_fault_handling(struct intel_iommu *iommu)
+{
+	u32 fault_status;
+
+	free_iommu_irq(iommu);
+
+	dmar_fault(iommu->irq, iommu);
+	fault_status = readl(iommu->reg + DMAR_FSTS_REG);
+	writel(fault_status, iommu->reg + DMAR_FSTS_REG);
 }
 
 int __init enable_drhd_fault_handling(void)

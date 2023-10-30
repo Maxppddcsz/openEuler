@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 
+#include "asm/page.h"
 #define pr_fmt(fmt)     "DMAR-IR: " fmt
 
 #include <linux/interrupt.h>
@@ -14,6 +15,8 @@
 #include <linux/acpi.h>
 #include <linux/irqdomain.h>
 #include <linux/crash_dump.h>
+#include <linux/pkram.h>
+#include <linux/reboot.h>
 #include <asm/io_apic.h>
 #include <asm/apic.h>
 #include <asm/smp.h>
@@ -44,19 +47,34 @@ struct hpet_scope {
 };
 
 struct irq_2_iommu {
-	struct intel_iommu *iommu;
+	union {
+		struct intel_iommu *iommu;
+		int iommu_seq_id;
+	};
 	u16 irte_index;
 	u16 sub_handle;
 	u8  irte_mask;
 	enum irq_mode mode;
 };
 
+struct irq_2_dev {
+	union {
+		struct pci_dev *pdev; /* valid at run time */
+		u16 bdf; /* valid in keepalive state */
+	};
+	u16 msi_desc_index; /* which msi entry in dev */
+	u16 sub_index; /* index in msi block */
+};
+
+/* also used as keepalive state */
 struct intel_ir_data {
 	struct irq_2_iommu			irq_2_iommu;
 	struct irte				irte_entry;
 	union {
 		struct msi_msg			msi_entry;
 	};
+	struct irq_2_dev			irq_2_dev;
+	struct list_head			list;
 };
 
 #define IR_X2APIC_MODE(mode) (mode ? (1 << 11) : 0)
@@ -96,6 +114,9 @@ static void clear_ir_pre_enabled(struct intel_iommu *iommu)
 static void init_ir_status(struct intel_iommu *iommu)
 {
 	u32 gsts;
+
+	if (iommu->keepalive)
+		return;
 
 	gsts = readl(iommu->reg + DMAR_GSTS_REG);
 	if (gsts & DMA_GSTS_IRES)
@@ -483,6 +504,11 @@ static void iommu_set_irq_remapping(struct intel_iommu *iommu, int mode)
 	u64 addr;
 	u32 sts;
 
+	if (iommu->keepalive) {
+		qi_global_iec(iommu);
+		return;
+	}
+
 	addr = virt_to_phys((void *)iommu->ir_table->base);
 
 	raw_spin_lock_irqsave(&iommu->register_lock, flags);
@@ -508,6 +534,9 @@ static void iommu_enable_irq_remapping(struct intel_iommu *iommu)
 {
 	unsigned long flags;
 	u32 sts;
+
+	if (iommu->keepalive)
+		return;
 
 	raw_spin_lock_irqsave(&iommu->register_lock, flags);
 
@@ -545,25 +574,35 @@ static int intel_setup_irq_remapping(struct intel_iommu *iommu)
 	unsigned long *bitmap;
 	struct page *pages;
 
-	if (iommu->ir_table)
+	if (iommu->ir_table && !iommu->keepalive)
 		return 0;
 
-	ir_table = kzalloc(sizeof(struct ir_table), GFP_KERNEL);
-	if (!ir_table)
-		return -ENOMEM;
+	if (!iommu->keepalive) {
+		ir_table = kzalloc(sizeof(struct ir_table), GFP_KERNEL);
+		if (!ir_table)
+			return -ENOMEM;
 
-	pages = alloc_pages_node(iommu->node, GFP_KERNEL | __GFP_ZERO,
-				 INTR_REMAP_PAGE_ORDER);
-	if (!pages) {
-		pr_err("IR%d: failed to allocate pages of order %d\n",
-		       iommu->seq_id, INTR_REMAP_PAGE_ORDER);
-		goto out_free_table;
-	}
+		if (pkram_available())
+			pages = pkram_alloc_pages(INTR_REMAP_PAGE_ORDER);
+		else
+			pages = alloc_pages_node(iommu->node, GFP_KERNEL | __GFP_ZERO,
+						 INTR_REMAP_PAGE_ORDER);
+		if (!pages) {
+			pr_err("IR%d: failed to allocate pages of order %d\n",
+			       iommu->seq_id, INTR_REMAP_PAGE_ORDER);
+			goto out_free_table;
+		}
 
-	bitmap = bitmap_zalloc(INTR_REMAP_TABLE_ENTRIES, GFP_ATOMIC);
-	if (bitmap == NULL) {
-		pr_err("IR%d: failed to allocate bitmap\n", iommu->seq_id);
-		goto out_free_pages;
+		bitmap = bitmap_zalloc(INTR_REMAP_TABLE_ENTRIES, GFP_ATOMIC);
+		if (bitmap == NULL) {
+			pr_err("IR%d: failed to allocate bitmap\n",
+			       iommu->seq_id);
+			goto out_free_pages;
+		}
+
+		ir_table->base = page_address(pages);
+		ir_table->bitmap = bitmap;
+		iommu->ir_table = ir_table;
 	}
 
 	fn = irq_domain_alloc_named_id_fwnode("INTEL-IR", iommu->seq_id);
@@ -583,10 +622,6 @@ static int intel_setup_irq_remapping(struct intel_iommu *iommu)
 		arch_create_remap_msi_irq_domain(iommu->ir_domain,
 						 "INTEL-IR-MSI",
 						 iommu->seq_id);
-
-	ir_table->base = page_address(pages);
-	ir_table->bitmap = bitmap;
-	iommu->ir_table = ir_table;
 
 	/*
 	 * If the queued invalidation is already initialized,
@@ -636,7 +671,10 @@ out_free_fwnode:
 out_free_bitmap:
 	bitmap_free(bitmap);
 out_free_pages:
-	__free_pages(pages, INTR_REMAP_PAGE_ORDER);
+	if (pkram_available())
+		pkram_free_pages(pages, INTR_REMAP_PAGE_ORDER);
+	else
+		__free_pages(pages, INTR_REMAP_PAGE_ORDER);
 out_free_table:
 	kfree(ir_table);
 
@@ -664,8 +702,10 @@ static void intel_teardown_irq_remapping(struct intel_iommu *iommu)
 			irq_domain_free_fwnode(fn);
 			iommu->ir_domain = NULL;
 		}
-		free_pages((unsigned long)iommu->ir_table->base,
-			   INTR_REMAP_PAGE_ORDER);
+		if (pkram_available())
+			pkram_free_pages(virt_to_page(iommu->ir_table->base), INTR_REMAP_PAGE_ORDER);
+		else
+			free_pages((unsigned long)iommu->ir_table->base, INTR_REMAP_PAGE_ORDER);
 		bitmap_free(iommu->ir_table->bitmap);
 		kfree(iommu->ir_table);
 		iommu->ir_table = NULL;
@@ -688,6 +728,9 @@ static void iommu_disable_irq_remapping(struct intel_iommu *iommu)
 	 * interrupt-remapping.
 	 */
 	qi_global_iec(iommu);
+
+	if (iommu->keepalive)
+		return;
 
 	raw_spin_lock_irqsave(&iommu->register_lock, flags);
 
@@ -730,11 +773,102 @@ static void __init intel_cleanup_irq_remapping(void)
 		pr_warn("Failed to enable irq remapping. You are vulnerable to irq-injection attacks.\n");
 }
 
+static LIST_HEAD(intel_ir_data_list);
+static DEFINE_SPINLOCK(ir_data_lock);
+
+int iommu_keepalive_restore_ir_table(struct intel_iommu *iommu,
+				     struct intel_iommu_state *state)
+{
+	struct intel_ir_data *data;
+	struct ir_table *ir_table;
+	unsigned long *bitmap;
+	struct page *pages;
+	int i;
+
+	ir_table = kzalloc(sizeof(struct ir_table), GFP_KERNEL);
+	if (!ir_table)
+		return -ENOMEM;
+
+	pages = virt_to_page(state->ir_table_base);
+	bitmap = bitmap_zalloc(INTR_REMAP_TABLE_ENTRIES, GFP_ATOMIC);
+	if (bitmap == NULL) {
+		pr_err("IR%d: failed to allocate bitmap\n", iommu->seq_id);
+		goto out_free_table;
+	}
+
+	ir_table->base = page_address(pages);
+	ir_table->bitmap = bitmap;
+	iommu->ir_table = ir_table;
+
+	spin_lock(&ir_data_lock);
+	list_for_each_entry(data, &intel_ir_data_list, list) {
+		if (data->irq_2_iommu.iommu_seq_id != iommu->seq_id)
+			continue;
+		bitmap_set(iommu->ir_table->bitmap, data->irq_2_iommu.irte_index, 1);
+	}
+	spin_unlock(&ir_data_lock);
+	for (i = 0; i < INTR_REMAP_TABLE_ENTRIES; i++) {
+		struct irte *entry;
+		if (test_bit(i, iommu->ir_table->bitmap))
+			continue;
+		entry = iommu->ir_table->base + i;
+		set_64bit(&entry->low, 0);
+		set_64bit(&entry->high, 0);
+	}
+	return 0;
+out_free_table:
+	kfree(ir_table);
+	return -ENOMEM;
+}
+
+int intel_ir_pkram_load(void)
+{
+	struct intel_ir_data *state;
+	struct pkram_stream ps;
+	unsigned long i, cnt;
+	int ret;
+
+	ret = pkram_prepare_load(&ps, "intel_ir_data");
+	if (ret)
+		return ret;
+
+	ret = pkram_load_chunk(&ps, &cnt, sizeof(cnt));
+	if (ret)
+		return ret;
+
+	pr_info("PKRAM: intel_ir_data: total %lu states\n", cnt);
+
+	for (i = 0; i < cnt; i++) {
+		state = kmalloc(sizeof(*state), GFP_KERNEL);
+		if (!state) {
+			pr_info("intel_ir_pkram_load failed after kmalloc\n");
+			return -ENOMEM;
+		}
+
+		pr_info("PKRAM: intel_ir_data: load state %lu\n", i);
+		ret = pkram_load_chunk(&ps, state, sizeof(*state));
+		if (ret) {
+			kfree(state);
+			pr_info("intel_ir_pkram_load failed after load chunk\n");
+			return ret;
+		}
+
+		spin_lock(&ir_data_lock);
+		list_add(&state->list, &intel_ir_data_list);
+		spin_unlock(&ir_data_lock);
+	}
+	pr_info("intel_ir_pkram_load finished\n");
+	return 0;
+}
+
 static int __init intel_prepare_irq_remapping(void)
 {
 	struct dmar_drhd_unit *drhd;
 	struct intel_iommu *iommu;
 	int eim = 0;
+
+	if (intel_ir_pkram_load())
+		pr_info("no intel_ir state loaded\n");
 
 	if (irq_remap_broken) {
 		pr_warn("This system BIOS has enabled interrupt remapping\n"
@@ -1226,7 +1360,14 @@ static void intel_ir_compose_msi_msg(struct irq_data *irq_data,
 static int intel_ir_set_vcpu_affinity(struct irq_data *data, void *info)
 {
 	struct intel_ir_data *ir_data = data->chip_data;
+	struct pci_dev *pdev = ir_data->irq_2_dev.pdev;
 	struct vcpu_data *vcpu_pi_info = info;
+
+	if (pdev && dev_is_keepalive(&pdev->dev)) {
+		dev_dbg(&pdev->dev, "keepalive: don't set vcpu affinity: irq %d, %s\n",
+			data->irq, vcpu_pi_info ? "posted" : "not posted");
+		return 0;
+	}
 
 	/* stop posting interrupts, back to remapping mode */
 	if (!vcpu_pi_info) {
@@ -1329,6 +1470,126 @@ static void intel_irq_remapping_prepare_irte(struct intel_ir_data *data,
 	}
 }
 
+int intel_ir_pkram_save(void)
+{
+	struct intel_ir_data *state;
+	struct pkram_stream ps;
+	unsigned long cnt;
+	int ret;
+
+	ret = pkram_prepare_save(&ps, "intel_ir_data");
+	if (ret)
+		return ret;
+	pkram_prepare_save_obj(&ps);
+	spin_lock(&ir_data_lock);
+
+	cnt = 0;
+	list_for_each_entry(state, &intel_ir_data_list, list) {
+		cnt++;
+	}
+	ret = pkram_save_chunk(&ps, &cnt, sizeof(cnt));
+
+	list_for_each_entry(state, &intel_ir_data_list, list) {
+		ret = pkram_save_chunk(&ps, state, sizeof(*state));
+		if (ret) {
+			spin_unlock(&ir_data_lock);
+			pkram_finish_save_obj(&ps);
+			goto fail_pkram_save;
+		}
+	}
+
+	spin_unlock(&ir_data_lock);
+	pkram_finish_save_obj(&ps);
+	pkram_finish_save(&ps);
+	return 0;
+fail_pkram_save:
+	pkram_discard_save(&ps);
+	return ret;
+}
+
+static int intel_ir_save_callback(struct notifier_block *notifier,
+				  unsigned long val, void *v)
+{
+	if (intel_ir_pkram_save())
+		pr_warn("failed to save intel ir states\n");
+	return NOTIFY_OK;
+}
+
+static struct notifier_block intel_ir_save_notifier = {
+	.notifier_call = intel_ir_save_callback,
+	.priority = 1,
+};
+
+static int __init intel_ir_save_init(void)
+{
+	register_live_update_notifier(&intel_ir_save_notifier);
+	return 0;
+}
+device_initcall(intel_ir_save_init);
+
+static struct intel_ir_data *find_detached_irte(struct irq_alloc_info *info,
+						int sub_index)
+{
+	struct pci_dev *pdev = msi_desc_to_pci_dev(info->desc);
+	u16 msi_desc_index;
+	struct intel_ir_data *ird;
+	u16 bdf;
+
+	/* see pci_msi_domain_calc_hwirq() */
+	msi_desc_index = info->hwirq & 0x7FF;
+
+	bdf = pci_dev_id(pdev);
+	spin_lock(&ir_data_lock);
+	list_for_each_entry(ird, &intel_ir_data_list, list) {
+		if (ird->irq_2_dev.bdf == bdf &&
+		    ird->irq_2_dev.msi_desc_index == msi_desc_index &&
+		    ird->irq_2_dev.sub_index == sub_index) {
+			dev_dbg(&pdev->dev,
+				"found intel_ir_data: bdf %04x, msi_desc_index %u, sub_index %u\n",
+				bdf, msi_desc_index, sub_index);
+			list_del(&ird->list);
+			spin_unlock(&ir_data_lock);
+			return ird;
+		}
+	}
+	spin_unlock(&ir_data_lock);
+
+	dev_warn(&pdev->dev,
+		 "no intel_ir_data found: bdf %04x, msi_desc_index %u, sub_index %u\n",
+		 bdf, msi_desc_index, sub_index);
+
+	return NULL;
+}
+
+static int reattach_irte(struct irq_domain *domain,
+			 unsigned int virq, unsigned int nr_irqs,
+			 struct irq_alloc_info *info)
+{
+	struct intel_iommu *iommu = domain->host_data;
+	struct intel_ir_data *ird;
+	struct irq_data *irq_data;
+	int i;
+
+	for (i = 0; i < nr_irqs; i++) {
+		irq_data = irq_domain_get_irq_data(domain, virq + i);
+		if (!irq_data)
+			return -EINVAL;
+
+		ird = find_detached_irte(info, i);
+		if (!ird)
+			return -EINVAL;
+
+		ird->irq_2_iommu.iommu = iommu;
+		ird->irq_2_dev.pdev = msi_desc_to_pci_dev(info->desc);
+
+		irq_data->hwirq = (ird->irq_2_iommu.irte_index << 16) + i;
+		irq_data->chip_data = ird;
+		irq_data->chip = &intel_ir_chip;
+		irq_set_status_flags(virq + i, IRQ_MOVE_PCNTXT);
+	}
+	return 0;
+}
+
 static void intel_free_irq_resources(struct irq_domain *domain,
 				     unsigned int virq, unsigned int nr_irqs)
 {
@@ -1340,7 +1601,26 @@ static void intel_free_irq_resources(struct irq_domain *domain,
 	for (i = 0; i < nr_irqs; i++) {
 		irq_data = irq_domain_get_irq_data(domain, virq  + i);
 		if (irq_data && irq_data->chip_data) {
+			struct pci_dev *pdev;
+
 			data = irq_data->chip_data;
+			pdev = data->irq_2_dev.pdev;
+
+			if (pdev && pci_is_keepalive_dev(pdev)) {
+				struct intel_iommu *iommu = data->irq_2_iommu.iommu;
+
+				dev_dbg(&pdev->dev, "%s: detach virq %u\n",
+					__func__, virq + i);
+
+				data->irq_2_dev.bdf = pci_dev_id(pdev);
+				data->irq_2_iommu.iommu_seq_id = iommu->seq_id;
+				irq_domain_reset_irq_data(irq_data);
+				spin_lock(&ir_data_lock);
+				list_add_tail(&data->list, &intel_ir_data_list);
+				spin_unlock(&ir_data_lock);
+				continue;
+			}
+
 			irq_iommu = &data->irq_2_iommu;
 			raw_spin_lock_irqsave(&irq_2_ir_lock, flags);
 			clear_entries(irq_iommu);
@@ -1360,6 +1640,7 @@ static int intel_irq_remapping_alloc(struct irq_domain *domain,
 	struct intel_ir_data *data, *ird;
 	struct irq_data *irq_data;
 	struct irq_cfg *irq_cfg;
+	struct pci_dev *pdev = NULL;
 	int i, ret, index;
 
 	if (!info || !iommu)
@@ -1378,6 +1659,16 @@ static int intel_irq_remapping_alloc(struct irq_domain *domain,
 	ret = irq_domain_alloc_irqs_parent(domain, virq, nr_irqs, arg);
 	if (ret < 0)
 		return ret;
+
+	if (info->type == X86_IRQ_ALLOC_TYPE_PCI_MSI ||
+	    info->type == X86_IRQ_ALLOC_TYPE_PCI_MSIX) {
+		pdev = msi_desc_to_pci_dev(info->desc);
+		if (pdev && pci_is_keepalive_dev(pdev)) {
+			dev_dbg(&pdev->dev, "%s: reattach virq %d, nr_irqs %d\n",
+				__func__, virq, nr_irqs);
+			return reattach_irte(domain, virq, nr_irqs, info);
+		}
+	}
 
 	ret = -ENOMEM;
 	data = kzalloc(sizeof(*data), GFP_KERNEL);
@@ -1414,6 +1705,12 @@ static int intel_irq_remapping_alloc(struct irq_domain *domain,
 			ird = data;
 		}
 
+		if (pdev) {
+			ird->irq_2_dev.pdev = pdev;
+			ird->irq_2_dev.msi_desc_index = info->hwirq & 0x7FF;
+			ird->irq_2_dev.sub_index = i;
+		}
+
 		irq_data->hwirq = (index << 16) + i;
 		irq_data->chip_data = ird;
 		irq_data->chip = &intel_ir_chip;
@@ -1439,6 +1736,13 @@ static void intel_irq_remapping_free(struct irq_domain *domain,
 static int intel_irq_remapping_activate(struct irq_domain *domain,
 					struct irq_data *irq_data, bool reserve)
 {
+	struct intel_ir_data *data = irq_data->chip_data;
+	struct pci_dev *pdev = data->irq_2_dev.pdev;
+
+	if (pdev && dev_is_keepalive(&pdev->dev)) {
+		dev_dbg(&pdev->dev, "IR: keepalive: dont activate\n");
+		return 0;
+	}
 	intel_ir_reconfigure_irte(irq_data, true);
 	return 0;
 }
@@ -1447,8 +1751,13 @@ static void intel_irq_remapping_deactivate(struct irq_domain *domain,
 					   struct irq_data *irq_data)
 {
 	struct intel_ir_data *data = irq_data->chip_data;
+	struct pci_dev *pdev = data->irq_2_dev.pdev;
 	struct irte entry;
 
+	if (pdev && dev_is_keepalive(&pdev->dev)) {
+		dev_dbg(&pdev->dev, "IR: keepalive: dont deactivate\n");
+		return;
+	}
 	memset(&entry, 0, sizeof(entry));
 	modify_irte(&data->irq_2_iommu, &entry);
 }

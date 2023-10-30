@@ -295,7 +295,7 @@ struct vcpu_vmx {
 	union vmx_exit_reason exit_reason;
 
 	/* Posted interrupt descriptor */
-	struct pi_desc pi_desc;
+	struct pi_desc *pi_desc;
 
 	/* Support for a guest hypervisor (nested VMX) */
 	struct nested_vmx nested;
@@ -400,6 +400,9 @@ int vmx_find_loadstore_msr_slot(struct vmx_msrs *m, u32 msr);
 void vmx_ept_load_pdptrs(struct kvm_vcpu *vcpu);
 void vmx_set_intercept_for_msr(struct kvm_vcpu *vcpu,
 	u32 msr, int type, bool value);
+
+void vmx_vcpu_load(struct kvm_vcpu *vcpu, int cpu);
+void vmx_vcpu_put(struct kvm_vcpu *vcpu);
 
 static inline u8 vmx_get_rvi(void)
 {

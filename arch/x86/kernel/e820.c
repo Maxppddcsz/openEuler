@@ -9,6 +9,7 @@
  * quirks and other tweaks, and feeds that into the generic Linux memory
  * allocation code routines via a platform independent interface (memblock, etc.).
  */
+#include "linux/export.h"
 #include <linux/crash_dump.h>
 #include <linux/memblock.h>
 #include <linux/suspend.h>
@@ -16,6 +17,7 @@
 #include <linux/firmware-map.h>
 #include <linux/sort.h>
 #include <linux/memory_hotplug.h>
+#include <linux/pkram.h>
 
 #include <asm/e820/api.h>
 #include <asm/setup.h>
@@ -1348,3 +1350,525 @@ void __init e820__memblock_setup(void)
 
 	memblock_dump_all();
 }
+
+enum pkram_mode {
+	PKRAM_SAVE = 0,
+	PKRAM_RESTORE,
+};
+
+struct super_block_page {
+	u64 magic;
+
+	u64 first_node_pfn;
+};
+
+struct pkram_super_block {
+	struct super_block_page *sb_page;
+	unsigned long *bitmap;
+	unsigned long bitmap_size;
+	unsigned long base_pfn;
+};
+
+/* each node occupy a page */
+struct pkram_node_page {
+	u64 next_node_pfn;
+
+	u64 first_data_pfn;
+	u64 last_data_pfn;
+
+	u8 name[256];
+};
+
+struct pkram_data_page {
+	u64 next_data_pfn;
+	u64 data_len;
+};
+
+enum pkram_mode pkram_mode;
+u64 pkram_base_pfn, pkram_mem_size;
+struct pkram_super_block pkram_super_block;
+struct pkram_super_block *pkram_sb;
+
+struct pkram_super_block *get_super_block(void)
+{
+	return pkram_sb;
+}
+
+static DEFINE_SPINLOCK(pkram_lock);
+static bool pkram_verified;
+
+struct page *pkram_alloc_pages(unsigned int order)
+{
+	struct pkram_super_block *sb = get_super_block();
+	unsigned long align_count, i;
+	unsigned long offset, pfn;
+	unsigned long flags;
+	struct page *page;
+	void *vaddr;
+
+	spin_lock_irqsave(&pkram_lock, flags);
+
+	align_count = 1 << order; 
+	offset = bitmap_find_next_zero_area(sb->bitmap, sb->bitmap_size, 0,
+					    align_count, align_count - 1);
+	if (offset >= sb->bitmap_size) {
+		pr_warn("PKRAM: fail to alloc, order %d\n", order);
+		spin_unlock_irqrestore(&pkram_lock, flags);
+		return NULL;
+	}
+
+	for (i = 0; i < align_count; i++)
+		set_bit(offset + i, sb->bitmap);
+	pfn = sb->base_pfn + offset;
+	page = pfn_to_page(pfn);
+	vaddr = page_address(page);
+	memset(vaddr, 0, align_count * PAGE_SIZE);
+
+	pr_info("PKRAM: alloc at offset %lx, pfn %lx, order %d: %pS\n",
+	 	offset, pfn, order, (void *)_RET_IP_);
+
+	spin_unlock_irqrestore(&pkram_lock, flags);
+	atomic_set(&page->_refcount, 1);
+	return page;
+}
+EXPORT_SYMBOL(pkram_alloc_pages);
+
+struct page *pkram_alloc_page(void)
+{
+	pr_info("PKRAM: alloc from %pS\n", (void *)_RET_IP_);
+	return pkram_alloc_pages(0);
+}
+EXPORT_SYMBOL(pkram_alloc_page);
+
+void pkram_get_page(struct page *page)
+{
+	atomic_inc(&page->_refcount);
+}
+EXPORT_SYMBOL(pkram_get_page);
+
+void pkram_put_page(struct page *page)
+{
+	atomic_dec(&page->_refcount);
+}
+EXPORT_SYMBOL(pkram_put_page);
+
+void pkram_free_pages(struct page *page, unsigned int order)
+{
+	struct pkram_super_block *sb = get_super_block();
+	unsigned long offset, pfn, count, i;
+	unsigned long flags;
+
+	pr_info("PKRAM: try free order %d: %pS\n",
+	 	order, (void *)_RET_IP_);
+
+	if (!atomic_dec_and_test(&page->_refcount))
+		return;
+
+	spin_lock_irqsave(&pkram_lock, flags);
+
+	pfn = page_to_pfn(page);
+	offset = pfn - sb->base_pfn;
+	count = 1 << order;
+	for (i = 0; i < count; i++)
+		clear_bit(offset + i, sb->bitmap);
+
+	pr_info("PKRAM: freed at offset %lx, pfn %lx, order %d: %pS\n",
+	 	offset, pfn, order, (void *)_RET_IP_);
+
+	spin_unlock_irqrestore(&pkram_lock, flags);
+}
+EXPORT_SYMBOL(pkram_free_pages);
+
+void pkram_free_page(struct page *page)
+{
+	pr_info("PKRAM: free from %pS\n", (void *)_RET_IP_);
+	pkram_free_pages(page, 0);
+}
+EXPORT_SYMBOL(pkram_free_page);
+
+struct pkram_node_page *pfn_to_node_page(u64 pfn)
+{
+	struct page *page = pfn_to_page(pfn);
+	return page_address(page);
+}
+
+struct pkram_data_page *pfn_to_data_page(u64 pfn)
+{
+	struct page *page = pfn_to_page(pfn);
+	return page_address(page);
+}
+
+int pkram_prepare_save(struct pkram_stream *ps, const char *name)
+{
+	struct pkram_super_block *sb = get_super_block();
+	struct pkram_node_page *node, *new_node;
+	unsigned long pfn;
+	struct page *page;
+
+	if (pkram_mode != PKRAM_SAVE)
+		return -EINVAL;
+
+	pr_info("PKRAM: prepare save: %s\n", name);
+
+	page = pkram_alloc_page();
+	if (!page)
+		return -ENOMEM;
+
+	new_node = (struct pkram_node_page *)page_address(page);
+	new_node->next_node_pfn = 0;
+	new_node->first_data_pfn = new_node->last_data_pfn = 0;
+	snprintf(new_node->name, 256, "%s", name);
+
+	pfn = page_to_pfn(page);
+
+	/* link to super_block */
+	if (sb->sb_page->first_node_pfn != 0) {
+		node = pfn_to_node_page(sb->sb_page->first_node_pfn);
+		while (node->next_node_pfn)
+			node = pfn_to_node_page(node->next_node_pfn);
+		node->next_node_pfn = pfn;
+	} else {
+		sb->sb_page->first_node_pfn = pfn;
+	}
+
+	ps->node = new_node;
+
+	pr_info("PKRAM: new node at pfn %lx\n", pfn);
+	return 0;
+}
+EXPORT_SYMBOL(pkram_prepare_save);
+
+int pkram_prepare_load(struct pkram_stream *ps, const char *name)
+{
+	struct pkram_super_block *sb = get_super_block();
+	struct pkram_node_page *node;
+	unsigned long pfn;
+
+	pr_info("PKRAM: prepare load: %s\n", name);
+
+	pfn = sb->sb_page->first_node_pfn;
+	while (pfn != 0) {
+		node = pfn_to_node_page(pfn);
+		if (strcmp(node->name, name) == 0)
+			break;
+		pfn = node->next_node_pfn;
+	}
+	if (pfn == 0) {
+		pr_warn("no node with name %s found\n", name);
+		return -EEXIST;
+	}
+	pr_info("PKRAM: load node at pfn %lx\n", pfn);
+
+	ps->node = node;
+	ps->current_data_pfn = node->first_data_pfn;
+	ps->current_data_offset = 0;
+
+	return 0;
+}
+EXPORT_SYMBOL(pkram_prepare_load);
+
+#define BUF_OFFSET_IN_PAGE	(sizeof(struct pkram_data_page))
+#define BUFSIZ_PER_PAGE		(4096 - BUF_OFFSET_IN_PAGE)
+
+int pkram_save_chunk(struct pkram_stream *ps, const void *buf, size_t size)
+{
+	struct pkram_node_page *node = ps->node;
+	struct pkram_data_page *data, *last_data_page = NULL;
+	size_t cnt, total_saved = 0, last_pfn_remaining;
+	unsigned long pfn;
+	struct page *page;
+	void *buffer;
+
+	pr_info("PKRAM: save_chunk: size %lx\n", size);
+
+	if (node->last_data_pfn) {
+		pfn = node->last_data_pfn;
+		pr_info("PKRAM: try last data pfn %lx\n", pfn);
+		page = pfn_to_page(pfn);
+		data = page_address(page);
+		buffer = (void *)(data + 1);
+		last_pfn_remaining = BUFSIZ_PER_PAGE - data->data_len;
+		cnt = size > last_pfn_remaining ? last_pfn_remaining : size;
+		memcpy(buffer + data->data_len, buf, cnt);
+		size -= cnt;
+		total_saved += cnt;
+		pr_info("PKRAM: %lx copied to last data pfn\n", cnt);
+
+		data->data_len += cnt;
+		last_data_page = data;
+	}
+
+	while (size) {
+		page = pkram_alloc_page();
+		if (!page) {
+			pr_warn("pkram: failed to alloc pkram page\n");
+			return total_saved;
+		}
+
+		pfn = page_to_pfn(page);
+		data = (struct pkram_data_page *)page_address(page);
+		buffer = (void *)(data + 1);
+		cnt = size > BUFSIZ_PER_PAGE ? BUFSIZ_PER_PAGE : size;
+		memcpy(buffer, buf + total_saved, cnt);
+		size -= cnt;
+		total_saved += cnt;
+		pr_info("PKRAM: %lx copied to new data pfn %lx\n", cnt, pfn);
+
+		data->next_data_pfn = 0;
+		data->data_len = cnt;
+
+		if (last_data_page) {
+			last_data_page->next_data_pfn = pfn;
+		} else {
+			node->first_data_pfn = pfn;
+		}
+
+		node->last_data_pfn = pfn;
+		last_data_page = data;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(pkram_save_chunk);
+
+int pkram_load_chunk(struct pkram_stream *ps, void *buf, size_t size)
+{
+	size_t offset, pfn_remaining, cnt, total_loaded = 0;
+	struct pkram_data_page *data;
+	struct page *page;
+	unsigned long pfn;
+	void *buffer;
+
+	if (ps->node == NULL || ps->current_data_pfn == 0) {
+		pr_info("PKRAM: load_chunk: no more data\n");
+		return -EINVAL;
+	}
+
+	pr_info("PKRAM: load_chunk: size %lx\n", size);
+
+	pfn = ps->current_data_pfn;
+	offset = ps->current_data_offset;
+	while (size) {
+		page = pfn_to_page(pfn);
+		data = page_address(page);
+		buffer = (void *)(data + 1);
+		pfn_remaining = data->data_len - offset;
+		cnt = size > pfn_remaining ? pfn_remaining : size;
+		pr_info("PKRAM: load cnt %lx from pfn %lx offset %lx\n", cnt, pfn, offset);
+		memcpy(buf + total_loaded, buffer + offset, cnt);
+		size -= cnt;
+		total_loaded += cnt;
+		offset += cnt;
+
+		if (offset == data->data_len) {
+			pfn = data->next_data_pfn;
+			offset = 0;
+
+			pkram_free_page(page);
+
+			pr_info("PKRAM: load_chunk: goto next pfn %lx\n", pfn);
+		}
+		if (pfn == 0 && size) {
+			pr_info("PKRAM: load_chunk: no more data\n");
+			return -ENODEV;
+		}
+	}
+	ps->current_data_pfn = pfn;
+	ps->current_data_offset = offset;
+
+	ps->node->first_data_pfn = pfn;
+	if (pfn == 0)
+		ps->node->last_data_pfn = 0;
+
+	return 0;
+}
+EXPORT_SYMBOL(pkram_load_chunk);
+
+struct page_info {
+	 unsigned long pfn;
+	 unsigned long refcount;
+};
+
+int pkram_save_page(struct pkram_stream *ps, struct page *page)
+{
+	struct page_info info;
+
+	info.pfn = page_to_pfn(page);
+	info.refcount = atomic_read(&page->_refcount);
+	
+	pr_info("PKRAM: save page: pfn %lx, refcount %lx\n",
+		info.pfn, info.refcount);
+
+	return pkram_save_chunk(ps, &info, sizeof(info));
+}
+EXPORT_SYMBOL(pkram_save_page);
+
+struct page *pkram_load_page(struct pkram_stream *ps)
+{
+	struct page_info info;
+	struct page *page;
+
+	pkram_load_chunk(ps, &info, sizeof(info));
+	page = pfn_to_page(info.pfn);
+	atomic_set(&page->_refcount, info.refcount);
+
+	pr_info("PKRAM: load page: pfn %lx, refcount %lx\n",
+		info.pfn, info.refcount);
+
+	return page;
+}
+EXPORT_SYMBOL(pkram_load_page);
+
+int pkram_prepare_save_obj(struct pkram_stream *ps)
+{
+	return 0;
+}
+EXPORT_SYMBOL(pkram_prepare_save_obj);
+
+void pkram_finish_save(struct pkram_stream *ps)
+{
+}
+EXPORT_SYMBOL(pkram_finish_save);
+
+void pkram_finish_save_obj(struct pkram_stream *ps)
+{
+}
+EXPORT_SYMBOL(pkram_finish_save_obj);
+
+void pkram_discard_save(struct pkram_stream *ps)
+{
+}
+EXPORT_SYMBOL(pkram_discard_save);
+
+int pkram_prepare_load_obj(struct pkram_stream *ps)
+{
+	return 0;
+}
+EXPORT_SYMBOL(pkram_prepare_load_obj);
+
+void pkram_finish_load(struct pkram_stream *ps)
+{
+	struct pkram_super_block *sb = get_super_block();
+	struct pkram_node_page *last_node = NULL, *node;
+	unsigned long pfn;
+
+	if (ps->node->first_data_pfn != 0)
+		pr_err("PKRAM: incorrect node: first_data_pfn != 0 when finish loading\n");
+
+	pfn = sb->sb_page->first_node_pfn; 
+	while (pfn) {
+		node = pfn_to_node_page(pfn);
+		if (node == ps->node)
+			break;
+		last_node = node;
+		pfn = node->next_node_pfn;
+	}
+	if (pfn == 0) {
+		pr_err("PKRAM: inconsistent pfn when finish loading node %s\n", ps->node->name);
+		return;
+	}
+	if (last_node == NULL)
+		sb->sb_page->first_node_pfn = node->next_node_pfn;
+	else
+		last_node->next_node_pfn = node->next_node_pfn; 
+	pr_info("PKRAM: free node %s\n", ps->node->name);
+	pkram_free_page(pfn_to_page(pfn));
+}
+EXPORT_SYMBOL(pkram_finish_load);
+
+void pkram_finish_load_obj(struct pkram_stream *ps)
+{
+}
+EXPORT_SYMBOL(pkram_finish_load_obj);
+
+bool pkram_available(void)
+{
+	return pkram_sb != NULL;
+}
+EXPORT_SYMBOL(pkram_available);
+
+int pkram_init_sb(void)
+{
+	struct pkram_super_block *sb;
+	struct page *page;
+
+	if (pkram_base_pfn == 0 || pkram_mem_size == 0)
+		return 0;
+
+	sb = &pkram_super_block;
+	page = pfn_to_page(pkram_base_pfn);
+	BUG_ON(page == NULL);
+	sb->sb_page = page_address(page);
+	BUG_ON(sb->sb_page == NULL);
+	if (!pkram_verified) {
+		unsigned long pfn;
+		struct page *p;
+
+		pfn = page_to_pfn(page);
+		BUG_ON(pfn != pkram_base_pfn);
+		p = virt_to_page(sb->sb_page);
+		BUG_ON(p != page);
+	}
+	sb->base_pfn = pkram_base_pfn;
+	sb->bitmap = (void *)sb->sb_page + PAGE_SIZE;
+	sb->bitmap_size = pkram_mem_size >> PAGE_SHIFT;
+
+	pr_info("PKRAM: bitmap %px, bitmap_pfn %lx, bitmap_size %lx\n", sb->bitmap, ((unsigned long)sb->bitmap) >> PAGE_SHIFT, sb->bitmap_size);
+
+	if (pkram_mode != PKRAM_RESTORE) {
+		unsigned long bitmap_pages = (sb->bitmap_size/8 + PAGE_SIZE - 1) >> PAGE_SHIFT;
+		unsigned long i;
+
+		pr_info("PKRAM: bitmap occupies %lx pages\n", bitmap_pages);
+
+		sb->sb_page->first_node_pfn = 0;
+
+		memset(sb->bitmap, 0, bitmap_pages * PAGE_SIZE);
+		set_bit(0, sb->bitmap);
+		for (i = 0; i < bitmap_pages; i++)
+			set_bit(i+1, sb->bitmap);
+	}
+
+	pkram_sb = sb;
+	pr_info("PKRAM: initialized\n");
+	return 0;
+}
+
+static int __init pkram_setup(char *p)
+{
+	u64 base_phys, mem_size;
+	char *oldp;
+
+	if (!p)
+		return -EINVAL;
+	
+	oldp = p;
+	mem_size = memparse(p, &p);
+	if (p == oldp)
+		return -EINVAL;
+
+	if (*p != '@')
+		return -EINVAL;
+
+	base_phys = memparse(p+1, &p);
+	if (*p != '\0' && *p != ',')
+		return -EINVAL;
+
+	if (*p == ',') {
+		if (strcmp(p+1, "restore") == 0)
+			pkram_mode = PKRAM_RESTORE;
+		else
+			pkram_mode = PKRAM_SAVE;
+	}
+
+	e820__range_add(base_phys, mem_size, E820_TYPE_RAM);
+
+	pkram_base_pfn = base_phys >> PAGE_SHIFT;
+	pkram_mem_size = mem_size;
+
+	pr_info("PKRAM: base_pfn %llx, size %llx, mode %s\n",
+		pkram_base_pfn, pkram_mem_size, pkram_mode == PKRAM_SAVE ? "SAVE" : "RESTORE");
+	return 0;
+}
+early_param("pkram", pkram_setup);
+

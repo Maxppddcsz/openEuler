@@ -43,6 +43,8 @@ struct vfio_device_ops {
 	int	(*mmap)(void *device_data, struct vm_area_struct *vma);
 	void	(*request)(void *device_data, unsigned int count);
 	int	(*match)(void *device_data, char *buf);
+	int	(*set_keepalive)(void *device_data,
+				 struct vfio_keepalive_data *vka);
 };
 
 extern struct iommu_group *vfio_iommu_group_get(struct device *dev);
@@ -55,6 +57,7 @@ extern int vfio_add_group_dev(struct device *dev,
 extern void *vfio_del_group_dev(struct device *dev);
 extern struct vfio_device *vfio_device_get_from_dev(struct device *dev);
 extern void vfio_device_put(struct vfio_device *device);
+extern void vfio_device_get(struct vfio_device *device);
 extern void *vfio_device_data(struct vfio_device *device);
 
 /**
@@ -90,6 +93,8 @@ struct vfio_iommu_driver_ops {
 					       struct notifier_block *nb);
 	int		(*dma_rw)(void *iommu_data, dma_addr_t user_iova,
 				  void *data, size_t count, bool write);
+	int		(*set_keepalive)(void *iommu_data,
+					 struct vfio_keepalive_data *vka);
 };
 
 extern int vfio_register_iommu_driver(const struct vfio_iommu_driver_ops *ops);

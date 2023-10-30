@@ -1305,6 +1305,7 @@ void pci_unmap_rom(struct pci_dev *pdev, void __iomem *rom);
 /* Power management related routines */
 int pci_save_state(struct pci_dev *dev);
 void pci_restore_state(struct pci_dev *dev);
+int pci_saved_state_size(void *s);
 struct pci_saved_state *pci_store_saved_state(struct pci_dev *dev);
 int pci_load_saved_state(struct pci_dev *dev,
 			 struct pci_saved_state *state);
@@ -2455,6 +2456,18 @@ static inline bool pci_is_thunderbolt_attached(struct pci_dev *pdev)
 #if defined(CONFIG_PCIEPORTBUS) || defined(CONFIG_EEH)
 void pci_uevent_ers(struct pci_dev *pdev, enum  pci_ers_result err_type);
 #endif
+
+static inline bool pci_is_keepalive_dev(struct pci_dev *pdev)
+{
+	return dev_is_keepalive(&pdev->dev) && !pci_is_bridge(pdev);
+}
+
+void pci_dev_set_keepalive(struct pci_dev *pdev);
+void pci_dev_clear_keepalive(struct pci_dev *pdev);
+
+void free_keepalive_devices(void);
+struct pci_keepalive_state *pci_find_keepalive_state(unsigned char bus_nr,
+						     unsigned int devfn);
 
 /* Provide the legacy pci_dma_* API */
 #include <linux/pci-dma-compat.h>

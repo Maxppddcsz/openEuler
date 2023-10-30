@@ -610,6 +610,9 @@ struct intel_iommu {
 	u32		flags;      /* Software defined flags */
 
 	struct dmar_drhd_unit *drhd;
+
+	struct list_head devinfo_list;
+	bool keepalive;
 };
 
 /* Per subdevice private data */
@@ -620,6 +623,29 @@ struct subdev_domain_info {
 	struct dmar_domain *domain;	/* aux-domain */
 	int users;			/* user count */
 };
+
+struct intel_iommu_state {
+	u64 		reg_phys;
+	int		seq_id;
+	u16		segment;
+	int		agaw;
+#ifdef CONFIG_INTEL_IOMMU
+	unsigned long 	*domain_ids;
+	size_t		domain_ids_size;
+	struct page	*root_entry_page;
+#endif
+	struct page *qi_desc_page;
+	struct page *qi_desc_status;
+	int qi_free_head;
+	int qi_free_tail;
+	int qi_free_cnt;
+
+#ifdef CONFIG_IRQ_REMAP
+	struct irte *ir_table_base;
+#endif
+	struct list_head list;
+	struct list_head devinfo_list;
+ };
 
 /* PCI domain-device relationship */
 struct device_domain_info {
@@ -705,6 +731,10 @@ static inline int first_pte_in_page(struct dma_pte *pte)
 extern struct dmar_drhd_unit * dmar_find_matched_drhd_unit(struct pci_dev *dev);
 extern int dmar_find_matched_atsr_unit(struct pci_dev *dev);
 
+extern int dmar_keepalive_restore_qi(struct intel_iommu *iommu,
+				     struct intel_iommu_state *state);
+extern int iommu_keepalive_restore_ir_table(struct intel_iommu *iommu,
+					    struct intel_iommu_state *state);
 extern int dmar_enable_qi(struct intel_iommu *iommu);
 extern void dmar_disable_qi(struct intel_iommu *iommu);
 extern int dmar_reenable_qi(struct intel_iommu *iommu);
@@ -746,6 +776,7 @@ int intel_iommu_enable_pasid(struct intel_iommu *iommu, struct device *dev);
 struct dmar_domain *find_domain(struct device *dev);
 struct device_domain_info *get_domain_info(struct device *dev);
 struct intel_iommu *device_to_iommu(struct device *dev, u8 *bus, u8 *devfn);
+void iommu_disable_fault_handling(struct intel_iommu *iommu);
 
 #ifdef CONFIG_INTEL_IOMMU_SVM
 extern void intel_svm_check(struct intel_iommu *iommu);
@@ -801,6 +832,9 @@ extern const struct attribute_group *intel_iommu_groups[];
 bool context_present(struct context_entry *context);
 struct context_entry *iommu_context_addr(struct intel_iommu *iommu, u8 bus,
 					 u8 devfn, int alloc);
+
+int intel_iommu_pkram_load(void);
+struct intel_iommu_state *find_intel_iommu_state(u32 segment, u64 reg_base_addr);
 
 #ifdef CONFIG_INTEL_IOMMU
 extern int iommu_calculate_agaw(struct intel_iommu *iommu);

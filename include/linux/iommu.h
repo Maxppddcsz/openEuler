@@ -21,6 +21,7 @@
 #define IOMMU_CACHE	(1 << 2) /* DMA cache coherency */
 #define IOMMU_NOEXEC	(1 << 3)
 #define IOMMU_MMIO	(1 << 4) /* e.g. things like MSI doorbells */
+#define IOMMU_KEEPALIVE	(1 << 5)
 /*
  * Where the bus hardware includes a privilege level as part of its access type
  * markings, and certain devices are capable of issuing transactions marked as
@@ -88,17 +89,30 @@ struct iommu_domain {
 	struct iommu_domain_geometry geometry;
 	void *iova_cookie;
 	struct mutex switch_log_lock;
+	bool keepalive;
 	KABI_RESERVE(1)
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
 };
 
+static inline void iommu_domain_set_keepalive(struct iommu_domain *domain,
+					      bool keepalive)
+{
+	domain->keepalive = keepalive;
+}
+
+static inline bool iommu_domain_is_keepalive(struct iommu_domain *domain)
+{
+	return domain->keepalive;
+}
+
 enum iommu_cap {
 	IOMMU_CAP_CACHE_COHERENCY,	/* IOMMU can enforce cache coherent DMA
 					   transactions */
 	IOMMU_CAP_INTR_REMAP,		/* IOMMU supports interrupt isolation */
 	IOMMU_CAP_NOEXEC,		/* IOMMU_NOEXEC flag */
+	IOMMU_CAP_FGSP,			/* Fine-grained-super-page supported */
 };
 
 /*

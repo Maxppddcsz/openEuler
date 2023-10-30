@@ -128,6 +128,8 @@ struct vfio_pci_device {
 	struct mutex		igate;
 	struct vfio_pci_irq_ctx	*ctx;
 	int			num_ctx;
+	int			saved_num_ctx;
+	void			**saved_irq_data;
 	int			irq_type;
 	struct vfio_ext_irq	*ext_irqs;
 	int			num_ext_irqs;
@@ -172,6 +174,8 @@ struct vfio_pci_device {
 	struct rw_semaphore	memory_lock;
 	void			*vendor_data;
 	struct vfio_pci_vendor_driver	*vendor_driver;
+	int			keepalive_err_cnt;
+	uuid_t			*keepalive_token;
 };
 
 #define is_intx(vdev) (vdev->irq_type == VFIO_PCI_INTX_IRQ_INDEX)
@@ -187,6 +191,9 @@ extern int vfio_pci_register_irq(struct vfio_pci_device *vdev,
 				 u32 flags);
 extern int vfio_pci_get_ext_irq_index(struct vfio_pci_device *vdev,
 				      unsigned int type, unsigned int subtype);
+
+extern int vfio_pci_save_keepalive_irq(struct vfio_pci_device *vdev);
+extern int vfio_pci_restore_keepalive_irq(struct vfio_pci_device *vdev);
 
 extern int vfio_pci_set_irqs_ioctl(struct vfio_pci_device *vdev,
 				   uint32_t flags, unsigned index,
