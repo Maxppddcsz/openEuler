@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .114.0
-%global pkg_release         .141
+%global maintenance_release .115.0
+%global pkg_release         .142
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,164 @@ fi
 %endif
 
 %changelog
+* Tue Oct 31 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.115.0.142
+- !2690 [sync] PR-2666:  net: xfrm: Fix xfrm_address_filter OOB read
+- !2373 [sync] PR-2258:  ext4: do not mark inode dirty every time when appending using delalloc
+- !2637 [sync] PR-2454:  igb: set max size RX buffer when store bad packet is enabled
+- net: xfrm: Fix xfrm_address_filter OOB read
+- !2535 [sync] PR-2370:  ipv4: fix null-deref in ipv4_link_failure
+- !2524 [sync] PR-2440:  netfilter: xt_u32: validate user space input
+- !2530 [sync] PR-2411:  netfilter: xt_sctp: validate the flag_info count
+- !2527 [sync] PR-2410:  netfilter: nfnetlink_osf: avoid OOB read
+- !2658 [sync] PR-2628:  ubi: Refuse attaching if mtd's erasesize is 0
+- !2663  arm64: fix a concurrency issue in emulation_proc_handler()
+- arm64: armv8_deprecated: fix unused-function error
+- arm64: armv8_deprecated: rework deprected instruction handling
+- arm64: armv8_deprecated: move aarch32 helper earlier
+- arm64: armv8_deprecated move emulation functions
+- arm64: armv8_deprecated: fold ops into insn_emulation
+- arm64: rework EL0 MRS emulation
+- arm64: factor insn read out of call_undef_hook()
+- arm64: factor out EL1 SSBS emulation hook
+- arm64: split EL0/EL1 UNDEF handlers
+- arm64: allow kprobes on EL0 handlers
+- arm64: rework BTI exception handling
+- arm64: rework FPAC exception handling
+- arm64: consistently pass ESR_ELx to die()
+- arm64: die(): pass 'err' as long
+- arm64: report EL1 UNDEFs better
+- Revert "arm64: fix a concurrency issue in emulation_proc_handler()"
+- ubi: Refuse attaching if mtd's erasesize is 0
+- !2647 [sync] PR-2641:  Fix CVE-2023-5717
+- perf: Fix kabi breakage in struct perf_event
+- perf: Disallow mis-matched inherited group reads
+- !2563  fix cgroup poll UAF
+- !2519 [sync] PR-2437:  crypto: drbg - Only fail when jent is unavailable in FIPS mode
+- !2558  USB: ene_usb6250: Allocate enough memory for full object
+- igb: set max size RX buffer when store bad packet is enabled
+- !2595 [sync] PR-2573:  media: dvb-core: Fix use-after-free due to race condition at dvb_ca_en50221
+- !2566 [sync] PR-2557:  Bluetooth: hci_ldisc: check HCI_UART_PROTO_READY flag in HCIUARTGETPROTO
+- !2580 [sync] PR-2476:  Fixed five CVEs vulnerabilities of ksmbd
+- !2613  CVE-2022-44033
+- char: pcmcia: remove all the drivers
+- tty: ipwireless: move Kconfig entry to tty
+- !2552  scsi: mpt3sas: Driver patch set for openEuler-22.03-LTS
+- !2584 [sync] PR-2571:  xen/events: replace evtchn_rwlock with RCU
+- media: dvb-core: Fix use-after-free due to race condition at dvb_ca_en50221
+- xen/events: replace evtchn_rwlock with RCU
+- ksmbd: do not call kvmalloc() with __GFP_NORETRY | __GFP_NO_WARN
+- ksmbd: fix infinite loop in ksmbd_conn_handler_loop()
+- ksmbd: send proper error response in smb2_tree_connect()
+- ksmbd: fix racy issue from smb2 close and logoff with multichannel
+- ksmbd: call rcu_barrier() in ksmbd_server_exit()
+- ksmbd: fix racy issue under cocurrent smb2 tree disconnect
+- Bluetooth: hci_ldisc: check HCI_UART_PROTO_READY flag in HCIUARTGETPROTO
+- sched/psi: Select KERNFS as needed
+- kernfs: add stub helper for kernfs_generic_poll()
+- sched/psi: use kernfs polling functions for PSI trigger polling
+- USB: ene_usb6250: Allocate enough memory for full object
+- scsi: mpt3sas: Perform additional retries if doorbell read returns 0
+- scsi: mpt3sas: Fix NULL pointer access in mpt3sas_transport_port_add()
+- scsi: mpt3sas: Remove usage of dma_get_required_mask() API
+- scsi: mpt3sas: re-do lost mpt3sas DMA mask fix
+- scsi: mpt3sas: Don't change DMA mask while reallocating pools
+- scsi: mpt3sas: Fix a memory leak
+- scsi: mpt3sas: Fix possible resource leaks in mpt3sas_transport_port_add()
+- scsi: mpt3sas: Force PCIe scatterlist allocations to be within same 4 GB region
+- scsi: mpt3sas: Fix use-after-free warning
+- ipv4: fix null-deref in ipv4_link_failure
+- netfilter: xt_sctp: validate the flag_info count
+- netfilter: nfnetlink_osf: avoid OOB read
+- netfilter: xt_u32: validate user space input
+- !1561 Add ACS quirk for Wangxun NICs
+- !2514 [sync] PR-2499:  f2fs: fix to avoid NULL pointer dereference f2fs_write_end_io()
+- crypto: drbg - Only fail when jent is unavailable in FIPS mode
+- !2485 [sync] PR-2340:  xfs: recent patches to fix xfs issues
+- f2fs: fix to avoid NULL pointer dereference f2fs_write_end_io()
+- xfs: update the last_sync_lsn with ctx start lsn
+- xfs: shutdown xfs once inode double free
+- xfs: fix off-by-one-block in xfs_discard_folio()
+- xfs: xfs_bmap_punch_delalloc_range() should take a byte range
+- iomap: buffered write failure should not truncate the page cache
+- xfs,iomap: move delalloc punching to iomap
+- xfs: use byte ranges for write cleanup ranges
+- xfs: punching delalloc extents on write failure is racy
+- xfs: longest free extent no need consider postalloc
+- xfs: fix xfs shutdown since we reserve more blocks in agfl fixup
+- xfs: block reservation too large for minleft allocation
+- xfs: set minleft correctly for randomly sparse inode allocations
+- xfs: shutdown to ensure submits buffers on LSN boundaries
+- xfs: don't verify agf length when log recovery
+- xfs: Remove redundant assignment to busy
+- xfs: remove redundant pointer lip
+- xfs: remove redundant initializations of pointers drop_leaf and save_leaf
+- xfs: xfs_trans_cancel() path must check for log shutdown
+- xfs: fix bounds check in xfs_defer_agfl_block()
+- xfs: AGF length has never been bounds checked
+- xfs: journal geometry is not properly bounds checked
+- xfs: don't block in busy flushing when freeing extents
+- xfs: allow extent free intents to be retried
+- xfs: pass alloc flags through to xfs_extent_busy_flush()
+- Revert "xfs: propagate the return value of xfs_log_force() to avoid soft lockup"
+- xfs: use deferred frees for btree block freeing
+- xfs: don't reverse order of items in bulk AIL insertion
+- xfs: validate block number being freed before adding to xefi
+- xfs: validity check agbnos on the AGFL
+- xfs: pass xfs_extent_free_item directly through the log intent code
+- xfs: remove unused parameter from refcount code
+- xfs: reduce the size of struct xfs_extent_free_item
+- xfs: rename xfs_bmap_add_free to xfs_free_extent_later
+- xfs: create slab caches for frequently-used deferred items
+- xfs: compact deferred intent item structures
+- xfs: rename _zone variables to _cache
+- xfs: remove kmem_zone typedef
+- xfs: remove xfs_setattr_time() declaration
+- xfs: use setattr_copy to set vfs inode attributes
+- xfs: set prealloc flag in xfs_alloc_file_space()
+- xfs: don't assert fail on perag references on teardown
+- xfs: fix dir3 block read verify fail during log recover
+- xfs: propagate the return value of xfs_log_force() to avoid soft lockup
+- xfs: keep growfs sb log item active until ail flush success
+- !1141 [sync] PR-953:  xfs: fixes patchs and backport patchs
+- PCI: Add ACS quirk for Wangxun NICs
+- ext4: do not mark inode dirty every time when appending using delalloc
+- Revert "openeuler: pci: workaround multiple functions can be assigned to only one VM"
+- xfs: atomic drop extent entries when inactiving attr
+- xfs: factor out __xfs_da3_node_read()
+- xfs: fix a UAF in xfs_iflush_abort_clean
+- xfs: fix a UAF when inode item push
+- xfs: fix the problem of mount failure caused by not refreshing mp->m_sb
+- iomap: iomap: fix memory corruption when recording errors during writeback
+- xfs: fix hung when transaction commit fail in xfs_inactive_ifree
+- xfs: fix dead loop when do mount with IO fault injection
+- xfs: fix ag count overflow during growfs
+- xfs: account extra freespace btree splits for multiple allocations
+- xfs: force shutdown xfs when xfs_attr_inactive fails
+- xfs: fix negative array access in xfs_getbmap
+- xfs: fix BUG_ON in xfs_getbmap()
+- xfs: use iomap_valid method to detect stale cached iomaps
+- iomap: write iomap validity checks
+- xfs: write page faults in iomap are not buffered writes
+- xfs: fix exception caused by unexpected illegal bestcount in leaf dir
+- Revert "[Huawei] xfs: fix uaf when leaf dir bestcount not match with dir data blocks"
+- xfs: don't expose internal symlink metadata buffers to the vfs
+- xfs: shut down filesystem if we xfs_trans_cancel with deferred work items
+- xfs: fix maxlevels comparisons in the btree staging code
+- xfs: sb verifier doesn't handle uncached sb buffer
+- xfs: fallocate() should call file_modified()
+- xfs: remove XFS_PREALLOC_SYNC
+- xfs: shutdown during log recovery needs to mark the log shutdown
+- xfs: xfs_trans_commit() path must check for log shutdown
+- xfs: xfs_do_force_shutdown needs to block racing shutdowns
+- xfs: log shutdown triggers should only shut down the log
+- xfs: shutdown in intent recovery has non-intent items in the AIL
+- xfs: AIL should be log centric
+- xfs: increase rename inode reservation
+- xfs: trim the mapp array accordingly in xfs_da_grow_inode_int
+- xfs: check return codes when flushing block devices
+- xfs: remove xfs_blkdev_issue_flush
+- xfs: fix NULL pointer dereference in xfs_getbmap()
+
 * Tue Oct 17 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.114.0.141
 - !2420 [sync] PR-2323:  net/sched: Retire rsvp classifier
 - net/sched: Retire rsvp classifier
