@@ -37,6 +37,7 @@
 #include <linux/sunrpc/rpc_pipe_fs.h>
 #include <linux/sunrpc/metrics.h>
 #include <linux/sunrpc/bc_xprt.h>
+#include <linux/sunrpc/sunrpc_enfs_adapter.h>
 #include <trace/events/sunrpc.h>
 
 #include "sunrpc.h"
@@ -490,6 +491,8 @@ static struct rpc_clnt *rpc_create_xprt(struct rpc_create_args *args,
 		}
 	}
 
+	rpc_multipath_ops_create_clnt(args, clnt);
+
 	clnt->cl_softrtry = 1;
 	if (args->flags & RPC_CLNT_CREATE_HARDRTRY)
 		clnt->cl_softrtry = 0;
@@ -869,6 +872,8 @@ void rpc_shutdown_client(struct rpc_clnt *clnt)
 			list_empty(&clnt->cl_tasks), 1*HZ);
 	}
 
+	rpc_multipath_ops_releas_clnt(clnt);
+
 	rpc_release_client(clnt);
 }
 EXPORT_SYMBOL_GPL(rpc_shutdown_client);
@@ -981,6 +986,12 @@ void rpc_task_release_transport(struct rpc_task *task)
 
 	if (xprt) {
 		task->tk_xprt = NULL;
+#if IS_ENABLED(CONFIG_ENFS)
+		if (task->tk_client) {
+			rpc_task_release_xprt(task->tk_client, xprt);
+			return;
+		}
+#endif
 		xprt_put(xprt);
 	}
 }
@@ -989,6 +1000,10 @@ EXPORT_SYMBOL_GPL(rpc_task_release_transport);
 void rpc_task_release_client(struct rpc_task *task)
 {
 	struct rpc_clnt *clnt = task->tk_client;
+
+#if IS_ENABLED(CONFIG_ENFS)
+	rpc_task_release_transport(task);
+#endif
 
 	if (clnt != NULL) {
 		/* Remove from client task list */
@@ -999,14 +1014,29 @@ void rpc_task_release_client(struct rpc_task *task)
 
 		rpc_release_client(clnt);
 	}
-	rpc_task_release_transport(task);
+	
+	if (!IS_ENABLED(CONFIG_ENFS))
+		rpc_task_release_transport(task);
+
 }
+
+#if IS_ENABLED(CONFIG_ENFS)
+static struct rpc_xprt *
+rpc_task_get_next_xprt(struct rpc_clnt *clnt)
+{
+	return rpc_task_get_xprt(clnt, xprt_iter_get_next(&clnt->cl_xpi));
+}
+#endif
 
 static
 void rpc_task_set_transport(struct rpc_task *task, struct rpc_clnt *clnt)
 {
 	if (!task->tk_xprt)
+#if IS_ENABLED(CONFIG_ENFS)
+		task->tk_xprt = rpc_task_get_next_xprt(clnt);
+#else
 		task->tk_xprt = xprt_iter_get_next(&clnt->cl_xpi);
+#endif
 }
 
 static
@@ -1597,6 +1627,14 @@ call_reserveresult(struct rpc_task *task)
 		return;
 	case -EIO:	/* probably a shutdown */
 		break;
+#if IS_ENABLED(CONFIG_ENFS)
+	case -ETIMEDOUT:	/* woken up; restart */
+		if (rpc_multipath_ops_task_need_call_start_again(task)) {
+			rpc_task_release_transport(task);
+			task->tk_action = call_start;
+			return;
+		}
+#endif
 	default:
 		printk(KERN_ERR "%s: unrecognized error %d, exiting\n",
 				__func__, status);
@@ -1962,6 +2000,10 @@ call_transmit(struct rpc_task *task)
 		return;
 	if (!xprt_prepare_transmit(task))
 		return;
+
+	if (rpc_multipath_ops_prepare_transmit(task))
+		return;
+
 	task->tk_action = call_transmit_status;
 	/* Encode here so that rpcsec_gss can use correct sequence number. */
 	if (rpc_task_need_encode(task)) {
@@ -2277,6 +2319,7 @@ call_timeout(struct rpc_task *task)
 
 retry:
 	task->tk_action = call_bind;
+	rpc_multipath_ops_failover_handle(task);
 	task->tk_status = 0;
 }
 
@@ -2961,3 +3004,30 @@ rpc_clnt_swap_deactivate(struct rpc_clnt *clnt)
 }
 EXPORT_SYMBOL_GPL(rpc_clnt_swap_deactivate);
 #endif /* CONFIG_SUNRPC_SWAP */
+
+#if IS_ENABLED(CONFIG_ENFS)
+/* rpc_clnt_test_xprt - Test and add a new transport to a rpc_clnt
+ * @clnt: pointer to struct rpc_clnt
+ * @xprt: pointer struct rpc_xprt
+ * @ops: async operation
+ */
+int
+rpc_clnt_test_xprt(struct rpc_clnt *clnt, struct rpc_xprt *xprt,
+		   const struct rpc_call_ops *ops, void *data, int flags)
+{
+	struct rpc_cred *cred;
+	struct rpc_task *task;
+
+	cred = authnull_ops.lookup_cred(NULL, NULL, 0);
+	task = rpc_call_null_helper(clnt, xprt, cred,
+				    RPC_TASK_SOFT | RPC_TASK_SOFTCONN | flags,
+				    ops, data);
+	put_rpccred(cred);
+	if (IS_ERR(task))
+		return PTR_ERR(task);
+
+	rpc_put_task(task);
+	return 1;
+}
+EXPORT_SYMBOL_GPL(rpc_clnt_test_xprt);
+#endif

@@ -22,6 +22,10 @@ struct rpc_xprt_switch {
 	const struct rpc_xprt_iter_ops *xps_iter_ops;
 
 	struct rcu_head		xps_rcu;
+#if IS_ENABLED(CONFIG_ENFS)
+	unsigned int		xps_nactive;
+	atomic_long_t		xps_queuelen;
+#endif
 };
 
 struct rpc_xprt_iter {
@@ -69,4 +73,8 @@ extern struct rpc_xprt *xprt_iter_get_next(struct rpc_xprt_iter *xpi);
 
 extern bool rpc_xprt_switch_has_addr(struct rpc_xprt_switch *xps,
 		const struct sockaddr *sap);
+#if IS_ENABLED(CONFIG_ENFS)
+extern void xprt_switch_add_xprt_locked(struct rpc_xprt_switch *xps,
+		struct rpc_xprt *xprt);
+#endif
 #endif

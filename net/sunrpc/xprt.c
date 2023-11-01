@@ -48,6 +48,7 @@
 #include <linux/sunrpc/clnt.h>
 #include <linux/sunrpc/metrics.h>
 #include <linux/sunrpc/bc_xprt.h>
+#include <linux/sunrpc/sunrpc_enfs_adapter.h>
 #include <linux/rcupdate.h>
 
 #include <trace/events/sunrpc.h>
@@ -259,6 +260,9 @@ out_sleep:
 	dprintk("RPC: %5u failed to lock transport %p\n",
 			task->tk_pid, xprt);
 	task->tk_timeout = 0;
+
+	rpc_multipath_ops_adjust_task_timeout(task, NULL);
+
 	task->tk_status = -EAGAIN;
 	if (req == NULL)
 		priority = RPC_PRIORITY_LOW;
@@ -560,6 +564,9 @@ void xprt_wait_for_buffer_space(struct rpc_task *task, rpc_action action)
 	struct rpc_xprt *xprt = req->rq_xprt;
 
 	task->tk_timeout = RPC_IS_SOFT(task) ? req->rq_timeout : 0;
+
+	rpc_multipath_ops_adjust_task_timeout(task, NULL);
+
 	rpc_sleep_on(&xprt->pending, task, action);
 }
 EXPORT_SYMBOL_GPL(xprt_wait_for_buffer_space);
@@ -1347,6 +1354,9 @@ xprt_request_init(struct rpc_task *task)
 	req->rq_rcv_buf.buflen = 0;
 	req->rq_release_snd_buf = NULL;
 	xprt_reset_majortimeo(req);
+
+	rpc_multipath_ops_init_task_req(task, req);
+
 	dprintk("RPC: %5u reserved req %p xid %08x\n", task->tk_pid,
 			req, ntohl(req->rq_xid));
 }
@@ -1427,6 +1437,9 @@ void xprt_release(struct rpc_task *task)
 		task->tk_ops->rpc_count_stats(task, task->tk_calldata);
 	else if (task->tk_client)
 		rpc_count_iostats(task, task->tk_client->cl_metrics);
+
+	rpc_multipath_ops_xprt_iostat(task);
+
 	spin_lock(&xprt->recv_lock);
 	if (!list_empty(&req->rq_list)) {
 		list_del_init(&req->rq_list);
@@ -1455,6 +1468,7 @@ void xprt_release(struct rpc_task *task)
 	else
 		xprt_free_bc_request(req);
 }
+EXPORT_SYMBOL_GPL(xprt_release);
 
 static void xprt_init(struct rpc_xprt *xprt, struct net *net)
 {
@@ -1528,6 +1542,10 @@ struct rpc_xprt *xprt_create_transport(struct xprt_create *args)
 		return ERR_PTR(-ENOMEM);
 	}
 
+if (rpc_multipath_ops_create_xprt(xprt)) {
+	xprt_destroy(xprt);
+	return ERR_PTR(-ENOMEM);
+}
 	rpc_xprt_debugfs_register(xprt);
 
 	dprintk("RPC:       created transport %p with %u slots\n", xprt,
@@ -1547,6 +1565,9 @@ static void xprt_destroy_cb(struct work_struct *work)
 	rpc_destroy_wait_queue(&xprt->sending);
 	rpc_destroy_wait_queue(&xprt->backlog);
 	kfree(xprt->servername);
+
+	rpc_multipath_ops_destroy_xprt(xprt);
+
 	/*
 	 * Tear down transport state and free the rpc_xprt
 	 */

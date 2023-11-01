@@ -70,6 +70,10 @@ struct rpc_clnt {
 	struct dentry		*cl_debugfs;	/* debugfs directory */
 #endif
 	struct rpc_xprt_iter	cl_xpi;
+
+#if IS_ENABLED(CONFIG_ENFS)
+	bool cl_enfs;
+#endif
 };
 
 /*
@@ -124,6 +128,9 @@ struct rpc_create_args {
 	unsigned long		flags;
 	char			*client_name;
 	struct svc_xprt		*bc_xprt;	/* NFSv4.1 backchannel */
+#if IS_ENABLED(CONFIG_ENFS)
+	void *multipath_option;
+#endif
 };
 
 struct rpc_add_xprt_test {
@@ -220,6 +227,12 @@ void rpc_clnt_xprt_switch_add_xprt(struct rpc_clnt *, struct rpc_xprt *);
 bool rpc_clnt_xprt_switch_has_addr(struct rpc_clnt *clnt,
 			const struct sockaddr *sap);
 void rpc_cleanup_clids(void);
+
+#if IS_ENABLED(CONFIG_ENFS)
+int
+rpc_clnt_test_xprt(struct rpc_clnt *clnt, struct rpc_xprt *xprt,
+		   const struct rpc_call_ops *ops, void *data, int flags);
+#endif /* CONFIG_ENFS */
 
 static inline int rpc_reply_expected(struct rpc_task *task)
 {

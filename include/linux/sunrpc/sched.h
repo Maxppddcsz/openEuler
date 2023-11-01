@@ -90,6 +90,9 @@ struct rpc_task {
 				tk_garb_retry : 2,
 				tk_cred_retry : 2,
 				tk_rebind_retry : 2;
+#if IS_ENABLED(CONFIG_ENFS)
+	unsigned long		tk_major_timeo;	/* major timeout ticks */
+#endif
 };
 
 typedef void			(*rpc_action)(struct rpc_task *);
@@ -118,6 +121,9 @@ struct rpc_task_setup {
  */
 #define RPC_TASK_ASYNC		0x0001		/* is an async task */
 #define RPC_TASK_SWAPPER	0x0002		/* is swapping in/out */
+#if IS_ENABLED(CONFIG_ENFS)
+#define RPC_TASK_FIXED	0x0004		/* detect xprt status task */
+#endif
 #define RPC_CALL_MAJORSEEN	0x0020		/* major timeout seen */
 #define RPC_TASK_ROOTCREDS	0x0040		/* force root creds */
 #define RPC_TASK_DYNAMIC	0x0080		/* task was kmalloc'ed */
@@ -257,6 +263,9 @@ void		rpc_destroy_mempool(void);
 extern struct workqueue_struct *rpciod_workqueue;
 extern struct workqueue_struct *xprtiod_workqueue;
 void		rpc_prepare_task(struct rpc_task *task);
+#if IS_ENABLED(CONFIG_ENFS)
+void rpc_init_task_retry_counters(struct rpc_task *task);
+#endif
 
 static inline int rpc_wait_for_completion_task(struct rpc_task *task)
 {

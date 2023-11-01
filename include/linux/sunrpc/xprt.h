@@ -279,6 +279,10 @@ struct rpc_xprt {
 	atomic_t		inject_disconnect;
 #endif
 	struct rcu_head		rcu;
+#if IS_ENABLED(CONFIG_ENFS)
+	atomic_long_t	queuelen;
+	void *multipath_context;
+#endif
 };
 
 #if defined(CONFIG_SUNRPC_BACKCHANNEL)
