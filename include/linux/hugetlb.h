@@ -666,7 +666,7 @@ static inline spinlock_t *huge_pte_lock(struct hstate *h,
 }
 
 #ifndef CONFIG_ASCEND_FEATURES
-static inline int hugetlb_insert_hugepage_pte_by_pa(struct mm_struct *mm,
+static inline int hugetlb_insert__hugepage_pte_by_pa(struct mm_struct *mm,
 				unsigned long vir_addr,
 				pgprot_t prot, unsigned long phy_addr)
 {
