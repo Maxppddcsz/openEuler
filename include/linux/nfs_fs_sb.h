@@ -123,6 +123,11 @@ struct nfs_client {
 
 	struct net		*cl_net;
 	struct list_head	pending_cb_stateids;
+
+#if IS_ENABLED(CONFIG_ENFS)
+	/* multi path private structure (struct multipath_client_info *) */
+	void *cl_multipath_data;
+#endif
 };
 
 /*

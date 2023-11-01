@@ -51,7 +51,6 @@
 #include <linux/netdevice.h>
 #include <linux/nfs_xdr.h>
 #include <linux/magic.h>
-#include <linux/parser.h>
 #include <linux/nsproxy.h>
 #include <linux/rcupdate.h>
 
@@ -61,7 +60,7 @@
 #include "callback.h"
 #include "delegation.h"
 #include "iostat.h"
-#include "internal.h"
+#include "enfs_adapter.h"
 #include "fscache.h"
 #include "nfs4session.h"
 #include "pnfs.h"
@@ -113,6 +112,12 @@ enum {
 
 	/* Special mount options */
 	Opt_userspace, Opt_deprecated, Opt_sloppy,
+#if IS_ENABLED(CONFIG_ENFS)
+	Opt_remote_iplist,
+	Opt_local_iplist,
+	Opt_remote_dnslist,
+	Opt_enfs_info,
+#endif
 
 	Opt_err
 };
@@ -182,6 +187,13 @@ static const match_table_t nfs_mount_option_tokens = {
 	{ Opt_lookupcache, "lookupcache=%s" },
 	{ Opt_fscache_uniq, "fsc=%s" },
 	{ Opt_local_lock, "local_lock=%s" },
+
+#if IS_ENABLED(CONFIG_ENFS)
+	{ Opt_remote_iplist, "remoteaddrs=%s" },
+	{ Opt_local_iplist, "localaddrs=%s" },
+	{ Opt_remote_dnslist, "remotednsname=%s" },
+	{ Opt_enfs_info, "enfs_info=%s" },
+#endif
 
 	/* The following needs to be listed after all other options */
 	{ Opt_nfsvers, "v%s" },
@@ -364,6 +376,21 @@ static struct shrinker acl_shrinker = {
 	.scan_objects	= nfs_access_cache_scan,
 	.seeks		= DEFAULT_SEEKS,
 };
+
+#if IS_ENABLED(CONFIG_ENFS)
+enum nfs_multi_path_options get_nfs_multi_path_opt(int token)
+{
+	switch (token) {
+	case Opt_remote_iplist:
+		return REMOUNTREMOTEADDR;
+	case Opt_local_iplist:
+		return REMOUNTLOCALADDR;
+	case Opt_remote_dnslist:
+		return REMOTEDNSNAME;
+	}
+	return INVALID_OPTION;
+}
+#endif
 
 /*
  * Register the NFS filesystems
@@ -758,6 +785,9 @@ int nfs_show_options(struct seq_file *m, struct dentry *root)
 	seq_printf(m, ",addr=%s",
 			rpc_peeraddr2str(nfss->nfs_client->cl_rpcclient,
 							RPC_DISPLAY_ADDR));
+
+	nfs_multipath_show_client_info(m, nfss);
+
 	rcu_read_unlock();
 
 	return 0;
@@ -852,6 +882,8 @@ int nfs_show_stats(struct seq_file *m, struct dentry *root)
 	seq_puts(m, root->d_sb->s_flags & SB_NOATIME ? ",noatime" : "");
 	seq_puts(m, root->d_sb->s_flags & SB_NODIRATIME ? ",nodiratime" : "");
 	nfs_show_mount_options(m, nfss, 1);
+
+	nfs_multipath_show_client_info(m, nfss);
 
 	seq_printf(m, "\n\tage:\t%lu", (jiffies - nfss->mount_time) / HZ);
 
@@ -977,6 +1009,7 @@ static void nfs_free_parsed_mount_data(struct nfs_parsed_mount_data *data)
 		kfree(data->nfs_server.export_path);
 		kfree(data->nfs_server.hostname);
 		kfree(data->fscache_uniq);
+		enfs_free_mount_options(data);
 		security_free_mnt_opts(&data->lsm_opts);
 		kfree(data);
 	}
@@ -1641,7 +1674,6 @@ static int nfs_parse_mount_options(char *raw,
 				return 0;
 			};
 			break;
-
 		/*
 		 * Special options
 		 */
@@ -1654,7 +1686,18 @@ static int nfs_parse_mount_options(char *raw,
 			dfprintk(MOUNT, "NFS:   ignoring mount option "
 					"'%s'\n", p);
 			break;
-
+#if IS_ENABLED(CONFIG_ENFS)
+		case Opt_remote_iplist:
+		case Opt_local_iplist:
+		case Opt_remote_dnslist:
+			rc = enfs_check_mount_parse_info(p,
+					token, mnt, args);
+			if (rc != 1) 
+				return rc;
+			break;
+		case Opt_enfs_info:
+			break;
+#endif
 		default:
 			invalid_option = 1;
 			dfprintk(MOUNT, "NFS:   unrecognized mount option "
@@ -2335,6 +2378,10 @@ nfs_remount(struct super_block *sb, int *flags, char *raw_data)
 	if (!nfs_parse_mount_options((char *)options, data))
 		goto out;
 
+	error = nfs_remount_iplist(nfss->nfs_client, data);
+	if (error)
+		goto out;
+
 	/*
 	 * noac is a special case. It implies -o sync, but that's not
 	 * necessarily reflected in the mtab options. do_remount_sb
@@ -2347,6 +2394,8 @@ nfs_remount(struct super_block *sb, int *flags, char *raw_data)
 	/* compare new mount options with old ones */
 	error = nfs_compare_remount_data(nfss, data);
 out:
+	/* release remount option member */
+	enfs_free_mount_options(data);
 	nfs_free_parsed_mount_data(data);
 	return error;
 }

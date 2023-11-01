@@ -93,6 +93,9 @@ struct nfs_client_initdata {
 	u32 minorversion;
 	struct net *net;
 	const struct rpc_timeout *timeparms;
+#if IS_ENABLED(CONFIG_ENFS)
+	void *enfs_option; /* struct multipath_mount_options * */
+#endif
 };
 
 /*
@@ -135,6 +138,9 @@ struct nfs_parsed_mount_data {
 
 	struct security_mnt_opts lsm_opts;
 	struct net		*net;
+#if IS_ENABLED(CONFIG_ENFS)
+	void *enfs_option; /* struct multipath_mount_options * */
+#endif
 };
 
 /* mount_clnt.c */
@@ -430,6 +436,10 @@ extern void nfs_sb_deactive(struct super_block *sb);
 extern int nfs_client_for_each_server(struct nfs_client *clp,
 				      int (*fn)(struct nfs_server *, void *),
 				      void *data);
+#if IS_ENABLED(CONFIG_ENFS)
+extern enum nfs_multi_path_options get_nfs_multi_path_opt(int token);
+#endif
+
 /* io.c */
 extern void nfs_start_io_read(struct inode *inode);
 extern void nfs_end_io_read(struct inode *inode);

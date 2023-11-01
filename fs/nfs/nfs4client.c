@@ -10,7 +10,7 @@
 #include <linux/sunrpc/xprt.h>
 #include <linux/sunrpc/bc_xprt.h>
 #include <linux/sunrpc/rpc_pipe_fs.h>
-#include "internal.h"
+#include "enfs_adapter.h"
 #include "callback.h"
 #include "delegation.h"
 #include "nfs4session.h"
@@ -224,6 +224,14 @@ struct nfs_client *nfs4_alloc_client(const struct nfs_client_initdata *cl_init)
 		__set_bit(NFS_CS_INFINITE_SLOTS, &clp->cl_flags);
 	__set_bit(NFS_CS_DISCRTRY, &clp->cl_flags);
 	__set_bit(NFS_CS_NO_RETRANS_TIMEOUT, &clp->cl_flags);
+
+	err = nfs_create_multi_path_client(clp, cl_init);
+	if (err < 0) {
+		dprintk("%s: create failed.%d\n", __func__, err);
+		nfs_put_client(clp);
+		clp = ERR_PTR(err);
+		return clp;
+	}
 
 	/*
 	 * Set up the connection to the server before we add add to the
@@ -527,6 +535,9 @@ static int nfs4_match_client(struct nfs_client  *pos,  struct nfs_client *new,
 	 * might switch the uniquifier string on us.
 	 */
 	if (!nfs4_match_client_owner_id(pos, new))
+		return 1;
+
+	if (!nfs4_multipath_client_match(pos, new))
 		return 1;
 
 	return 0;
@@ -860,7 +871,7 @@ static int nfs4_set_client(struct nfs_server *server,
 		const size_t addrlen,
 		const char *ip_addr,
 		int proto, const struct rpc_timeout *timeparms,
-		u32 minorversion, struct net *net)
+		u32 minorversion, struct net *net, void *enfs_option)
 {
 	struct nfs_client_initdata cl_init = {
 		.hostname = hostname,
@@ -872,6 +883,9 @@ static int nfs4_set_client(struct nfs_server *server,
 		.minorversion = minorversion,
 		.net = net,
 		.timeparms = timeparms,
+#if IS_ENABLED(CONFIG_ENFS)
+		.enfs_option = enfs_option,
+#endif
 	};
 	struct nfs_client *clp;
 
@@ -1050,6 +1064,7 @@ static int nfs4_init_server(struct nfs_server *server,
 {
 	struct rpc_timeout timeparms;
 	int error;
+	void *enfs_option = NULL;
 
 	nfs_init_timeout_values(&timeparms, data->nfs_server.protocol,
 			data->timeo, data->retrans);
@@ -1067,6 +1082,10 @@ static int nfs4_init_server(struct nfs_server *server,
 	else
 		data->selected_flavor = RPC_AUTH_UNIX;
 
+#if IS_ENABLED(CONFIG_ENFS)
+	enfs_option = data->enfs_option;
+#endif
+
 	/* Get a client record */
 	error = nfs4_set_client(server,
 			data->nfs_server.hostname,
@@ -1076,7 +1095,7 @@ static int nfs4_init_server(struct nfs_server *server,
 			data->nfs_server.protocol,
 			&timeparms,
 			data->minorversion,
-			data->net);
+			data->net, enfs_option);
 	if (error < 0)
 		return error;
 
@@ -1161,7 +1180,7 @@ struct nfs_server *nfs4_create_referral_server(struct nfs_clone_mount *data,
 				XPRT_TRANSPORT_RDMA,
 				parent_server->client->cl_timeout,
 				parent_client->cl_mvops->minor_version,
-				parent_client->cl_net);
+				parent_client->cl_net, NULL);
 	if (!error)
 		goto init_server;
 #endif	/* IS_ENABLED(CONFIG_SUNRPC_XPRT_RDMA) */
@@ -1174,7 +1193,7 @@ struct nfs_server *nfs4_create_referral_server(struct nfs_clone_mount *data,
 				XPRT_TRANSPORT_TCP,
 				parent_server->client->cl_timeout,
 				parent_client->cl_mvops->minor_version,
-				parent_client->cl_net);
+				parent_client->cl_net, NULL);
 	if (error < 0)
 		goto error;
 
@@ -1269,7 +1288,7 @@ int nfs4_update_server(struct nfs_server *server, const char *hostname,
 	set_bit(NFS_MIG_TSM_POSSIBLE, &server->mig_status);
 	error = nfs4_set_client(server, hostname, sap, salen, buf,
 				clp->cl_proto, clnt->cl_timeout,
-				clp->cl_minorversion, net);
+				clp->cl_minorversion, net, NULL);
 	clear_bit(NFS_MIG_TSM_POSSIBLE, &server->mig_status);
 	if (error != 0) {
 		nfs_server_insert_lists(server);
