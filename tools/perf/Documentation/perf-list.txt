@@ -36,6 +36,9 @@ Enable debugging output.
 Print how named events are resolved internally into perf events, and also
 any extra expressions computed by perf stat.
 
+--deprecated::
+Print deprecated events. By default the deprecated events are hidden.
+
 [[EVENT_MODIFIERS]]
 EVENT MODIFIERS
 ---------------
@@ -112,6 +115,12 @@ raw encoding of 0x1A8 can be used:
 
  perf stat -e r1a8 -a sleep 1
  perf record -e r1a8 ...
+
+It's also possible to use pmu syntax:
+
+ perf record -e r1a8 -a sleep 1
+ perf record -e cpu/r1a8/ ...
+ perf record -e cpu/r0x1a8/ ...
 
 You should refer to the processor specific documentation for getting these
 details. Some of them are referenced in the SEE ALSO section below.
