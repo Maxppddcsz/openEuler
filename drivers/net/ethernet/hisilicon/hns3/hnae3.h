@@ -285,9 +285,6 @@ enum hnae3_reset_type {
 	HNAE3_FUNC_RESET,
 	HNAE3_GLOBAL_RESET,
 	HNAE3_IMP_RESET,
-#ifdef __GENKSYMS__
-	HNAE3_UNKNOWN_RESET,
-#endif
 	HNAE3_NONE_RESET,
 	HNAE3_MAX_RESET,
 };
@@ -429,11 +426,9 @@ struct hnae3_ae_dev {
 	struct list_head node;
 	u32 flag;
 	unsigned long hw_err_reset_req;
-#ifndef __GENKSYMS__
 	struct hnae3_dev_specs dev_specs;
 	u32 dev_version;
 	DECLARE_BITMAP(caps, HNAE3_DEV_CAPS_MAX_NUM);
-#endif
 	void *priv;
 };
 
@@ -623,18 +618,11 @@ struct hnae3_ae_ops {
 	int (*client_start)(struct hnae3_handle *handle);
 	void (*client_stop)(struct hnae3_handle *handle);
 	int (*get_status)(struct hnae3_handle *handle);
-#ifndef __GENKSYMS__
 	void (*get_ksettings_an_result)(struct hnae3_handle *handle,
 					u8 *auto_neg, u32 *speed, u8 *duplex,
 					u32 *lane_num);
 	int (*cfg_mac_speed_dup_h)(struct hnae3_handle *handle, int speed,
 				   u8 duplex, u8 lane_num);
-#else
-	void (*get_ksettings_an_result)(struct hnae3_handle *handle,
-					u8 *auto_neg, u32 *speed, u8 *duplex);
-	int (*cfg_mac_speed_dup_h)(struct hnae3_handle *handle, int speed,
-				   u8 duplex);
-#endif
 
 	void (*get_media_type)(struct hnae3_handle *handle, u8 *media_type,
 			       u8 *module_type);
@@ -821,6 +809,7 @@ struct hnae3_ae_ops {
 		       struct ethtool_wolinfo *wol);
 	int (*priv_ops)(struct hnae3_handle *handle, int opcode,
 			void *data, size_t length);
+
 /* Notice! If the function is not for test, the definition must before
  * CONFIG_HNS3_TEST! Because RoCE will use this head file, and it won't
  * set CONFIG_HNS3_TEST, that may cause RoCE calling the wrong function.
@@ -829,8 +818,6 @@ struct hnae3_ae_ops {
 	int (*send_cmdq)(struct hnae3_handle *handle, void *data, int num);
 	int (*test_cmdq)(struct hnae3_handle *handle, void *data, int *len);
 	int (*ecc_handle)(struct hnae3_ae_dev *ae_dev);
-	int (*priv_ops)(struct hnae3_handle *handle, int opcode,
-			void *data, int length);
 	void (*ext_init)(struct hnae3_handle *handle);
 	void (*ext_uninit)(struct hnae3_handle *handle);
 	void (*ext_reset_done)(struct hnae3_handle *handle);
@@ -895,9 +882,7 @@ struct hnae3_knic_private_info {
 	u16 rx_buf_len;
 	u16 num_tx_desc;
 	u16 num_rx_desc;
-#ifndef __GENKSYMS__
 	u32 tx_spare_buf_size;
-#endif
 
 	struct hnae3_tc_info tc_info;
 	u8 tc_map_mode;
@@ -925,17 +910,7 @@ struct hnae3_roce_private_info {
 	unsigned long instance_state;
 	unsigned long state;
 };
-#ifdef __GENKSYMS__
-struct hnae3_unic_private_info {
-	struct net_device *netdev;
-	u16 rx_buf_len;
-	u16 num_tx_desc;
-	u16 num_rx_desc;
 
-	u16 num_tqps;   /* total number of tqps in this handle */
-	struct hnae3_queue **tqp;  /* array base of all TQPs of this instance */
-};
-#endif
 #define HNAE3_SUPPORT_APP_LOOPBACK    BIT(0)
 #define HNAE3_SUPPORT_PHY_LOOPBACK    BIT(1)
 #define HNAE3_SUPPORT_SERDES_SERIAL_LOOPBACK	BIT(2)
@@ -970,9 +945,6 @@ struct hnae3_handle {
 	union {
 		struct net_device *netdev; /* first member */
 		struct hnae3_knic_private_info kinfo;
-#ifdef __GENKSYMS__
-		struct hnae3_unic_private_info uinfo;
-#endif
 		struct hnae3_roce_private_info rinfo;
 	};
 
@@ -993,10 +965,8 @@ struct hnae3_handle {
 	struct kobject *kobj;
 #endif
 
-#ifndef __GENKSYMS__
 	unsigned long supported_pflags;
 	unsigned long priv_flags;
-#endif
 };
 
 #define hnae3_set_field(origin, mask, shift, val) \
