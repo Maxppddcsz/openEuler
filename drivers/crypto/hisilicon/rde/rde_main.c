@@ -647,18 +647,10 @@ static int hisi_rde_pf_probe_init(struct hisi_qm *qm)
 	hisi_rde->ctrl = ctrl;
 	ctrl->hisi_rde = hisi_rde;
 
-	switch (qm->ver) {
-	case QM_HW_V1:
+	if (qm->ver == QM_HW_V1)
 		qm->ctrl_q_num = HRDE_QUEUE_NUM_V1;
-		break;
-
-	case QM_HW_V2:
+	else
 		qm->ctrl_q_num = HRDE_QUEUE_NUM_V2;
-		break;
-
-	default:
-		return -EINVAL;
-	}
 
 	ret = qm->err_ini.set_usr_domain_cache(qm);
 	if (ret)
