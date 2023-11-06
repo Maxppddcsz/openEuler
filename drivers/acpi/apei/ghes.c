@@ -1392,8 +1392,6 @@ static int ghes_probe(struct platform_device *ghes_dev)
 
 	platform_set_drvdata(ghes_dev, ghes);
 
-	ghes_edac_register(ghes, &ghes_dev->dev);
-
 	/* Handle any pending errors right away */
 	spin_lock_irqsave(&ghes_notify_lock_irq, flags);
 	ghes_proc(ghes);
@@ -1455,8 +1453,6 @@ static int ghes_remove(struct platform_device *ghes_dev)
 	}
 
 	ghes_fini(ghes);
-
-	ghes_edac_unregister(ghes);
 
 	kfree(ghes);
 
