@@ -13797,10 +13797,17 @@ S:	Maintained
 F:	arch/alpha/kernel/srm_env.c
 
 SSSNIC Ethernet Controller DRIVERS
+M:      Steven Song <steven.song@3snic.com>
+S:      Maintained
+F:      Documentation/networking/sssnic.rst
+F:      drivers/net/ethernet/3snic/sssnic
+
+SSSRAID SCSI/Raid DRIVERS
 M:	Steven Song <steven.song@3snic.com>
+L:	linux-scsi@vger.kernel.org
 S:	Maintained
-F:	Documentation/networking/sssnic.rst
-F:	drivers/net/ethernet/3snic/sssnic
+F:	Documentation/scsi/sssraid.rst
+F:	drivers/scsi/sssraid/
 
 ST STM32 I2C/SMBUS DRIVER
 M:	Pierre-Yves MORDRET <pierre-yves.mordret@st.com>
