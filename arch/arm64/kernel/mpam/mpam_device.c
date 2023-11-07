@@ -499,7 +499,7 @@ static void mpam_enable_irqs(void)
 		rc = request_irq(irq, mpam_handle_error_irq, request_flags,
 				"MPAM ERR IRQ", dev);
 		if (rc) {
-			pr_err_ratelimited("Failed to register irq %u\n", irq);
+			pr_warn_ratelimited("Not support to register irq %u\n", irq);
 			continue;
 		}
 
@@ -596,11 +596,9 @@ static void mpam_enable(struct work_struct *work)
 		pr_err("Failed to setup/init resctrl\n");
 	mutex_unlock(&mpam_devices_lock);
 
-	local_irq_disable();
 	mpam_cpuhp_state = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN,
 						"mpam:online", mpam_cpu_online,
 						mpam_cpu_offline);
-	local_irq_enable();
 	if (mpam_cpuhp_state <= 0)
 		pr_err("Failed to re-register 'dyn' cpuhp callbacks");
 	mutex_unlock(&mpam_cpuhp_lock);

@@ -108,7 +108,7 @@ Code  Seq#(hex)	Include File		Comments
 'C'	01-2F	linux/capi.h		conflict!
 'C'	F0-FF	drivers/net/wan/cosa.h	conflict!
 'D'	all	arch/s390/include/asm/dasd.h
-'D'	40-5F	drivers/scsi/dpt/dtpi_ioctl.h
+'D'	40-5F	drivers/scsi/dpt/dtpi_ioctl.h	Dead since 2022
 'D'	05	drivers/scsi/pmcraid.h
 'E'	all	linux/input.h		conflict!
 'E'	00-0F	xen/evtchn.h		conflict!
@@ -208,7 +208,6 @@ Code  Seq#(hex)	Include File		Comments
 'a'	00-0F	drivers/crypto/qat/qat_common/adf_cfg_common.h	conflict! qat driver
 'b'	00-FF				conflict! bit3 vme host bridge
 					<mailto:natalia@nikhefk.nikhef.nl>
-'c'	all	linux/cm4000_cs.h	conflict!
 'c'	00-7F	linux/comstats.h	conflict!
 'c'	00-7F	linux/coda.h		conflict!
 'c'	00-1F	linux/chio.h		conflict!
@@ -290,7 +289,6 @@ Code  Seq#(hex)	Include File		Comments
 0x89	00-06	arch/x86/include/asm/sockios.h
 0x89	0B-DF	linux/sockios.h
 0x89	E0-EF	linux/sockios.h		SIOCPROTOPRIVATE range
-0x89	E0-EF	linux/dn.h		PROTOPRIVATE range
 0x89	F0-FF	linux/sockios.h		SIOCDEVPRIVATE range
 0x8B	all	linux/wireless.h
 0x8C	00-3F				WiNRADiO driver

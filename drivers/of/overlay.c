@@ -261,6 +261,8 @@ static struct property *dup_and_fixup_symbol_prop(
 
 	of_property_set_flag(new_prop, OF_DYNAMIC);
 
+	kfree(target_path);
+
 	return new_prop;
 
 err_free_new_prop:
@@ -711,6 +713,7 @@ static int init_overlay_changeset(struct overlay_changeset *ovcs,
 		if (!fragment->target) {
 			of_node_put(fragment->overlay);
 			ret = -EINVAL;
+			of_node_put(node);
 			goto err_free_fragments;
 		}
 

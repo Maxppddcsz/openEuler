@@ -572,12 +572,17 @@ void __init ktask_init(void)
 
 	ktask_works = kmalloc_array(ktask_rlim_max, sizeof(struct ktask_work),
 				    GFP_KERNEL);
+	if (!ktask_works) {
+		pr_warn("disabled (failed to alloc ktask_works)");
+		goto out;
+	}
 	for (i = 0; i < ktask_rlim_max; ++i)
 		list_add_tail(&ktask_works[i].kw_list, &ktask_free_works);
 
 	ktask_wq = alloc_workqueue("ktask_wq", WQ_UNBOUND, 0);
 	if (!ktask_wq) {
 		pr_warn("disabled (failed to alloc ktask_wq)");
+		kfree(ktask_works);
 		goto out;
 	}
 
@@ -629,6 +634,7 @@ alloc_fail:
 		destroy_workqueue(ktask_wq);
 	if (ktask_nonuma_wq)
 		destroy_workqueue(ktask_nonuma_wq);
+	kfree(ktask_works);
 	ktask_wq = NULL;
 	ktask_nonuma_wq = NULL;
 }

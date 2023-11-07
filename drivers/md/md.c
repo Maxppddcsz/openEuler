@@ -2255,8 +2255,9 @@ EXPORT_SYMBOL(md_integrity_add_rdev);
 
 static int bind_rdev_to_array(struct md_rdev *rdev, struct mddev *mddev)
 {
-	char b[BDEVNAME_SIZE];
+	char b[BDEVNAME_SIZE + 4];
 	struct kobject *ko;
+	struct kernfs_node *sysfs_rdev;
 	int err;
 
 	/* prevent duplicates */
@@ -2307,13 +2308,22 @@ static int bind_rdev_to_array(struct md_rdev *rdev, struct mddev *mddev)
 			mdname(mddev), mddev->max_disks);
 		return -EBUSY;
 	}
-	bdevname(rdev->bdev,b);
+	memcpy(b, "dev-", 4);
+	bdevname(rdev->bdev, b + 4);
 	strreplace(b, '/', '!');
 
 	rdev->mddev = mddev;
 	pr_debug("md: bind<%s>\n", b);
 
-	if ((err = kobject_add(&rdev->kobj, &mddev->kobj, "dev-%s", b)))
+	sysfs_rdev = sysfs_get_dirent_safe(mddev->kobj.sd, b);
+	if (sysfs_rdev) {
+		sysfs_put(sysfs_rdev);
+		err = -EBUSY;
+		goto fail;
+	}
+
+	err = kobject_add(&rdev->kobj, &mddev->kobj, b);
+	if (err)
 		goto fail;
 
 	ko = &part_to_dev(rdev->bdev->bd_part)->kobj;
@@ -2334,7 +2344,7 @@ static int bind_rdev_to_array(struct md_rdev *rdev, struct mddev *mddev)
 	return 0;
 
  fail:
-	pr_warn("md: failed to register dev-%s for %s\n",
+	pr_warn("md: failed to register %s for %s\n",
 		b, mdname(mddev));
 	return err;
 }
@@ -4399,20 +4409,6 @@ null_show(struct mddev *mddev, char *page)
 	return -EINVAL;
 }
 
-/* need to ensure rdev_delayed_delete() has completed */
-static void flush_rdev_wq(struct mddev *mddev)
-{
-	struct md_rdev *rdev;
-
-	rcu_read_lock();
-	rdev_for_each_rcu(rdev, mddev)
-		if (work_pending(&rdev->del_work)) {
-			flush_workqueue(md_rdev_misc_wq);
-			break;
-		}
-	rcu_read_unlock();
-}
-
 static ssize_t
 new_dev_store(struct mddev *mddev, const char *buf, size_t len)
 {
@@ -4440,7 +4436,7 @@ new_dev_store(struct mddev *mddev, const char *buf, size_t len)
 	    minor != MINOR(dev))
 		return -EOVERFLOW;
 
-	flush_rdev_wq(mddev);
+	flush_workqueue(md_rdev_misc_wq);
 	err = mddev_lock(mddev);
 	if (err)
 		return err;
@@ -5466,6 +5462,7 @@ static int md_alloc(dev_t dev, char *name)
 	 * completely removed (mddev_delayed_delete).
 	 */
 	flush_workqueue(md_misc_wq);
+	flush_workqueue(md_rdev_misc_wq);
 
 	mutex_lock(&disks_mutex);
 	error = -EEXIST;
@@ -5540,12 +5537,12 @@ static int md_alloc(dev_t dev, char *name)
 	    sysfs_create_group(&mddev->kobj, &md_bitmap_group))
 		pr_debug("pointless warning\n");
  abort:
-	mutex_unlock(&disks_mutex);
 	if (!error && mddev->kobj.sd) {
 		kobject_uevent(&mddev->kobj, KOBJ_ADD);
 		mddev->sysfs_state = sysfs_get_dirent_safe(mddev->kobj.sd, "array_state");
 		mddev->sysfs_level = sysfs_get_dirent_safe(mddev->kobj.sd, "level");
 	}
+	mutex_unlock(&disks_mutex);
 	mddev_put(mddev);
 	return error;
 }
@@ -6055,7 +6052,8 @@ static void __md_stop(struct mddev *mddev)
 	spin_lock(&mddev->lock);
 	mddev->pers = NULL;
 	spin_unlock(&mddev->lock);
-	pers->free(mddev, mddev->private);
+	if (mddev->private)
+		pers->free(mddev, mddev->private);
 	mddev->private = NULL;
 	if (pers->sync_request && mddev->to_remove == NULL)
 		mddev->to_remove = &md_redundancy_group;
@@ -7348,7 +7346,7 @@ static int md_ioctl(struct block_device *bdev, fmode_t mode,
 	}
 
 	if (cmd == ADD_NEW_DISK || cmd == HOT_ADD_DISK)
-		flush_rdev_wq(mddev);
+		flush_workqueue(md_rdev_misc_wq);
 
 	if (cmd == HOT_REMOVE_DISK)
 		/* need to ensure recovery thread has run */
@@ -9291,7 +9289,7 @@ static int md_notify_reboot(struct notifier_block *this,
 	 * driver, we do want to have a safe RAID driver ...
 	 */
 	if (need_delay)
-		mdelay(1000*1);
+		msleep(1000);
 
 	return NOTIFY_DONE;
 }

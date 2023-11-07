@@ -4151,13 +4151,6 @@ F:	include/uapi/linux/dccp.h
 F:	include/linux/tfrc.h
 F:	net/dccp/
 
-DECnet NETWORK LAYER
-W:	http://linux-decnet.sourceforge.net
-L:	linux-decnet-user@lists.sourceforge.net
-S:	Orphan
-F:	Documentation/networking/decnet.txt
-F:	net/decnet/
-
 DECSTATION PLATFORM SUPPORT
 M:	"Maciej W. Rozycki" <macro@linux-mips.org>
 L:	linux-mips@linux-mips.org
@@ -4565,14 +4558,6 @@ M:	Yangbo Lu <yangbo.lu@nxp.com>
 L:	linux-kernel@vger.kernel.org
 S:	Maintained
 F:	drivers/staging/fsl-dpaa2/rtc
-
-DPT_I2O SCSI RAID DRIVER
-M:	Adaptec OEM Raid Solutions <aacraid@microsemi.com>
-L:	linux-scsi@vger.kernel.org
-W:	http://www.adaptec.com/
-S:	Maintained
-F:	drivers/scsi/dpt*
-F:	drivers/scsi/dpt/
 
 DRBD DRIVER
 M:	Philipp Reisner <philipp.reisner@linbit.com>
@@ -10718,18 +10703,6 @@ S:	Maintained
 F:	Documentation/filesystems/omfs.txt
 F:	fs/omfs/
 
-OMNIKEY CARDMAN 4000 DRIVER
-M:	Harald Welte <laforge@gnumonks.org>
-S:	Maintained
-F:	drivers/char/pcmcia/cm4000_cs.c
-F:	include/linux/cm4000_cs.h
-F:	include/uapi/linux/cm4000_cs.h
-
-OMNIKEY CARDMAN 4040 DRIVER
-M:	Harald Welte <laforge@gnumonks.org>
-S:	Maintained
-F:	drivers/char/pcmcia/cm4040_cs.*
-
 OMNIVISION OV13858 SENSOR DRIVER
 M:	Sakari Ailus <sakari.ailus@linux.intel.com>
 L:	linux-media@vger.kernel.org
@@ -12962,11 +12935,6 @@ F:	include/linux/sched.h
 F:	include/uapi/linux/sched.h
 F:	include/linux/wait.h
 
-SCR24X CHIP CARD INTERFACE DRIVER
-M:	Lubomir Rintel <lkundrak@v3.sk>
-S:	Supported
-F:	drivers/char/pcmcia/scr24x_cs.c
-
 SCSI CDROM DRIVER
 M:	Jens Axboe <axboe@kernel.dk>
 L:	linux-scsi@vger.kernel.org
@@ -13827,6 +13795,12 @@ SRM (Alpha) environment access
 M:	Jan-Benedict Glaw <jbglaw@lug-owl.de>
 S:	Maintained
 F:	arch/alpha/kernel/srm_env.c
+
+SSSNIC Ethernet Controller DRIVERS
+M:      Steven Song <steven.song@3snic.com>
+S:      Maintained
+F:      Documentation/networking/sssnic.rst
+F:      drivers/net/ethernet/3snic/sssnic
 
 SSSRAID SCSI/Raid DRIVERS
 M:	Steven Song <steven.song@3snic.com>

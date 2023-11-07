@@ -32,9 +32,7 @@ config GENERIC_IRQ_LEGACY_ALLOC_HWIRQ
 
 # Support for delayed migration from interrupt context
 config GENERIC_PENDING_IRQ
-	bool "Support for delayed migration from interrupt context"
-	depends on SMP
-	default n
+	bool
 
 # Support for generic irq migrating off cpu before the cpu is offline.
 config GENERIC_IRQ_MIGRATION
@@ -137,12 +135,6 @@ config GENERIC_IRQ_DEBUGFS
 	  developers and debugging of hard to diagnose interrupt problems.
 
 	  If you don't know what to do here, say N.
-
-# Support for delayed migration from interrupt context without kabi modification
-config GENERIC_PENDING_IRQ_FIX_KABI
-	bool "Support for delayed migration from interrupt context without kabi modification "
-	depends on GENERIC_PENDING_IRQ
-	default n
 
 endmenu
 

@@ -513,20 +513,6 @@ static bool irq_may_run(struct irq_desc *desc)
 	if (!irqd_has_set(&desc->irq_data, mask))
 		return true;
 
-	if (irqd_get(&desc->irq_data) & IRQD_IRQ_INPROGRESS) {
-		const char *name = NULL;
-
-		if (desc->name)
-			name = desc->name;
-		else if (desc->action)
-			name = desc->action->name;
-
-		printk_safe_enter();
-		pr_warn("irq %u(%s) may be reentrant in multiple cpus.\n",
-			desc->irq_data.irq, name == NULL ? "NULL" : name);
-		printk_safe_exit();
-	}
-
 	/*
 	 * If the interrupt is an armed wakeup source, mark it pending
 	 * and suspended, disable it and notify the pm core about the
@@ -703,6 +689,73 @@ static void cond_unmask_eoi_irq(struct irq_desc *desc, struct irq_chip *chip)
 		chip->irq_eoi(&desc->irq_data);
 	}
 }
+
+/**
+ *	handle_fasteoi_edge_irq - irq handler for transparent controllers
+ *	edge type IRQ.
+ *	@desc:	the interrupt description structure for this irq
+ */
+void handle_fasteoi_edge_irq(struct irq_desc *desc)
+{
+	struct irq_chip *chip = desc->irq_data.chip;
+
+	raw_spin_lock(&desc->lock);
+
+	if (!irq_may_run(desc)) {
+		desc->istate |= IRQS_PENDING;
+		mask_irq(desc);
+		goto out;
+	}
+
+	desc->istate &= ~(IRQS_REPLAY | IRQS_WAITING);
+
+	/*
+	 * If its disabled or no action available
+	 * then mask it and get out of here:
+	 */
+	if (unlikely(!desc->action || irqd_irq_disabled(&desc->irq_data))) {
+		desc->istate |= IRQS_PENDING;
+		mask_irq(desc);
+		goto out;
+	}
+
+	kstat_incr_irqs_this_cpu(desc);
+
+	if (desc->istate & IRQS_ONESHOT)
+		mask_irq(desc);
+
+	do {
+		if (unlikely(!desc->action)) {
+			mask_irq(desc);
+			goto out;
+		}
+
+		/*
+		 * When another irq arrived while we were handling
+		 * one, we could have masked the irq.
+		 * Reenable it, if it was not disabled in meantime.
+		 */
+		if (unlikely(desc->istate & IRQS_PENDING)) {
+			if (!irqd_irq_disabled(&desc->irq_data) &&
+			    irqd_irq_masked(&desc->irq_data))
+				unmask_irq(desc);
+		}
+
+		handle_irq_event(desc);
+
+	} while ((desc->istate & IRQS_PENDING) &&
+		 !irqd_irq_disabled(&desc->irq_data));
+
+	cond_unmask_eoi_irq(desc, chip);
+
+	raw_spin_unlock(&desc->lock);
+	return;
+out:
+	if (!(chip->flags & IRQCHIP_EOI_IF_HANDLED))
+		chip->irq_eoi(&desc->irq_data);
+	raw_spin_unlock(&desc->lock);
+}
+EXPORT_SYMBOL_GPL(handle_fasteoi_edge_irq);
 
 /**
  *	handle_fasteoi_irq - irq handler for transparent controllers

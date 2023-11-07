@@ -1340,7 +1340,6 @@ static void __free_pages_ok(struct page *page, unsigned int order,
 	migratetype = get_pfnblock_migratetype(page, pfn);
 	local_irq_save(flags);
 	__count_vm_events(PGFREE, 1 << order);
-	mem_reliable_buddy_counter(page, 1 << order);
 	free_one_page(page_zone(page), page, pfn, order, migratetype,
 		      fpi_flags);
 	local_irq_restore(flags);
@@ -2920,7 +2919,6 @@ static void free_unref_page_commit(struct page *page, unsigned long pfn)
 
 	migratetype = get_pcppage_migratetype(page);
 	__count_vm_event(PGFREE);
-	mem_reliable_buddy_counter(page, 1);
 
 	/*
 	 * We only track unmovable, reclaimable and movable on pcp lists.
@@ -3174,7 +3172,6 @@ static struct page *rmqueue_pcplist(struct zone *preferred_zone,
 	page = __rmqueue_pcplist(zone,  migratetype, pcp, list);
 	if (page) {
 		__count_zid_vm_events(PGALLOC, page_zonenum(page), 1 << order);
-		mem_reliable_buddy_counter(page, -(1 << order));
 		zone_statistics(preferred_zone, zone);
 	}
 	local_irq_restore(flags);
@@ -3223,7 +3220,6 @@ struct page *rmqueue(struct zone *preferred_zone,
 				  get_pcppage_migratetype(page));
 
 	__count_zid_vm_events(PGALLOC, page_zonenum(page), 1 << order);
-	mem_reliable_buddy_counter(page, -(1 << order));
 	zone_statistics(preferred_zone, zone);
 	local_irq_restore(flags);
 
@@ -5830,7 +5826,21 @@ static void __build_all_zonelists(void *data)
 	int nid;
 	int __maybe_unused cpu;
 	pg_data_t *self = data;
+	unsigned long flags;
 
+	/*
+	 * Explicitly disable this CPU's interrupts before taking seqlock
+	 * to prevent any IRQ handler from calling into the page allocator
+	 * (e.g. GFP_ATOMIC) that could hit zonelist_iter_begin and livelock.
+	 */
+	local_irq_save(flags);
+	/*
+	 * Explicitly disable this CPU's synchronous printk() before taking
+	 * seqlock to prevent any printk() from trying to hold port->lock, for
+	 * tty_insert_flip_string_and_push_buffer() on other CPU might be
+	 * calling kmalloc(GFP_ATOMIC | __GFP_NOWARN) with port->lock held.
+	 */
+	printk_deferred_enter();
 	write_seqlock(&zonelist_update_seq);
 
 #ifdef CONFIG_NUMA
@@ -5865,6 +5875,8 @@ static void __build_all_zonelists(void *data)
 	}
 
 	write_sequnlock(&zonelist_update_seq);
+	printk_deferred_exit();
+	local_irq_restore(flags);
 }
 
 static noinline void __init

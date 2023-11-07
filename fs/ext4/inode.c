@@ -655,16 +655,6 @@ found:
 			 */
 			ext4_clear_inode_state(inode, EXT4_STATE_EXT_MIGRATE);
 		}
-
-		/*
-		 * Update reserved blocks/metadata blocks after successful
-		 * block allocation which had been deferred till now. We don't
-		 * support fallocate for non extent files. So we can update
-		 * reserve space here.
-		 */
-		if ((retval > 0) &&
-			(flags & EXT4_GET_BLOCKS_DELALLOC_RESERVE))
-			ext4_da_update_reserve_space(inode, retval, 1);
 	}
 
 	if (retval > 0) {
@@ -2752,6 +2742,9 @@ static int ext4_writepages(struct address_space *mapping,
 	bool done;
 	struct blk_plug plug;
 	bool give_up_on_write = false;
+	unsigned long retry_warn_ddl = 0;
+
+#define RETRY_WARN_TIMEOUT (30 * HZ)
 
 	if (unlikely(ext4_forced_shutdown(EXT4_SB(inode->i_sb))))
 		return -EIO;
@@ -2943,6 +2936,15 @@ retry:
 		mpd.io_submit.io_end = NULL;
 
 		if (ret == -ENOSPC && sbi->s_journal) {
+			if (!retry_warn_ddl) {
+				retry_warn_ddl = jiffies + RETRY_WARN_TIMEOUT;
+			} else if (time_after(jiffies, retry_warn_ddl)) {
+				retry_warn_ddl = jiffies + RETRY_WARN_TIMEOUT;
+				ext4_warning(inode->i_sb, "There are no free blocks available for writing pages, total free %llu, pending free %u, please delete big files to free space",
+					ext4_count_free_clusters(inode->i_sb),
+					sbi->s_mb_free_pending);
+			}
+
 			/*
 			 * Commit the transaction which would
 			 * free blocks released in the transaction
@@ -2951,6 +2953,8 @@ retry:
 			jbd2_journal_force_commit_nested(sbi->s_journal);
 			ret = 0;
 			continue;
+		} else {
+			retry_warn_ddl = 0;
 		}
 		/* Fatal error - ENOMEM, EIO... */
 		if (ret)

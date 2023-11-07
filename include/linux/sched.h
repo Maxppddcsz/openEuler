@@ -1277,7 +1277,16 @@ struct task_struct {
 	KABI_RESERVE(6)
 	KABI_RESERVE(7)
 #endif
+
+#if !defined(__GENKSYMS__)
+#if defined(CONFIG_QOS_SCHED_SMART_GRID)
+	struct sched_grid_qos *grid_qos;
+#else
 	KABI_RESERVE(8)
+#endif
+#else
+	KABI_RESERVE(8)
+#endif
 
 	/* CPU-specific state of this task: */
 	struct thread_struct		thread;
@@ -1998,6 +2007,20 @@ int set_prefer_cpus_ptr(struct task_struct *p,
 			const struct cpumask *new_mask);
 int sched_prefer_cpus_fork(struct task_struct *p, struct task_struct *orig);
 void sched_prefer_cpus_free(struct task_struct *p);
+void dynamic_affinity_enable(void);
+#endif
+
+#ifdef CONFIG_QOS_SCHED_SMART_GRID
+extern struct static_key __smart_grid_used;
+static inline bool smart_grid_used(void)
+{
+	return static_key_false(&__smart_grid_used);
+}
+#else
+static inline bool smart_grid_used(void)
+{
+	return false;
+}
 #endif
 
 #endif

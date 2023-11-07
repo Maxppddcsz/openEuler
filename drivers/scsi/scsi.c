@@ -351,11 +351,18 @@ static int scsi_vpd_inquiry(struct scsi_device *sdev, unsigned char *buffer,
 	if (result)
 		return -EIO;
 
-	/* Sanity check that we got the page back that we asked for */
+	/*
+	 * Sanity check that we got the page back that we asked for and that
+	 * the page size is not 0.
+	 */
 	if (buffer[1] != page)
 		return -EIO;
 
-	return get_unaligned_be16(&buffer[2]) + 4;
+	result = get_unaligned_be16(&buffer[2]);
+	if (!result)
+		return -EIO;
+
+	return result + 4;
 }
 
 /**
@@ -550,11 +557,15 @@ EXPORT_SYMBOL(scsi_report_opcode);
  */
 int scsi_device_get(struct scsi_device *sdev)
 {
+	struct module *module;
+
 	if (sdev->sdev_state == SDEV_DEL || sdev->sdev_state == SDEV_CANCEL)
 		goto fail;
 	if (!get_device(&sdev->sdev_gendev))
 		goto fail;
-	if (!try_module_get(sdev->host->hostt->module))
+
+	module = sdev->host->hostt->module;
+	if ((!module && !sdev->host->is_builtin) || !try_module_get(module))
 		goto fail_put_device;
 	return 0;
 

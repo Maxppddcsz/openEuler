@@ -621,8 +621,8 @@ static void start_io_acct(struct dm_io *io)
 
 	io->start_time = jiffies;
 
-	generic_start_io_acct(md->queue, bio_op(bio), bio_sectors(bio),
-			      &dm_disk(md)->part0);
+	generic_start_precise_io_acct(md->queue, bio_op(bio),
+				      &dm_disk(md)->part0);
 
 	atomic_set(&dm_disk(md)->part0.in_flight[rw],
 		   atomic_inc_return(&md->pending[rw]));
@@ -640,8 +640,8 @@ static void end_io_acct(struct mapped_device *md, struct bio *bio,
 	int pending;
 	int rw = bio_data_dir(bio);
 
-	generic_end_io_acct(md->queue, bio_op(bio), &dm_disk(md)->part0,
-			    start_time);
+	generic_end_precise_io_acct(md->queue, bio_op(bio), &dm_disk(md)->part0,
+				    start_time, bio_sectors(bio));
 
 	if (unlikely(dm_stats_used(&md->stats)))
 		dm_stats_account_io(&md->stats, bio_data_dir(bio),
@@ -1781,8 +1781,9 @@ static blk_qc_t dm_make_request(struct request_queue *q, struct bio *bio)
 
 	map = dm_get_live_table(md, &srcu_idx);
 
-	/* if we're suspended, we have to queue this io for later */
-	if (unlikely(test_bit(DMF_BLOCK_IO_FOR_SUSPEND, &md->flags))) {
+	/* If suspended, or map not yet available, queue this IO for later */
+	if (unlikely(test_bit(DMF_BLOCK_IO_FOR_SUSPEND, &md->flags)) ||
+	    unlikely(!map)) {
 		dm_put_live_table(md, srcu_idx);
 
 		if (!(bio->bi_opf & REQ_RAHEAD))
@@ -2009,6 +2010,8 @@ static struct mapped_device *alloc_dev(int minor)
 	md->disk->private_data = md;
 	sprintf(md->disk->disk_name, "dm-%d", minor);
 
+	add_disk_no_queue_reg(md->disk);
+
 	if (IS_ENABLED(CONFIG_DAX_DRIVER)) {
 		dax_dev = alloc_dax(md, md->disk->disk_name, &dm_dax_ops);
 		if (!dax_dev)
@@ -2016,7 +2019,6 @@ static struct mapped_device *alloc_dev(int minor)
 	}
 	md->dax_dev = dax_dev;
 
-	add_disk_no_queue_reg(md->disk);
 	format_dev_t(md->name, MKDEV(_major, minor));
 
 	md->wq = alloc_workqueue("kdmflush", WQ_MEM_RECLAIM, 0);
@@ -2031,7 +2033,9 @@ static struct mapped_device *alloc_dev(int minor)
 	bio_set_dev(&md->flush_bio, md->bdev);
 	md->flush_bio.bi_opf = REQ_OP_WRITE | REQ_PREFLUSH | REQ_SYNC;
 
-	dm_stats_init(&md->stats);
+	r = dm_stats_init(&md->stats);
+	if (r < 0)
+		goto bad;
 
 	/* Populate the mapping, nobody knows we exist yet */
 	spin_lock(&_minor_lock);
@@ -2743,6 +2747,10 @@ retry:
 	}
 
 	map = rcu_dereference_protected(md->map, lockdep_is_held(&md->suspend_lock));
+	if (!map) {
+		/* avoid deadlock with fs/namespace.c:do_mount() */
+		suspend_flags &= ~DM_SUSPEND_LOCKFS_FLAG;
+	}
 
 	r = __dm_suspend(md, map, suspend_flags, TASK_INTERRUPTIBLE, DMF_SUSPENDED);
 	if (r)
