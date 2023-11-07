@@ -32,7 +32,7 @@ extern void arch_refresh_nodedata(int nid, pg_data_t *pgdat);
 
 #else /* CONFIG_HAVE_ARCH_NODEDATA_EXTENSION */
 
-#define arch_alloc_nodedata(nid)	generic_alloc_nodedata(nid)
+#define hotadd_add_pgdatarch_alloc_nodedata(nid)	generic_alloc_nodedata(nid)
 #define arch_free_nodedata(pgdat)	generic_free_nodedata(pgdat)
 
 #ifdef CONFIG_NUMA
@@ -43,7 +43,7 @@ extern void arch_refresh_nodedata(int nid, pg_data_t *pgdat);
  */
 #define generic_alloc_nodedata(nid)				\
 ({								\
-	kzalloc(sizeof(pg_data_t), GFP_KERNEL);			\
+	__va(memblock_alloc(sizeof(*pgdat), SMP_CACHE_BYTES));	\
 })
 /*
  * This definition is just for error path in node hotadd.
