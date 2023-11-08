@@ -1408,8 +1408,6 @@ static int ghes_probe(struct platform_device *ghes_dev)
 
 	platform_set_drvdata(ghes_dev, ghes);
 
-	ghes_edac_register(ghes, &ghes_dev->dev);
-
 	ghes->dev = &ghes_dev->dev;
 
 	mutex_lock(&ghes_devs_mutex);
@@ -1477,8 +1475,6 @@ static int ghes_remove(struct platform_device *ghes_dev)
 	}
 
 	ghes_fini(ghes);
-
-	ghes_edac_unregister(ghes);
 
 	mutex_lock(&ghes_devs_mutex);
 	list_del(&ghes->elist);
