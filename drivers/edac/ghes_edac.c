@@ -14,6 +14,7 @@
 #include <linux/dmi.h>
 #include "edac_module.h"
 #include <ras/ras_event.h>
+#include <linux/notifier.h>
 
 struct ghes_pvt {
 	struct mem_ctl_info *mci;
@@ -240,10 +241,13 @@ static void ghes_scan_system(void)
 	system_scanned = true;
 }
 
-void ghes_edac_report_mem_error(int sev, struct cper_sec_mem_err *mem_err)
+static int ghes_edac_report_mem_error(struct notifier_block *nb,
+				      unsigned long val, void *data)
 {
+	struct cper_sec_mem_err *mem_err = (struct cper_sec_mem_err *)data;
 	struct edac_raw_error_desc *e;
 	struct mem_ctl_info *mci;
+	unsigned long sev = val;
 	struct ghes_pvt *pvt;
 	unsigned long flags;
 	char *p;
@@ -254,7 +258,7 @@ void ghes_edac_report_mem_error(int sev, struct cper_sec_mem_err *mem_err)
 	 * know.
 	 */
 	if (WARN_ON_ONCE(in_nmi()))
-		return;
+		return NOTIFY_OK;
 
 	spin_lock_irqsave(&ghes_lock, flags);
 
@@ -500,7 +504,14 @@ void ghes_edac_report_mem_error(int sev, struct cper_sec_mem_err *mem_err)
 
 unlock:
 	spin_unlock_irqrestore(&ghes_lock, flags);
+
+	return NOTIFY_OK;
 }
+
+static struct notifier_block ghes_edac_mem_err_nb = {
+	.notifier_call	= ghes_edac_report_mem_error,
+	.priority	= 0,
+};
 
 /*
  * Known systems that are safe to enable this module.
@@ -629,6 +640,8 @@ int ghes_edac_register(struct ghes *ghes, struct device *dev)
 	ghes_pvt = pvt;
 	spin_unlock_irqrestore(&ghes_lock, flags);
 
+	ghes_register_report_chain(&ghes_edac_mem_err_nb);
+
 	/* only set on success */
 	refcount_set(&ghes_refcount, 1);
 
@@ -673,6 +686,8 @@ void ghes_edac_unregister(struct ghes *ghes)
 	mci = edac_mc_del_mc(mci->pdev);
 	if (mci)
 		edac_mc_free(mci);
+
+	ghes_unregister_report_chain(&ghes_edac_mem_err_nb);
 
 unlock:
 	mutex_unlock(&ghes_reg_mutex);
