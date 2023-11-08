@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .115.0
-%global pkg_release         .142
+%global maintenance_release .116.0
+%global pkg_release         .143
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,29 @@ fi
 %endif
 
 %changelog
+* Wed Nov 08 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.116.0.143
+- !2717 [sync] PR-2678:  io_uring/fdinfo: lock SQ thread while retrieving thread cpu/pid
+- !2739 [sync] PR-2443:  CVE-2023-37453
+- !2733 [sync] PR-2688:  nvmet-tcp: Fix a possible UAF in queue intialization setup
+- USB: core: Fix oversight in SuperSpeed initialization
+- USB: core: Fix race by not overwriting udev->descriptor in hub_port_init()
+- USB: core: Change usb_get_device_descriptor() API
+- USB: core: Unite old scheme and new scheme descriptor reads
+- nvmet-tcp: Fix a possible UAF in queue intialization setup
+- !2701 [sync] PR-2672:  fix CVE-2023-46813
+- io_uring/fdinfo: lock SQ thread while retrieving thread cpu/pid
+- !2710 [sync] PR-2694:  LoongArch: add 32/64 pc relative relocation type support
+- !2664 [sync] PR-2579:  LoongArch: default IPMI related defconfig to m
+- LoongArch: Add support for 64_PCREL relocation type
+- LoongArch: Add support for 32_PCREL relocation type
+- LoongArch: Define relocation types for ABI v2.10
+- !2644 [sync] PR-2543:  psi: fix "no previous prototype" warnings when CONFIG_CGROUPS=n
+- x86/sev: Check for user-space IOIO pointing to kernel space
+- x86/sev: Check IOBM for IOIO exceptions from user-space
+- x86/sev: Disable MMIO emulation from user mode
+- LoongArch: default IPMI related defconfig to m
+- psi: fix "no previous prototype" warnings when CONFIG_CGROUPS=n
+
 * Tue Oct 31 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.115.0.142
 - !2690 [sync] PR-2666:  net: xfrm: Fix xfrm_address_filter OOB read
 - !2373 [sync] PR-2258:  ext4: do not mark inode dirty every time when appending using delalloc
