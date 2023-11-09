@@ -1965,9 +1965,8 @@ static int nbd_genl_connect(struct sk_buff *skb, struct genl_info *info)
 
 		/*
 		 * Too big first_minor can cause duplicate creation of
-		 * sysfs files/links, since index << part_shift might
-		 * overflow, or MKDEV() expect that the max bits of
-		 * first_minor is 20.
+		 * sysfs files/links, since index << part_shift might overflow, or
+		 * MKDEV() expect that the max bits of first_minor is 20.
 		 */
 		if (index < 0 || index > MINORMASK >> part_shift) {
 			printk(KERN_ERR "nbd: illegal input index %d\n", index);
