@@ -704,11 +704,16 @@ ip_set_rcu_get(struct net *net, ip_set_id_t index)
 	struct ip_set_net *inst = ip_set_pernet(net);
 
 	rcu_read_lock();
-	/* ip_set_list itself needs to be protected */
+	/* ip_set_list and the set pointer need to be protected */
 	set = rcu_dereference(inst->ip_set_list)[index];
-	rcu_read_unlock();
 
 	return set;
+}
+
+static inline void
+ip_set_rcu_put(struct ip_set *set __always_unused)
+{
+	rcu_read_unlock();
 }
 
 static inline void
@@ -736,8 +741,10 @@ ip_set_test(ip_set_id_t index, const struct sk_buff *skb,
 	pr_debug("set %s, index %u\n", set->name, index);
 
 	if (opt->dim < set->type->dimension ||
-	    !(opt->family == set->family || set->family == NFPROTO_UNSPEC))
+	    !(opt->family == set->family || set->family == NFPROTO_UNSPEC)) {
+		ip_set_rcu_put(set);
 		return 0;
+	}
 
 	rcu_read_lock_bh();
 	ret = set->variant->kadt(set, skb, par, IPSET_TEST, opt);
@@ -758,6 +765,7 @@ ip_set_test(ip_set_id_t index, const struct sk_buff *skb,
 			ret = -ret;
 	}
 
+	ip_set_rcu_put(set);
 	/* Convert error codes to nomatch */
 	return (ret < 0 ? 0 : ret);
 }
@@ -774,12 +782,15 @@ ip_set_add(ip_set_id_t index, const struct sk_buff *skb,
 	pr_debug("set %s, index %u\n", set->name, index);
 
 	if (opt->dim < set->type->dimension ||
-	    !(opt->family == set->family || set->family == NFPROTO_UNSPEC))
+	    !(opt->family == set->family || set->family == NFPROTO_UNSPEC)) {
+		ip_set_rcu_put(set);
 		return -IPSET_ERR_TYPE_MISMATCH;
+	}
 
 	ip_set_lock(set);
 	ret = set->variant->kadt(set, skb, par, IPSET_ADD, opt);
 	ip_set_unlock(set);
+	ip_set_rcu_put(set);
 
 	return ret;
 }
@@ -796,12 +807,15 @@ ip_set_del(ip_set_id_t index, const struct sk_buff *skb,
 	pr_debug("set %s, index %u\n", set->name, index);
 
 	if (opt->dim < set->type->dimension ||
-	    !(opt->family == set->family || set->family == NFPROTO_UNSPEC))
+	    !(opt->family == set->family || set->family == NFPROTO_UNSPEC)) {
+		ip_set_rcu_put(set);
 		return -IPSET_ERR_TYPE_MISMATCH;
+	}
 
 	ip_set_lock(set);
 	ret = set->variant->kadt(set, skb, par, IPSET_DEL, opt);
 	ip_set_unlock(set);
+	ip_set_rcu_put(set);
 
 	return ret;
 }
@@ -876,6 +890,7 @@ ip_set_name_byindex(struct net *net, ip_set_id_t index, char *name)
 	read_lock_bh(&ip_set_ref_lock);
 	strncpy(name, set->name, IPSET_MAXNAMELEN);
 	read_unlock_bh(&ip_set_ref_lock);
+	ip_set_rcu_put(set);
 }
 EXPORT_SYMBOL_GPL(ip_set_name_byindex);
 
@@ -1193,6 +1208,9 @@ static int ip_set_destroy(struct net *net, struct sock *ctnl,
 
 	if (unlikely(protocol_min_failed(attr)))
 		return -IPSET_ERR_PROTOCOL;
+
+	/* Make sure all readers of the old set pointers are completed. */
+	synchronize_rcu();
 
 	/* Must wait for flush to be really finished in list:set */
 	rcu_barrier();
