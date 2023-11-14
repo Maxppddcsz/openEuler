@@ -1416,8 +1416,6 @@ static int __hns_roce_cmq_send(struct hns_roce_dev *hr_dev,
 	/* Write to hardware */
 	roce_write(hr_dev, ROCEE_TX_CMQ_PI_REG, csq->head);
 
-	atomic64_inc(&hr_dev->dfx_cnt[HNS_ROCE_DFX_CMDS_CNT]);
-
 	do {
 		if (hns_roce_cmq_csq_done(hr_dev))
 			break;
@@ -1456,9 +1454,6 @@ static int __hns_roce_cmq_send(struct hns_roce_dev *hr_dev,
 	}
 
 	spin_unlock_bh(&csq->lock);
-
-	if (ret)
-		atomic64_inc(&hr_dev->dfx_cnt[HNS_ROCE_DFX_CMDS_ERR_CNT]);
 
 	return ret;
 }
@@ -6532,7 +6527,6 @@ static irqreturn_t hns_roce_v2_aeq_int(struct hns_roce_dev *hr_dev,
 		eq->sub_type = sub_type;
 		++eq->cons_index;
 		aeqe_found = IRQ_HANDLED;
-		atomic64_inc(&hr_dev->dfx_cnt[HNS_ROCE_DFX_AEQE_CNT]);
 
 		hns_roce_v2_init_irq_work(hr_dev, eq, queue_num);
 
@@ -6575,7 +6569,6 @@ static irqreturn_t hns_roce_v2_ceq_int(struct hns_roce_dev *hr_dev,
 
 		++eq->cons_index;
 		ceqe_found = IRQ_HANDLED;
-		atomic64_inc(&hr_dev->dfx_cnt[HNS_ROCE_DFX_CEQE_CNT]);
 
 		ceqe = next_ceqe_sw_v2(eq);
 	}
@@ -7342,12 +7335,12 @@ static const struct hns_roce_hw hns_roce_hw_v2 = {
 	.query_mpt = hns_roce_v2_query_mpt,
 	.query_sccc = hns_roce_v2_query_sccc,
 	.get_dscp = hns_roce_hw_v2_get_dscp,
+	.query_hw_counter = hns_roce_hw_v2_query_counter,
 	.hns_roce_dev_ops = &hns_roce_v2_dev_ops,
 	.hns_roce_dev_srq_ops = &hns_roce_v2_dev_srq_ops,
 	.bond_init = hns_roce_bond_init,
 	.bond_is_active = hns_roce_bond_is_active,
 	.get_bond_netdev = hns_roce_get_bond_netdev,
-	.query_hw_counter = hns_roce_hw_v2_query_counter,
 	.config_scc_param = hns_roce_v2_config_scc_param,
 	.query_scc_param = hns_roce_v2_query_scc_param,
 	.cfg_poe_ch = hns_roce_cfg_poe_ch,
