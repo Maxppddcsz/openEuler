@@ -236,3 +236,32 @@ struct cpumask *sched_grid_zone_cpumask(enum sg_zone_type zone)
 
 	return &sg_zone.cpus[zone];
 }
+
+/*
+ * Default smart_grid strategy was disable (=0).
+ * But, considering for inheritance of the pre-verion code.
+ * We make all the task to the highest qos_level (class_lvl = 0),
+ * when smart_grid strategy was disabled.
+ * Otherwise, When smart_grid strategy was enabled, we use the task's
+ * actually class_lvl.
+ */
+unsigned int sysctl_smart_grid_strategy_ctrl;
+
+struct cpumask *sched_grid_prefer_cpus(struct task_struct *p)
+{
+	enum sg_zone_type current_zone;
+
+	/*
+	 * when smart_grid strategy was disabled,
+	 * We make all the task to the highest qos_level (class_lvl = 0)
+	 */
+	if (sysctl_smart_grid_strategy_ctrl == 0) {
+		current_zone = SMART_GRID_ZONE_HOT;
+	} else {
+		/* Only place highest level task into hot zone */
+		current_zone = p->grid_qos->stat.class_lvl == SCHED_GRID_QOS_TASK_LEVEL_HIGHEST ?
+			       SMART_GRID_ZONE_HOT : SMART_GRID_ZONE_WARM;
+	}
+
+	return &sg_zone.cpus[current_zone];
+}
