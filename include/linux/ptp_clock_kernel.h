@@ -134,10 +134,6 @@ struct ptp_clock_info {
 	int (*adjfine)(struct ptp_clock_info *ptp, long scaled_ppm);
 	int (*adjfreq)(struct ptp_clock_info *ptp, s32 delta);
 	int (*adjtime)(struct ptp_clock_info *ptp, s64 delta);
-#ifndef __GENKSYMS__
-	int (*gettimex64)(struct ptp_clock_info *ptp, struct timespec64 *ts,
-			  struct ptp_system_timestamp *sts);
-#endif
 	int (*gettime64)(struct ptp_clock_info *ptp, struct timespec64 *ts);
 	int (*getcrosststamp)(struct ptp_clock_info *ptp,
 			      struct system_device_crosststamp *cts);

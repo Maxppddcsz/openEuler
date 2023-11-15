@@ -561,8 +561,7 @@ static int hisi_ptp_settime(struct ptp_clock_info *ptp_info,
 }
 
 static int hisi_ptp_gettime(struct ptp_clock_info *ptp_info,
-			     struct timespec64 *ts,
-			     struct ptp_system_timestamp *sts)
+			     struct timespec64 *ts)
 {
 	struct hisi_ptp_pdev *ptp = hisi_ptp_get_pdev(ptp_info);
 	unsigned long flags;
@@ -594,7 +593,7 @@ static int hisi_ptp_create_clock(struct hisi_ptp_pdev *ptp)
 	ptp->info.adjfine = hisi_ptp_adjfine;
 	ptp->info.adjtime = hisi_ptp_adjtime;
 	ptp->info.settime64 = hisi_ptp_settime;
-	ptp->info.gettimex64 = hisi_ptp_gettime;
+	ptp->info.gettime64 = hisi_ptp_gettime;
 	ptp->clock = ptp_clock_register(&ptp->info, ptp->ptp_tx->dev);
 	if (IS_ERR(ptp->clock)) {
 		dev_err(ptp->ptp_tx->dev,
