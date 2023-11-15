@@ -48,7 +48,7 @@
 #include "callback.h"
 #include "delegation.h"
 #include "iostat.h"
-#include "internal.h"
+#include "enfs_adapter.h"
 #include "fscache.h"
 #include "pnfs.h"
 #include "nfs.h"
@@ -255,6 +255,7 @@ void nfs_free_client(struct nfs_client *clp)
 	put_nfs_version(clp->cl_nfs_mod);
 	kfree(clp->cl_hostname);
 	kfree(clp->cl_acceptor);
+	nfs_free_multi_path_client(clp);
 	kfree(clp);
 }
 EXPORT_SYMBOL_GPL(nfs_free_client);
@@ -329,6 +330,9 @@ again:
                             !rpc_clnt_xprt_switch_has_addr(clp->cl_rpcclient,
 							   sap))
 				continue;
+
+		if (!nfs_multipath_client_match(clp, data))
+			continue;
 
 		refcount_inc(&clp->cl_count);
 		return clp;
@@ -512,6 +516,9 @@ int nfs_create_rpc_client(struct nfs_client *clp,
 		.program	= &nfs_program,
 		.version	= clp->rpc_ops->version,
 		.authflavor	= flavor,
+#if IS_ENABLED(CONFIG_ENFS)
+		.multipath_option = cl_init->enfs_option,
+#endif
 	};
 
 	if (test_bit(NFS_CS_DISCRTRY, &clp->cl_flags))
@@ -634,6 +641,13 @@ struct nfs_client *nfs_init_client(struct nfs_client *clp,
 	/* the client is already initialised */
 	if (clp->cl_cons_state == NFS_CS_READY)
 		return clp;
+	error = nfs_create_multi_path_client(clp, cl_init);
+	if (error < 0) {
+		dprintk("%s: create failed.%d!\n", __func__, error);
+		nfs_put_client(clp);
+		clp = ERR_PTR(error);
+		return clp;
+	}
 
 	/*
 	 * Create a client RPC handle for doing FSSTAT with UNIX auth only
@@ -666,6 +680,9 @@ static int nfs_init_server(struct nfs_server *server,
 		.net = data->net,
 		.timeparms = &timeparms,
 		.init_flags = (1UL << NFS_CS_REUSEPORT),
+#if IS_ENABLED(CONFIG_ENFS)
+		.enfs_option = data->enfs_option,
+#endif
 	};
 	struct nfs_client *clp;
 	int error;

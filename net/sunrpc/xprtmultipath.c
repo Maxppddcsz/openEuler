@@ -18,6 +18,7 @@
 #include <linux/sunrpc/xprt.h>
 #include <linux/sunrpc/addr.h>
 #include <linux/sunrpc/xprtmultipath.h>
+#include <linux/sunrpc/sunrpc_enfs_adapter.h>
 
 typedef struct rpc_xprt *(*xprt_switch_find_xprt_t)(struct list_head *head,
 		const struct rpc_xprt *cur);
@@ -26,8 +27,8 @@ static const struct rpc_xprt_iter_ops rpc_xprt_iter_singular;
 static const struct rpc_xprt_iter_ops rpc_xprt_iter_roundrobin;
 static const struct rpc_xprt_iter_ops rpc_xprt_iter_listall;
 
-static void xprt_switch_add_xprt_locked(struct rpc_xprt_switch *xps,
-		struct rpc_xprt *xprt)
+void xprt_switch_add_xprt_locked(struct rpc_xprt_switch *xps,
+				 struct rpc_xprt *xprt)
 {
 	if (unlikely(xprt_get(xprt) == NULL))
 		return;
@@ -36,7 +37,9 @@ static void xprt_switch_add_xprt_locked(struct rpc_xprt_switch *xps,
 	if (xps->xps_nxprts == 0)
 		xps->xps_net = xprt->xprt_net;
 	xps->xps_nxprts++;
+	rpc_xps_nactive_add_one(xps);
 }
+EXPORT_SYMBOL(xprt_switch_add_xprt_locked);
 
 /**
  * rpc_xprt_switch_add_xprt - Add a new rpc_xprt to an rpc_xprt_switch
@@ -63,6 +66,7 @@ static void xprt_switch_remove_xprt_locked(struct rpc_xprt_switch *xps,
 	if (unlikely(xprt == NULL))
 		return;
 	xps->xps_nxprts--;
+	rpc_xps_nactive_sub_one(xps);
 	if (xps->xps_nxprts == 0)
 		xps->xps_net = NULL;
 	smp_wmb();
@@ -84,7 +88,7 @@ void rpc_xprt_switch_remove_xprt(struct rpc_xprt_switch *xps,
 	spin_unlock(&xps->xps_lock);
 	xprt_put(xprt);
 }
-
+EXPORT_SYMBOL(rpc_xprt_switch_remove_xprt);
 /**
  * xprt_switch_alloc - Allocate a new struct rpc_xprt_switch
  * @xprt: pointer to struct rpc_xprt
@@ -103,6 +107,10 @@ struct rpc_xprt_switch *xprt_switch_alloc(struct rpc_xprt *xprt,
 		spin_lock_init(&xps->xps_lock);
 		kref_init(&xps->xps_kref);
 		xps->xps_nxprts = 0;
+#if IS_ENABLED(CONFIG_ENFS)
+		xps->xps_nactive = 0;
+		atomic_long_set(&xps->xps_queuelen, 0);
+#endif
 		INIT_LIST_HEAD(&xps->xps_xprt_list);
 		xps->xps_iter_ops = &rpc_xprt_iter_singular;
 		xprt_switch_add_xprt_locked(xps, xprt);
@@ -148,6 +156,7 @@ struct rpc_xprt_switch *xprt_switch_get(struct rpc_xprt_switch *xps)
 		return xps;
 	return NULL;
 }
+EXPORT_SYMBOL(xprt_switch_get);
 
 /**
  * xprt_switch_put - Release a reference to a rpc_xprt_switch
@@ -160,6 +169,7 @@ void xprt_switch_put(struct rpc_xprt_switch *xps)
 	if (xps != NULL)
 		kref_put(&xps->xps_kref, xprt_switch_free);
 }
+EXPORT_SYMBOL(xprt_switch_put);
 
 /**
  * rpc_xprt_switch_set_roundrobin - Set a round-robin policy on rpc_xprt_switch

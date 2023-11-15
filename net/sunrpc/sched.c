@@ -20,7 +20,7 @@
 #include <linux/mutex.h>
 #include <linux/freezer.h>
 
-#include <linux/sunrpc/clnt.h>
+#include <linux/sunrpc/sunrpc_enfs_adapter.h>
 
 #include "sunrpc.h"
 
@@ -962,7 +962,12 @@ static void rpc_init_task(struct rpc_task *task, const struct rpc_task_setup *ta
 	/* Initialize workqueue for async tasks */
 	task->tk_workqueue = task_setup_data->workqueue;
 
+#if IS_ENABLED(CONFIG_ENFS)
+	task->tk_xprt = rpc_task_get_xprt(task_setup_data->rpc_client,
+					  xprt_get(task_setup_data->rpc_xprt));
+#else
 	task->tk_xprt = xprt_get(task_setup_data->rpc_xprt);
+#endif
 
 	if (task->tk_ops->rpc_call_prepare != NULL)
 		task->tk_action = rpc_prepare_task;
