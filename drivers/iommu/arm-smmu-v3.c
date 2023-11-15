@@ -3067,29 +3067,53 @@ static void arm_smmu_put_resv_regions(struct device *dev,
 		kfree(entry);
 }
 
+/*
+ * HiSilicon PCIe tune and trace device can be used to trace TLP headers on the
+ * PCIe link and save the data to memory by DMA. The hardware is restricted to
+ * use identity mapping only.
+ */
+#define IS_HISI_PTT_DEVICE(pdev)   ((pdev)->vendor == PCI_VENDOR_ID_HUAWEI && \
+				     (pdev)->device == 0xa12e)
+
 #ifdef CONFIG_SMMU_BYPASS_DEV
-static int arm_smmu_device_domain_type(struct device *dev, unsigned int *type)
+static int arm_smmu_bypass_dev_domain_type(struct device *dev)
 {
 	int i;
+	struct pci_dev *pdev = to_pci_dev(dev);
+
+	for (i = 0; i < smmu_bypass_devices_num; i++) {
+		if ((smmu_bypass_devices[i].vendor == pdev->vendor) &&
+		    (smmu_bypass_devices[i].device == pdev->device)) {
+			dev_info(dev, "device 0x%hx:0x%hx uses identity mapping.",
+				 pdev->vendor, pdev->device);
+			return IOMMU_DOMAIN_IDENTITY;
+		}
+	}
+
+	return 0;
+}
+#endif
+
+static int arm_smmu_device_domain_type(struct device *dev, unsigned int *type)
+{
 	struct pci_dev *pdev;
 
 	if (!dev_is_pci(dev))
 		return -ERANGE;
 
 	pdev = to_pci_dev(dev);
-	for (i = 0; i < smmu_bypass_devices_num; i++) {
-		if ((smmu_bypass_devices[i].vendor == pdev->vendor)
-			&& (smmu_bypass_devices[i].device == pdev->device)) {
-			dev_info(dev, "device 0x%hx:0x%hx uses identity mapping.",
-				pdev->vendor, pdev->device);
-			*type = IOMMU_DOMAIN_IDENTITY;
-			return 0;
-		}
+
+	if (IS_HISI_PTT_DEVICE(pdev)) {
+		*type = IOMMU_DOMAIN_IDENTITY;
+		return 0;
 	}
 
+#ifdef CONFIG_SMMU_BYPASS_DEV
+	*type = arm_smmu_bypass_dev_domain_type(dev);
+	return 0;
+#endif
 	return -ERANGE;
 }
-#endif
 
 static struct iommu_ops arm_smmu_ops = {
 	.capable		= arm_smmu_capable,
@@ -3118,9 +3142,7 @@ static struct iommu_ops arm_smmu_ops = {
 	.get_resv_regions	= arm_smmu_get_resv_regions,
 	.put_resv_regions	= arm_smmu_put_resv_regions,
 	.pgsize_bitmap		= -1UL, /* Restricted during device attach */
-#ifdef CONFIG_SMMU_BYPASS_DEV
 	.device_domain_type	= arm_smmu_device_domain_type,
-#endif
 };
 
 /* Probing and initialisation functions */

@@ -1260,6 +1260,17 @@ struct iommu_group *pci_device_group(struct device *dev)
 }
 EXPORT_SYMBOL_GPL(pci_device_group);
 
+static int iommu_get_def_domain_type(struct device *dev)
+{
+	const struct iommu_ops *ops = dev->bus->iommu_ops;
+	unsigned int type = 0;
+
+	if (ops->device_domain_type)
+		ops->device_domain_type(dev, &type);
+
+	return (type == 0) ? iommu_def_domain_type : type;
+}
+
 /**
  * iommu_group_get_for_dev - Find or create the IOMMU group for a device
  * @dev: target device
@@ -1298,20 +1309,15 @@ struct iommu_group *iommu_group_get_for_dev(struct device *dev)
 	if (!group->default_domain) {
 		struct iommu_domain *dom;
 
-#ifdef CONFIG_SMMU_BYPASS_DEV
-		/* direct allocate required default domain type for some specific devices. */
-		if (ops->device_domain_type) {
-			if (ops->device_domain_type(dev, &type))
-				type = iommu_def_domain_type;
-		}
-#endif
+		type = iommu_get_def_domain_type(dev);
+
 		dom = __iommu_domain_alloc(dev->bus, type);
 		if (!dom && type != IOMMU_DOMAIN_DMA) {
 			dom = __iommu_domain_alloc(dev->bus, IOMMU_DOMAIN_DMA);
 			if (dom) {
 				dev_warn(dev,
 					 "failed to allocate default IOMMU domain of type %u; falling back to IOMMU_DOMAIN_DMA",
-					 iommu_def_domain_type);
+					 type);
 			}
 		}
 
