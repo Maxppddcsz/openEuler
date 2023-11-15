@@ -77,7 +77,7 @@ enum {
  * @rx_buf_len: Current length of buffers on the rx ring.
  */
 struct kernel_ethtool_ringparam {
-	u32	rx_buf_len;
+	u32 rx_buf_len;
 };
 
 /**
@@ -435,7 +435,7 @@ struct ethtool_fec_stats {
 struct ethtool_ops {
 #ifndef __GENKSYMS__
 	u32     supported_coalesce_params;
-	u32     supported_ring_params;
+	u32	supported_ring_params;
 #endif
 	int	(*get_settings)(struct net_device *, struct ethtool_cmd *);
 	int	(*set_settings)(struct net_device *, struct ethtool_cmd *);
