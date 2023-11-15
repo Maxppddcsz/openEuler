@@ -137,8 +137,7 @@ void hclge_ptp_get_rx_hwts(struct hnae3_handle *handle, struct sk_buff *skb,
 	hdev->ptp->rx_cnt++;
 }
 
-static int hclge_ptp_gettimex(struct ptp_clock_info *ptp, struct timespec64 *ts,
-			      struct ptp_system_timestamp *sts)
+static int hclge_ptp_gettimex(struct ptp_clock_info *ptp, struct timespec64 *ts)
 {
 	struct hclge_dev *hdev = hclge_ptp_get_hdev(ptp);
 	unsigned long flags;
@@ -194,7 +193,7 @@ static int hclge_ptp_adjtime(struct ptp_clock_info *ptp, s64 delta)
 		struct timespec64 ts;
 		s64 ns;
 
-		hclge_ptp_gettimex(ptp, &ts, NULL);
+		hclge_ptp_gettimex(ptp, &ts);
 		ns = timespec64_to_ns(&ts);
 		ns = is_neg ? ns - delta : ns + delta;
 		ts = ns_to_timespec64(ns);
@@ -448,7 +447,7 @@ static int hclge_ptp_create_clock(struct hclge_dev *hdev)
 	ptp->info.pps = 0;
 	ptp->info.adjfreq = hclge_ptp_adjfreq;
 	ptp->info.adjtime = hclge_ptp_adjtime;
-	ptp->info.gettimex64 = hclge_ptp_gettimex;
+	ptp->info.gettime64 = hclge_ptp_gettimex;
 	ptp->info.settime64 = hclge_ptp_settime;
 
 	ptp->info.n_alarm = 0;

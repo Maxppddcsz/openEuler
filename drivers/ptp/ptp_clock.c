@@ -117,9 +117,7 @@ static int ptp_clock_gettime(struct posix_clock *pc, struct timespec64 *tp)
 	struct ptp_clock *ptp = container_of(pc, struct ptp_clock, clock);
 	int err;
 
-	if (ptp->info->gettimex64)
-		err = ptp->info->gettimex64(ptp->info, tp, NULL);
-	else
+	if (ptp->info->gettime64)
 		err = ptp->info->gettime64(ptp->info, tp);
 	return err;
 }
