@@ -148,14 +148,16 @@ struct genl_ops {
 	int		       (*dumpit)(struct sk_buff *skb,
 					 struct netlink_callback *cb);
 	int		       (*done)(struct netlink_callback *cb);
-#ifndef __GENKSYMS__
-	unsigned int		maxattr;
-#endif
 	u8			cmd;
 	u8			internal_flags;
 	u8			flags;
 
+#ifndef __GENKSYMS__
+	unsigned int		maxattr;
+	unsigned int		reserve;
+#else
 	KABI_RESERVE(1)
+#endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)

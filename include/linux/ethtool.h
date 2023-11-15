@@ -433,10 +433,6 @@ struct ethtool_fec_stats {
  * of the generic netdev features interface.
  */
 struct ethtool_ops {
-#ifndef __GENKSYMS__
-	u32     supported_coalesce_params;
-	u32	supported_ring_params;
-#endif
 	int	(*get_settings)(struct net_device *, struct ethtool_cmd *);
 	int	(*set_settings)(struct net_device *, struct ethtool_cmd *);
 	void	(*get_drvinfo)(struct net_device *, struct ethtool_drvinfo *);
@@ -448,10 +444,6 @@ struct ethtool_ops {
 	void	(*set_msglevel)(struct net_device *, u32);
 	int	(*nway_reset)(struct net_device *);
 	u32	(*get_link)(struct net_device *);
-#ifndef __GENKSYMS__
-	int	(*get_link_ext_state)(struct net_device *,
-				      struct ethtool_link_ext_state_info *);
-#endif
 	int	(*get_eeprom_len)(struct net_device *);
 	int	(*get_eeprom)(struct net_device *,
 			      struct ethtool_eeprom *, u8 *);
@@ -529,20 +521,25 @@ struct ethtool_ops {
 				      struct ethtool_link_ksettings *);
 	int	(*set_link_ksettings)(struct net_device *,
 				      const struct ethtool_link_ksettings *);
-#ifndef __GENKSYMS__
-	void	(*get_fec_stats)(struct net_device *dev,
-				 struct ethtool_fec_stats *fec_stats);
-#endif
 	int	(*get_fecparam)(struct net_device *,
 				      struct ethtool_fecparam *);
 	int	(*set_fecparam)(struct net_device *,
 				      struct ethtool_fecparam *);
 	void	(*get_ethtool_phy_stats)(struct net_device *,
 					 struct ethtool_stats *, u64 *);
+#ifndef __GENKSYMS__
+	u32     supported_coalesce_params;
+	u32     supported_ring_params;
 
+	int     (*get_link_ext_state)(struct net_device *,
+				      struct ethtool_link_ext_state_info *);
+	void    (*get_fec_stats)(struct net_device *dev,
+				 struct ethtool_fec_stats *fec_stats);
+#else
 	KABI_RESERVE(1)
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
+#endif
 	KABI_RESERVE(4)
 	KABI_RESERVE(5)
 	KABI_RESERVE(6)
