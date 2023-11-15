@@ -176,9 +176,6 @@ struct netlink_callback {
 	void			*data;
 	/* the module that dump function belong to */
 	struct module		*module;
-#ifndef __GENKSYMS__
-	struct netlink_ext_ack  *extack;
-#endif
 	u16			family;
 	u16			min_dump_alloc;
 	unsigned int		prev_seq, seq;
