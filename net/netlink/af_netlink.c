@@ -2258,9 +2258,7 @@ static int netlink_dump(struct sock *sk)
 	netlink_skb_set_owner_r(skb, sk);
 
 	if (nlk->dump_done_errno > 0) {
-		cb->extack = &extack;
 		nlk->dump_done_errno = cb->dump(skb, cb);
-		cb->extack = NULL;
 	}
 
 	if (nlk->dump_done_errno > 0 ||

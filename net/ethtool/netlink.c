@@ -570,7 +570,7 @@ static int ethnl_default_start(struct netlink_callback *cb)
 	}
 
 	ret = ethnl_default_parse(req_info, cb->nlh, sock_net(cb->skb->sk), ops,
-				  cb->extack, false);
+				  NULL, false);
 	if (req_info->dev) {
 		/* We ignore device specification in dump requests but as the
 		 * same parser as for non-dump (doit) requests is used, it
