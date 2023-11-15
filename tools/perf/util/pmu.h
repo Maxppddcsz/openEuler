@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include "evsel.h"
 #include "parse-events.h"
+#include "pmu-events/pmu-events.h"
 
 enum {
 	PERF_PMU_FORMAT_VALUE_CONFIG,
@@ -21,6 +22,7 @@ struct perf_event_attr;
 
 struct perf_pmu {
 	char *name;
+	char *id;
 	__u32 type;
 	bool selectable;
 	bool is_uncore;
@@ -31,6 +33,8 @@ struct perf_pmu {
 	struct list_head list;    /* ELEM */
 	int (*set_drv_config)	(struct perf_evsel_config_term *term);
 };
+
+extern struct perf_pmu perf_pmu__fake;
 
 struct perf_pmu_info {
 	const char *unit;
@@ -55,11 +59,14 @@ struct perf_pmu_alias {
 	double scale;
 	bool per_pkg;
 	bool snapshot;
+	bool deprecated;
 	char *metric_expr;
 	char *metric_name;
+	char *pmu_name;
 };
 
 struct perf_pmu *perf_pmu__find(const char *name);
+void pmu_add_sys_aliases(struct list_head *head, struct perf_pmu *pmu);
 int perf_pmu__config(struct perf_pmu *pmu, struct perf_event_attr *attr,
 		     struct list_head *head_terms,
 		     struct parse_events_error *error);
@@ -79,11 +86,14 @@ int perf_pmu__new_format(struct list_head *list, char *name,
 			 int config, unsigned long *bits);
 void perf_pmu__set_format(unsigned long *bits, long from, long to);
 int perf_pmu__format_parse(char *dir, struct list_head *head);
+void perf_pmu__del_formats(struct list_head *formats);
 
 struct perf_pmu *perf_pmu__scan(struct perf_pmu *pmu);
 
+bool is_pmu_core(const char *name);
 void print_pmu_events(const char *event_glob, bool name_only, bool quiet,
-		      bool long_desc, bool details_flag);
+		      bool long_desc, bool details_flag,
+		      bool deprecated);
 bool pmu_have_event(const char *pname, const char *name);
 
 int perf_pmu__scan_file(struct perf_pmu *pmu, const char *name, const char *fmt, ...) __scanf(3, 4);
@@ -91,7 +101,18 @@ int perf_pmu__scan_file(struct perf_pmu *pmu, const char *name, const char *fmt,
 int perf_pmu__test(void);
 
 struct perf_event_attr *perf_pmu__get_default_config(struct perf_pmu *pmu);
+void pmu_add_cpu_aliases_map(struct list_head *head, struct perf_pmu *pmu,
+			     struct pmu_events_map *map);
 
 struct pmu_events_map *perf_pmu__find_map(struct perf_pmu *pmu);
+struct pmu_events_map *pmu_events_map__find(void);
+bool pmu_uncore_alias_match(const char *pmu_name, const char *name);
+void perf_pmu_free_alias(struct perf_pmu_alias *alias);
+
+typedef int (*pmu_sys_event_iter_fn)(struct pmu_event *pe, void *data);
+void pmu_for_each_sys_event(pmu_sys_event_iter_fn fn, void *data);
+int perf_pmu__convert_scale(const char *scale, char **end, double *sval);
+
+int perf_pmu__match(char *pattern, char *name, char *tok);
 
 #endif /* __PMU_H */

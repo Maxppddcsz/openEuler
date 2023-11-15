@@ -602,7 +602,7 @@ static int test__checkterms_simple(struct list_head *terms)
 	TEST_ASSERT_VAL("wrong type val",
 			term->type_val == PARSE_EVENTS__TERM_TYPE_NUM);
 	TEST_ASSERT_VAL("wrong val", term->val.num == 10);
-	TEST_ASSERT_VAL("wrong config", !term->config);
+	TEST_ASSERT_VAL("wrong config", !strcmp(term->config, "config"));
 
 	/* config1 */
 	term = list_entry(term->list.next, struct parse_events_term, list);
@@ -611,7 +611,7 @@ static int test__checkterms_simple(struct list_head *terms)
 	TEST_ASSERT_VAL("wrong type val",
 			term->type_val == PARSE_EVENTS__TERM_TYPE_NUM);
 	TEST_ASSERT_VAL("wrong val", term->val.num == 1);
-	TEST_ASSERT_VAL("wrong config", !term->config);
+	TEST_ASSERT_VAL("wrong config", !strcmp(term->config, "config1"));
 
 	/* config2=3 */
 	term = list_entry(term->list.next, struct parse_events_term, list);
@@ -620,7 +620,7 @@ static int test__checkterms_simple(struct list_head *terms)
 	TEST_ASSERT_VAL("wrong type val",
 			term->type_val == PARSE_EVENTS__TERM_TYPE_NUM);
 	TEST_ASSERT_VAL("wrong val", term->val.num == 3);
-	TEST_ASSERT_VAL("wrong config", !term->config);
+	TEST_ASSERT_VAL("wrong config", !strcmp(term->config, "config2"));
 
 	/* umask=1*/
 	term = list_entry(term->list.next, struct parse_events_term, list);
@@ -631,6 +631,34 @@ static int test__checkterms_simple(struct list_head *terms)
 	TEST_ASSERT_VAL("wrong val", term->val.num == 1);
 	TEST_ASSERT_VAL("wrong config", !strcmp(term->config, "umask"));
 
+	/*
+	 * read
+	 *
+	 * The perf_pmu__test_parse_init injects 'read' term into
+	 * perf_pmu_events_list, so 'read' is evaluated as read term
+	 * and not as raw event with 'ead' hex value.
+	 */
+	term = list_entry(term->list.next, struct parse_events_term, list);
+	TEST_ASSERT_VAL("wrong type term",
+			term->type_term == PARSE_EVENTS__TERM_TYPE_USER);
+	TEST_ASSERT_VAL("wrong type val",
+			term->type_val == PARSE_EVENTS__TERM_TYPE_NUM);
+	TEST_ASSERT_VAL("wrong val", term->val.num == 1);
+	TEST_ASSERT_VAL("wrong config", !strcmp(term->config, "read"));
+
+	/*
+	 * r0xead
+	 *
+	 * To be still able to pass 'ead' value with 'r' syntax,
+	 * we added support to parse 'r0xHEX' event.
+	 */
+	term = list_entry(term->list.next, struct parse_events_term, list);
+	TEST_ASSERT_VAL("wrong type term",
+			term->type_term == PARSE_EVENTS__TERM_TYPE_CONFIG);
+	TEST_ASSERT_VAL("wrong type val",
+			term->type_val == PARSE_EVENTS__TERM_TYPE_NUM);
+	TEST_ASSERT_VAL("wrong val", term->val.num == 0xead);
+	TEST_ASSERT_VAL("wrong config", !strcmp(term->config, "config"));
 	return 0;
 }
 
@@ -1356,6 +1384,36 @@ static int test__checkevent_complex_name(struct perf_evlist *evlist)
 	return 0;
 }
 
+static int test__checkevent_raw_pmu(struct perf_evlist *evlist)
+{
+	struct perf_evsel *evsel = perf_evlist__first(evlist);
+
+	TEST_ASSERT_VAL("wrong number of entries", 1 == evlist->nr_entries);
+	TEST_ASSERT_VAL("wrong type", PERF_TYPE_SOFTWARE == evsel->attr.type);
+	TEST_ASSERT_VAL("wrong config", 0x1a == evsel->attr.config);
+	return 0;
+}
+
+static int test__sym_event_slash(struct perf_evlist *evlist)
+{
+	struct perf_evsel *evsel = perf_evlist__first(evlist);
+
+	TEST_ASSERT_VAL("wrong type", evsel->attr.type == PERF_TYPE_HARDWARE);
+	TEST_ASSERT_VAL("wrong config", evsel->attr.config == PERF_COUNT_HW_CPU_CYCLES);
+	TEST_ASSERT_VAL("wrong exclude_kernel", evsel->attr.exclude_kernel);
+	return 0;
+}
+
+static int test__sym_event_dc(struct perf_evlist *evlist)
+{
+	struct perf_evsel *evsel = perf_evlist__first(evlist);
+
+	TEST_ASSERT_VAL("wrong type", evsel->attr.type == PERF_TYPE_HARDWARE);
+	TEST_ASSERT_VAL("wrong config", evsel->attr.config == PERF_COUNT_HW_CPU_CYCLES);
+	TEST_ASSERT_VAL("wrong exclude_user", evsel->attr.exclude_user);
+	return 0;
+}
+
 static int count_tracepoints(void)
 {
 	struct dirent *events_ent;
@@ -1697,6 +1755,16 @@ static struct evlist_test test__events[] = {
 		.name  = "cycles/name='COMPLEX_CYCLES_NAME:orig=cycles,desc=chip-clock-ticks'/Duk",
 		.check = test__checkevent_complex_name,
 		.id    = 53
+	},
+	{
+		.name  = "cycles//u",
+		.check = test__sym_event_slash,
+		.id    = 54,
+	},
+	{
+		.name  = "cycles:k",
+		.check = test__sym_event_dc,
+		.id    = 55,
 	}
 };
 
@@ -1720,7 +1788,17 @@ static struct evlist_test test__events_pmu[] = {
 		.name  = "cpu/name='COMPLEX_CYCLES_NAME:orig=cycles,desc=chip-clock-ticks',period=0x1,event=0x2/ukp",
 		.check = test__checkevent_complex_name,
 		.id    = 3,
-	}
+	},
+	{
+		.name  = "software/r1a/",
+		.check = test__checkevent_raw_pmu,
+		.id    = 4,
+	},
+	{
+		.name  = "software/r0x1a/",
+		.check = test__checkevent_raw_pmu,
+		.id    = 4,
+	},
 };
 
 struct terms_test {
@@ -1731,7 +1809,7 @@ struct terms_test {
 
 static struct terms_test test__terms[] = {
 	[0] = {
-		.str   = "config=10,config1,config2=3,umask=1",
+		.str   = "config=10,config1,config2=3,umask=1,read,r0xead",
 		.check = test__checkterms_simple,
 	},
 };
@@ -1789,6 +1867,13 @@ static int test_term(struct terms_test *t)
 	int ret;
 
 	INIT_LIST_HEAD(&terms);
+
+	/*
+	 * The perf_pmu__test_parse_init prepares perf_pmu_events_list
+	 * which gets freed in parse_events_terms.
+	 */
+	if (perf_pmu__test_parse_init())
+		return -1;
 
 	ret = parse_events_terms(&terms, t->str);
 	if (ret) {

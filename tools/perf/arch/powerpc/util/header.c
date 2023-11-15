@@ -8,6 +8,8 @@
 #include <linux/stringify.h>
 #include "header.h"
 #include "util.h"
+#include "metricgroup.h"
+#include <api/fs/fs.h>
 
 #define mfspr(rn)       ({unsigned long rval; \
 			 asm volatile("mfspr %0," __stringify(rn) \
@@ -44,4 +46,13 @@ get_cpuid_str(struct perf_pmu *pmu __maybe_unused)
 		bufp = NULL;
 
 	return bufp;
+}
+
+int arch_get_runtimeparam(struct pmu_event *pe)
+{
+	int count;
+	char path[PATH_MAX] = "/devices/hv_24x7/interface/";
+
+	atoi(pe->aggr_mode) == PerChip ? strcat(path, "sockets") : strcat(path, "coresperchip");
+	return sysfs__read_int(path, &count) < 0 ? 1 : count;
 }

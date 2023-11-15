@@ -85,14 +85,17 @@ struct runtime_stat {
 };
 
 struct perf_stat_config {
-	enum aggr_mode	aggr_mode;
-	bool		scale;
-	FILE		*output;
-	unsigned int	interval;
-	unsigned int	timeout;
-	int		times;
-	struct runtime_stat *stats;
-	int		stats_num;
+	enum aggr_mode		 aggr_mode;
+	bool			 scale;
+	bool			 metric_no_group;
+	bool			 metric_no_merge;
+	FILE			 *output;
+	unsigned int		 interval;
+	unsigned int		 timeout;
+	int			 times;
+	struct 			 runtime_stat *stats;
+	int			 stats_num;
+	struct rblist		 metric_events;
 };
 
 void update_stats(struct stats *stats, u64 val);
@@ -130,9 +133,10 @@ bool __perf_evsel_stat__is(struct perf_evsel *evsel,
 extern struct runtime_stat rt_stat;
 extern struct stats walltime_nsecs_stats;
 
-typedef void (*print_metric_t)(void *ctx, const char *color, const char *unit,
+typedef void (*print_metric_t)(struct perf_stat_config *config,
+			       void *ctx, const char *color, const char *unit,
 			       const char *fmt, double val);
-typedef void (*new_line_t )(void *ctx);
+typedef void (*new_line_t)(struct perf_stat_config *config, void *ctx);
 
 void runtime_stat__init(struct runtime_stat *st);
 void runtime_stat__exit(struct runtime_stat *st);
@@ -148,7 +152,8 @@ struct perf_stat_output_ctx {
 	bool force_header;
 };
 
-void perf_stat__print_shadow_stats(struct perf_evsel *evsel,
+void perf_stat__print_shadow_stats(struct perf_stat_config *config,
+				   struct perf_evsel *evsel,
 				   double avg, int cpu,
 				   struct perf_stat_output_ctx *out,
 				   struct rblist *metric_events,
@@ -172,4 +177,6 @@ int perf_event__process_stat_event(struct perf_tool *tool,
 size_t perf_event__fprintf_stat(union perf_event *event, FILE *fp);
 size_t perf_event__fprintf_stat_round(union perf_event *event, FILE *fp);
 size_t perf_event__fprintf_stat_config(union perf_event *event, FILE *fp);
+struct metric_expr;
+double test_generic_metric(struct metric_expr *mexp, int cpu, struct runtime_stat *st);
 #endif
