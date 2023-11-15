@@ -104,7 +104,6 @@ enum HNAE3_DEV_CAP_BITS {
 	HNAE3_DEV_SUPPORT_MC_MAC_MNG_B,
 	HNAE3_DEV_SUPPORT_CQ_B,
 	HNAE3_DEV_SUPPORT_FEC_STATS_B,
-	HNAE3_DEV_SUPPORT_LANE_NUM_B,
 	HNAE3_DEV_SUPPORT_WOL_B,
 	HNAE3_DEV_SUPPORT_VF_FAULT_B,
 	HNAE3_DEV_SUPPORT_NOTIFY_PKT_B,
@@ -177,17 +176,12 @@ enum HNAE3_DEV_CAP_BITS {
 #define hnae3_ae_dev_cq_supported(ae_dev) \
 	test_bit(HNAE3_DEV_SUPPORT_CQ_B, (ae_dev)->caps)
 
-#define hnae3_ae_dev_lane_num_supported(ae_dev) \
-	test_bit(HNAE3_DEV_SUPPORT_LANE_NUM_B, (ae_dev)->caps)
-
 #define hnae3_ae_dev_wol_supported(ae_dev) \
 	test_bit(HNAE3_DEV_SUPPORT_WOL_B, (ae_dev)->caps)
 
 #define hnae3_ae_dev_notify_pkt_supported(ae_dev) \
 	test_bit(HNAE3_DEV_SUPPORT_NOTIFY_PKT_B, (ae_dev)->caps)
 
-#define hnae3_ae_dev_lane_num_supported(ae_dev) \
-	test_bit(HNAE3_DEV_SUPPORT_LANE_NUM_B, (ae_dev)->caps)
 #define hnae3_ae_dev_fec_stats_supported(ae_dev) \
 	test_bit(HNAE3_DEV_SUPPORT_FEC_STATS_B, (ae_dev)->caps)
 #define hnae3_ae_dev_tm_flush_supported(hdev) \
@@ -626,10 +620,9 @@ struct hnae3_ae_ops {
 	void (*client_stop)(struct hnae3_handle *handle);
 	int (*get_status)(struct hnae3_handle *handle);
 	void (*get_ksettings_an_result)(struct hnae3_handle *handle,
-					u8 *auto_neg, u32 *speed, u8 *duplex,
-					u32 *lane_num);
+					u8 *auto_neg, u32 *speed, u8 *duplex);
 	int (*cfg_mac_speed_dup_h)(struct hnae3_handle *handle, int speed,
-				   u8 duplex, u8 lane_num);
+				   u8 duplex);
 
 	void (*get_media_type)(struct hnae3_handle *handle, u8 *media_type,
 			       u8 *module_type);

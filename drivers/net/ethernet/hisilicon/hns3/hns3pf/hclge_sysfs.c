@@ -78,9 +78,6 @@ int hclge_register_sysfs(struct hclge_dev *hdev)
 {
 	int ret;
 
-	if (!hnae3_ae_dev_lane_num_supported(hdev->ae_dev))
-		return 0;
-
 	ret = device_create_file(&hdev->pdev->dev, hclge_hw_attrs_list[0]);
 	if (ret)
 		dev_err(&hdev->pdev->dev,
