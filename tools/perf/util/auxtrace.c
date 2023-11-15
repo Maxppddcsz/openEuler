@@ -56,6 +56,7 @@
 #include "intel-pt.h"
 #include "intel-bts.h"
 #include "arm-spe.h"
+#include "hisi-ptt.h"
 #include "s390-cpumsf.h"
 
 #include "sane_ctype.h"
@@ -926,6 +927,8 @@ int perf_event__process_auxtrace_info(struct perf_tool *tool __maybe_unused,
 		return cs_etm__process_auxtrace_info(event, session);
 	case PERF_AUXTRACE_S390_CPUMSF:
 		return s390_cpumsf_process_auxtrace_info(event, session);
+	case PERF_AUXTRACE_HISI_PTT:
+		return hisi_ptt_process_auxtrace_info(event, session);
 	case PERF_AUXTRACE_UNKNOWN:
 	default:
 		return -EINVAL;
