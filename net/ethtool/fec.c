@@ -24,10 +24,6 @@ struct fec_reply_data {
 
 #define ETHTOOL_FEC_MASK	((ETHTOOL_FEC_LLRS << 1) - 1)
 
-const struct nla_policy ethnl_fec_get_policy[ETHTOOL_A_FEC_HEADER + 1] = {
-	[ETHTOOL_A_FEC_HEADER]	= NLA_POLICY_NESTED(ethnl_header_policy_stats),
-};
-
 static void
 ethtool_fec_to_link_modes(u32 fec, unsigned long *link_modes, u8 *fec_auto)
 {
@@ -232,9 +228,7 @@ const struct ethnl_request_ops ethnl_fec_request_ops = {
 /* FEC_SET */
 
 const struct nla_policy ethnl_fec_set_policy[ETHTOOL_A_FEC_AUTO + 1] = {
-	[ETHTOOL_A_FEC_HEADER]	= NLA_POLICY_NESTED(ethnl_header_policy),
 	[ETHTOOL_A_FEC_MODES]	= { .type = NLA_NESTED },
-	[ETHTOOL_A_FEC_AUTO]	= NLA_POLICY_MAX(NLA_U8, 1),
 };
 
 int ethnl_set_fec(struct sk_buff *skb, struct genl_info *info)

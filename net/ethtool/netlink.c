@@ -13,20 +13,12 @@ static u32 ethnl_bcast_seq;
 			     ETHTOOL_FLAG_OMIT_REPLY)
 #define ETHTOOL_FLAGS_STATS (ETHTOOL_FLAGS_BASIC | ETHTOOL_FLAG_STATS)
 
-const struct nla_policy ethnl_header_policy[ETHTOOL_A_HEADER_MAX + 1] = {
+static const struct nla_policy ethnl_header_policy[ETHTOOL_A_HEADER_MAX + 1] = {
 	[ETHTOOL_A_HEADER_UNSPEC]	= { .type = NLA_REJECT },
 	[ETHTOOL_A_HEADER_DEV_INDEX]	= { .type = NLA_U32 },
 	[ETHTOOL_A_HEADER_DEV_NAME]	= { .type = NLA_NUL_STRING,
 					    .len = ALTIFNAMSIZ - 1 },
 	[ETHTOOL_A_HEADER_FLAGS]	= { .type = NLA_U32 },
-};
-
-const struct nla_policy ethnl_header_policy_stats[] = {
-	[ETHTOOL_A_HEADER_DEV_INDEX]	= { .type = NLA_U32 },
-	[ETHTOOL_A_HEADER_DEV_NAME]	= { .type = NLA_NUL_STRING,
-					    .len = ALTIFNAMSIZ - 1 },
-	[ETHTOOL_A_HEADER_FLAGS]	= NLA_POLICY_MASK(NLA_U32,
-							  ETHTOOL_FLAGS_STATS),
 };
 
 /**
@@ -795,15 +787,11 @@ static const struct genl_ops ethtool_genl_ops[] = {
 		.start	= ethnl_default_start,
 		.dumpit	= ethnl_default_dumpit,
 		.done	= ethnl_default_done,
-		.policy = ethnl_fec_get_policy,
-		.maxattr = ARRAY_SIZE(ethnl_fec_get_policy) - 1,
 	},
 	{
 		.cmd	= ETHTOOL_MSG_FEC_SET,
 		.flags	= GENL_UNS_ADMIN_PERM,
 		.doit	= ethnl_set_fec,
-		.policy = ethnl_fec_set_policy,
-		.maxattr = ARRAY_SIZE(ethnl_fec_set_policy) - 1,
 	},
 };
 
