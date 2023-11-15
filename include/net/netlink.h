@@ -278,13 +278,6 @@ struct nla_policy {
 		      tp == NLA_MSECS ||		\
 		      tp == NLA_BINARY) + tp)
 
-#define NLA_POLICY_RANGE(tp, _min, _max) {		 \
-	.type = NLA_ENSURE_INT_OR_BINARY_TYPE(tp),		\
-	.validation_type = NLA_VALIDATE_RANGE,		\
-	.min = _min,				\
-	.max = _max					\
-}
-
 #define NLA_POLICY_MIN(tp, _min) {			\
 	.type = NLA_ENSURE_INT_OR_BINARY_TYPE(tp),	\
 	.validation_type = NLA_VALIDATE_MIN,		\

@@ -131,11 +131,6 @@ static inline u32 ethtool_rxfh_indir_default(u32 index, u32 n_rx_rings)
 	return index % n_rx_rings;
 }
 
-#ifdef __GENKSYMS__
-#define __ETHTOOL_LINK_MODE_MASK_NBITS			\
-	(__ETHTOOL_LINK_MODE_LAST + 1)
-#endif
-
 /* declare a link mode bitmap */
 #define __ETHTOOL_DECLARE_LINK_MODE_MASK(name)		\
 	DECLARE_BITMAP(name, __ETHTOOL_LINK_MODE_MASK_NBITS)
@@ -150,9 +145,6 @@ struct ethtool_link_ksettings {
 		__ETHTOOL_DECLARE_LINK_MODE_MASK(advertising);
 		__ETHTOOL_DECLARE_LINK_MODE_MASK(lp_advertising);
 	} link_modes;
-#ifndef __GENKSYMS__
-	u32	lanes;
-#endif
 };
 
 /**
@@ -297,8 +289,6 @@ struct ethtool_fec_stats {
 
 /**
  * struct ethtool_ops - optional netdev operations
- * @cap_link_lanes_supported: indicates if the driver supports lanes
- *	parameter.
  * @supported_coalesce_params: supported types of interrupt coalescing.
  * @supported_ring_params: supported ring params.
  * @get_drvinfo: Report driver/device information.  Should only set the
@@ -444,7 +434,6 @@ struct ethtool_fec_stats {
  */
 struct ethtool_ops {
 #ifndef __GENKSYMS__
-	u32     cap_link_lanes_supported:1;
 	u32     supported_coalesce_params;
 	u32     supported_ring_params;
 #endif
