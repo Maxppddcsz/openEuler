@@ -38,9 +38,8 @@ static struct hns3_dbg_dentry_info hns3_dbg_dentry[] = {
 	},
 };
 
-static int hns3_dbg_bd_file_init(struct hnae3_handle *handle, unsigned int cmd);
-static int hns3_dbg_common_file_init(struct hnae3_handle *handle,
-				     unsigned int cmd);
+static int hns3_dbg_bd_file_init(struct hnae3_handle *handle, u32 cmd);
+static int hns3_dbg_common_file_init(struct hnae3_handle *handle, u32 cmd);
 
 static struct hns3_dbg_cmd_info hns3_dbg_cmd[] = {
 	{
@@ -100,6 +99,13 @@ static struct hns3_dbg_cmd_info hns3_dbg_cmd[] = {
 		.init = hns3_dbg_common_file_init,
 	},
 	{
+		.name = "qos_dscp_map",
+		.cmd = HNAE3_DBG_CMD_QOS_DSCP_MAP,
+		.dentry = HNS3_DBG_DENTRY_TM,
+		.buf_len = HNS3_DBG_READ_LEN,
+		.init = hns3_dbg_common_file_init,
+	},
+	{
 		.name = "qos_buf_cfg",
 		.cmd = HNAE3_DBG_CMD_QOS_BUF_CFG,
 		.dentry = HNS3_DBG_DENTRY_TM,
@@ -110,7 +116,7 @@ static struct hns3_dbg_cmd_info hns3_dbg_cmd[] = {
 		.name = "tx_bd_queue",
 		.cmd = HNAE3_DBG_CMD_TX_BD,
 		.dentry = HNS3_DBG_DENTRY_TX_BD,
-		.buf_len = HNS3_DBG_READ_LEN_4MB,
+		.buf_len = HNS3_DBG_READ_LEN_5MB,
 		.init = hns3_dbg_bd_file_init,
 	},
 	{
@@ -132,13 +138,6 @@ static struct hns3_dbg_cmd_info hns3_dbg_cmd[] = {
 		.cmd = HNAE3_DBG_CMD_MAC_MC,
 		.dentry = HNS3_DBG_DENTRY_MAC,
 		.buf_len = HNS3_DBG_READ_LEN,
-		.init = hns3_dbg_common_file_init,
-	},
-	{
-		.name = "mac_tbl",
-		.cmd = HNAE3_DBG_CMD_MAC_TBL,
-		.dentry = HNS3_DBG_DENTRY_COMMON,
-		.buf_len = HNS3_DBG_READ_LEN_1MB,
 		.init = hns3_dbg_common_file_init,
 	},
 	{
@@ -316,27 +315,277 @@ static struct hns3_dbg_cmd_info hns3_dbg_cmd[] = {
 		.buf_len = HNS3_DBG_READ_LEN,
 		.init = hns3_dbg_common_file_init,
 	},
+	{
+		.name = "dev_info",
+		.cmd = HNAE3_DBG_CMD_DEV_INFO,
+		.dentry = HNS3_DBG_DENTRY_COMMON,
+		.buf_len = HNS3_DBG_READ_LEN,
+		.init = hns3_dbg_common_file_init,
+	},
+	{
+		.name = "fd_counter",
+		.cmd = HNAE3_DBG_CMD_FD_COUNTER,
+		.dentry = HNS3_DBG_DENTRY_FD,
+		.buf_len = HNS3_DBG_READ_LEN,
+		.init = hns3_dbg_common_file_init,
+	},
+	{
+		.name = "coalesce_info",
+		.cmd = HNAE3_DBG_CMD_COAL_INFO,
+		.dentry = HNS3_DBG_DENTRY_COMMON,
+		.buf_len = HNS3_DBG_READ_LEN_1MB,
+		.init = hns3_dbg_common_file_init,
+	},
+	{
+		.name = "wol_info",
+		.cmd = HNAE3_DBG_CMD_WOL_INFO,
+		.dentry = HNS3_DBG_DENTRY_COMMON,
+		.buf_len = HNS3_DBG_READ_LEN,
+		.init = hns3_dbg_common_file_init,
+	},
 };
+
+static struct hns3_dbg_cap_info hns3_dbg_cap[] = {
+	{
+		.name = "support FD",
+		.cap_bit = HNAE3_DEV_SUPPORT_FD_B,
+	}, {
+		.name = "support GRO",
+		.cap_bit = HNAE3_DEV_SUPPORT_GRO_B,
+	}, {
+		.name = "support FEC",
+		.cap_bit = HNAE3_DEV_SUPPORT_FEC_B,
+	}, {
+		.name = "support UDP GSO",
+		.cap_bit = HNAE3_DEV_SUPPORT_UDP_GSO_B,
+	}, {
+		.name = "support PTP",
+		.cap_bit = HNAE3_DEV_SUPPORT_PTP_B,
+	}, {
+		.name = "support INT QL",
+		.cap_bit = HNAE3_DEV_SUPPORT_INT_QL_B,
+	}, {
+		.name = "support HW TX csum",
+		.cap_bit = HNAE3_DEV_SUPPORT_HW_TX_CSUM_B,
+	}, {
+		.name = "support UDP tunnel csum",
+		.cap_bit = HNAE3_DEV_SUPPORT_UDP_TUNNEL_CSUM_B,
+	}, {
+		.name = "support TX push",
+		.cap_bit = HNAE3_DEV_SUPPORT_TX_PUSH_B,
+	}, {
+		.name = "support imp-controlled PHY",
+		.cap_bit = HNAE3_DEV_SUPPORT_PHY_IMP_B,
+	}, {
+		.name = "support imp-controlled RAS",
+		.cap_bit = HNAE3_DEV_SUPPORT_RAS_IMP_B,
+	}, {
+		.name = "support rxd advanced layout",
+		.cap_bit = HNAE3_DEV_SUPPORT_RXD_ADV_LAYOUT_B,
+	}, {
+		.name = "support port vlan bypass",
+		.cap_bit = HNAE3_DEV_SUPPORT_PORT_VLAN_BYPASS_B,
+	}, {
+		.name = "support modify vlan filter state",
+		.cap_bit = HNAE3_DEV_SUPPORT_VLAN_FLTR_MDF_B,
+	}, {
+		.name = "support FEC statistics",
+		.cap_bit = HNAE3_DEV_SUPPORT_FEC_STATS_B,
+	}, {
+		.name = "support lane num",
+		.cap_bit = HNAE3_DEV_SUPPORT_LANE_NUM_B,
+	}, {
+		.name = "support tm flush",
+		.cap_bit = HNAE3_DEV_SUPPORT_TM_FLUSH_B,
+	},{
+		.name = "support wake on lan",
+		.cap_bit = HNAE3_DEV_SUPPORT_WOL_B,
+	}
+};
+
+static const struct hns3_dbg_item coal_info_items[] = {
+	{ "VEC_ID", 2 },
+	{ "ALGO_STATE", 2 },
+	{ "PROFILE_ID", 2 },
+	{ "CQE_MODE", 2 },
+	{ "TUNE_STATE", 2 },
+	{ "STEPS_LEFT", 2 },
+	{ "STEPS_RIGHT", 2 },
+	{ "TIRED", 2 },
+	{ "SW_GL", 2 },
+	{ "SW_QL", 2 },
+	{ "HW_GL", 2 },
+	{ "HW_QL", 2 },
+};
+
+static const char * const dim_cqe_mode_str[] = { "EQE", "CQE" };
+static const char * const dim_state_str[] = { "START", "IN_PROG", "APPLY" };
+static const char * const
+dim_tune_stat_str[] = { "ON_TOP", "TIRED", "RIGHT", "LEFT" };
 
 static void hns3_dbg_fill_content(char *content, u16 len,
 				  const struct hns3_dbg_item *items,
 				  const char **result, u16 size)
 {
+#define HNS3_DBG_LINE_END_LEN	2
 	char *pos = content;
+	u16 item_len;
 	u16 i;
 
-	memset(content, ' ', len);
-	for (i = 0; i < size; i++) {
-		if (result)
-			strncpy(pos, result[i], strlen(result[i]));
-		else
-			strncpy(pos, items[i].name, strlen(items[i].name));
-
-		pos += strlen(items[i].name) + items[i].interval;
+	if (!len) {
+		return;
+	} else if (len <= HNS3_DBG_LINE_END_LEN) {
+		*pos++ = '\0';
+		return;
 	}
 
+	memset(content, ' ', len);
+	len -= HNS3_DBG_LINE_END_LEN;
+
+	for (i = 0; i < size; i++) {
+		item_len = strlen(items[i].name) + items[i].interval;
+		if (len < item_len)
+			break;
+
+		if (result) {
+			if (item_len < strlen(result[i]))
+				break;
+			memcpy(pos, result[i], strlen(result[i]));
+		} else {
+			memcpy(pos, items[i].name, strlen(items[i].name));
+		}
+		pos += item_len;
+		len -= item_len;
+	}
 	*pos++ = '\n';
 	*pos++ = '\0';
+}
+
+static void hns3_get_coal_info(struct hns3_enet_tqp_vector *tqp_vector,
+			       char **result, int i, bool is_tx)
+{
+	unsigned int gl_offset, ql_offset;
+	struct hns3_enet_coalesce *coal;
+	unsigned int reg_val;
+	unsigned int j = 0;
+	bool ql_enable;
+
+	if (is_tx) {
+		coal = &tqp_vector->tx_group.coal;
+		gl_offset = HNS3_VECTOR_GL1_OFFSET;
+		ql_offset = HNS3_VECTOR_TX_QL_OFFSET;
+		ql_enable = tqp_vector->tx_group.coal.ql_enable;
+	} else {
+		coal = &tqp_vector->rx_group.coal;
+		gl_offset = HNS3_VECTOR_GL0_OFFSET;
+		ql_offset = HNS3_VECTOR_RX_QL_OFFSET;
+		ql_enable = tqp_vector->rx_group.coal.ql_enable;
+	}
+
+	sprintf(result[j++], "%d", i);
+	sprintf(result[j++], "%u", coal->int_gl);
+	sprintf(result[j++], "%u", coal->int_ql);
+	reg_val = readl(tqp_vector->mask_addr + gl_offset) &
+		  HNS3_VECTOR_GL_MASK;
+	sprintf(result[j++], "%u", reg_val);
+	if (ql_enable) {
+		reg_val = readl(tqp_vector->mask_addr + ql_offset) &
+			  HNS3_VECTOR_QL_MASK;
+		sprintf(result[j++], "%u", reg_val);
+	} else {
+		sprintf(result[j++], "NA");
+	}
+}
+
+static void hns3_dump_coal_info(struct hnae3_handle *h, char *buf, int len,
+				int *pos, bool is_tx)
+{
+	char data_str[ARRAY_SIZE(coal_info_items)][HNS3_DBG_DATA_STR_LEN];
+	char *result[ARRAY_SIZE(coal_info_items)];
+	struct hns3_enet_tqp_vector *tqp_vector;
+	struct hns3_nic_priv *priv = h->priv;
+	char content[HNS3_DBG_INFO_LEN];
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(coal_info_items); i++)
+		result[i] = &data_str[i][0];
+
+	*pos += scnprintf(buf + *pos, len - *pos,
+			  "%s interrupt coalesce info:\n",
+			  is_tx ? "tx" : "rx");
+	hns3_dbg_fill_content(content, sizeof(content), coal_info_items,
+			      NULL, ARRAY_SIZE(coal_info_items));
+	*pos += scnprintf(buf + *pos, len - *pos, "%s", content);
+
+	for (i = 0; i < priv->vector_num; i++) {
+		tqp_vector = &priv->tqp_vector[i];
+		hns3_get_coal_info(tqp_vector, result, i, is_tx);
+		hns3_dbg_fill_content(content, sizeof(content), coal_info_items,
+				      (const char **)result,
+				      ARRAY_SIZE(coal_info_items));
+		*pos += scnprintf(buf + *pos, len - *pos, "%s", content);
+	}
+}
+
+static int hns3_dbg_coal_info(struct hnae3_handle *h, char *buf, int len)
+{
+	int pos = 0;
+
+	hns3_dump_coal_info(h, buf, len, &pos, true);
+	pos += scnprintf(buf + pos, len - pos, "\n");
+	hns3_dump_coal_info(h, buf, len, &pos, false);
+
+	return 0;
+}
+
+static const struct hns3_dbg_item tx_spare_info_items[] = {
+	{ "QUEUE_ID", 2 },
+	{ "COPYBREAK", 2 },
+	{ "LEN", 7 },
+	{ "NTU", 4 },
+	{ "NTC", 4 },
+	{ "LTC", 4 },
+	{ "DMA", 17 },
+};
+
+static void hns3_dbg_tx_spare_info(struct hns3_enet_ring *ring, char *buf,
+				   int len, u32 ring_num, int *pos)
+{
+	char data_str[ARRAY_SIZE(tx_spare_info_items)][HNS3_DBG_DATA_STR_LEN];
+	struct hns3_tx_spare *tx_spare = ring->tx_spare;
+	char *result[ARRAY_SIZE(tx_spare_info_items)];
+	char content[HNS3_DBG_INFO_LEN];
+	u32 i, j;
+
+	if (!tx_spare) {
+		*pos += scnprintf(buf + *pos, len - *pos,
+				  "tx spare buffer is not enabled\n");
+		return;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(tx_spare_info_items); i++)
+		result[i] = &data_str[i][0];
+
+	*pos += scnprintf(buf + *pos, len - *pos, "tx spare buffer info\n");
+	hns3_dbg_fill_content(content, sizeof(content), tx_spare_info_items,
+			      NULL, ARRAY_SIZE(tx_spare_info_items));
+	*pos += scnprintf(buf + *pos, len - *pos, "%s", content);
+
+	for (i = 0; i < ring_num; i++) {
+		j = 0;
+		sprintf(result[j++], "%8u", i);
+		sprintf(result[j++], "%9u", ring->tx_copybreak);
+		sprintf(result[j++], "%3u", tx_spare->len);
+		sprintf(result[j++], "%3u", tx_spare->next_to_use);
+		sprintf(result[j++], "%3u", tx_spare->next_to_clean);
+		sprintf(result[j++], "%3u", tx_spare->last_to_clean);
+		sprintf(result[j++], "%pad", &tx_spare->dma);
+		hns3_dbg_fill_content(content, sizeof(content),
+				      tx_spare_info_items,
+				      (const char **)result,
+				      ARRAY_SIZE(tx_spare_info_items));
+		*pos += scnprintf(buf + *pos, len - *pos, "%s", content);
+	}
 }
 
 static const struct hns3_dbg_item rx_queue_info_items[] = {
@@ -347,6 +596,7 @@ static const struct hns3_dbg_item rx_queue_info_items[] = {
 	{ "HEAD", 2 },
 	{ "FBDNUM", 2 },
 	{ "PKTNUM", 5 },
+	{ "COPYBREAK", 2 },
 	{ "RING_EN", 2 },
 	{ "RX_RING_EN", 2 },
 	{ "BASE_ADDR", 10 },
@@ -378,6 +628,7 @@ static void hns3_dump_rx_queue_info(struct hns3_enet_ring *ring,
 
 	sprintf(result[j++], "%6u", readl_relaxed(ring->tqp->io_base +
 		HNS3_RING_RX_RING_PKTNUM_RECORD_REG));
+	sprintf(result[j++], "%9u", ring->rx_copybreak);
 
 	sprintf(result[j++], "%7s", readl_relaxed(ring->tqp->io_base +
 		HNS3_RING_EN_REG) ? "on" : "off");
@@ -498,7 +749,7 @@ static int hns3_dbg_tx_queue_info(struct hnae3_handle *h,
 	char *result[ARRAY_SIZE(tx_queue_info_items)];
 	struct hns3_nic_priv *priv = h->priv;
 	char content[HNS3_DBG_INFO_LEN];
-	struct hns3_enet_ring *ring;
+	struct hns3_enet_ring *ring = NULL;
 	int pos = 0;
 	u32 i;
 
@@ -531,6 +782,8 @@ static int hns3_dbg_tx_queue_info(struct hnae3_handle *h,
 				      ARRAY_SIZE(tx_queue_info_items));
 		pos += scnprintf(buf + pos, len - pos, "%s", content);
 	}
+
+	hns3_dbg_tx_spare_info(ring, buf, len, h->kinfo.num_tqps, &pos);
 
 	return 0;
 }
@@ -613,6 +866,82 @@ static void hns3_dump_rx_bd_info(struct hns3_nic_priv *priv,
 	sprintf(result[j++], "NA");
 }
 
+static void
+hns3_dbg_dev_caps(struct hnae3_handle *h, char *buf, int len, int *pos)
+{
+	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(h->pdev);
+	const char * const str[] = {"no", "yes"};
+	unsigned long *caps = ae_dev->caps;
+	u32 i, state;
+
+	*pos += scnprintf(buf + *pos, len - *pos, "dev capability:\n");
+
+	for (i = 0; i < ARRAY_SIZE(hns3_dbg_cap); i++) {
+		state = test_bit(hns3_dbg_cap[i].cap_bit, caps);
+		*pos += scnprintf(buf + *pos, len - *pos, "%s: %s\n",
+				  hns3_dbg_cap[i].name, str[state]);
+	}
+
+	*pos += scnprintf(buf + *pos, len - *pos, "\n");
+}
+
+static void
+hns3_dbg_dev_specs(struct hnae3_handle *h, char *buf, int len, int *pos)
+{
+	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(h->pdev);
+	struct hnae3_dev_specs *dev_specs = &ae_dev->dev_specs;
+	struct hnae3_knic_private_info *kinfo = &h->kinfo;
+
+	*pos += scnprintf(buf + *pos, len - *pos, "dev_spec:\n");
+	*pos += scnprintf(buf + *pos, len - *pos, "MAC entry num: %u\n",
+			  dev_specs->mac_entry_num);
+	*pos += scnprintf(buf + *pos, len - *pos, "MNG entry num: %u\n",
+			  dev_specs->mng_entry_num);
+	*pos += scnprintf(buf + *pos, len - *pos, "MAX non tso bd num: %u\n",
+			  dev_specs->max_non_tso_bd_num);
+	*pos += scnprintf(buf + *pos, len - *pos, "RSS ind tbl size: %u\n",
+			  dev_specs->rss_ind_tbl_size);
+	*pos += scnprintf(buf + *pos, len - *pos, "RSS key size: %u\n",
+			  dev_specs->rss_key_size);
+	*pos += scnprintf(buf + *pos, len - *pos, "RSS size: %u\n",
+			  kinfo->rss_size);
+	*pos += scnprintf(buf + *pos, len - *pos, "Allocated RSS size: %u\n",
+			  kinfo->req_rss_size);
+	*pos += scnprintf(buf + *pos, len - *pos,
+			  "Task queue pairs numbers: %u\n",
+			  kinfo->num_tqps);
+	*pos += scnprintf(buf + *pos, len - *pos, "RX buffer length: %u\n",
+			  kinfo->rx_buf_len);
+	*pos += scnprintf(buf + *pos, len - *pos, "Desc num per TX queue: %u\n",
+			  kinfo->num_tx_desc);
+	*pos += scnprintf(buf + *pos, len - *pos, "Desc num per RX queue: %u\n",
+			  kinfo->num_rx_desc);
+	*pos += scnprintf(buf + *pos, len - *pos,
+			  "Total number of enabled TCs: %u\n",
+			  kinfo->tc_info.num_tc);
+	*pos += scnprintf(buf + *pos, len - *pos, "MAX INT QL: %u\n",
+			  dev_specs->int_ql_max);
+	*pos += scnprintf(buf + *pos, len - *pos, "MAX INT GL: %u\n",
+			  dev_specs->max_int_gl);
+	*pos += scnprintf(buf + *pos, len - *pos, "MAX TM RATE: %u\n",
+			  dev_specs->max_tm_rate);
+	*pos += scnprintf(buf + *pos, len - *pos, "MAX QSET number: %u\n",
+			  dev_specs->max_qset_num);
+	*pos += scnprintf(buf + *pos, len - *pos, "MAC statistics number: %u\n",
+			  dev_specs->mac_stats_num);
+}
+
+static int hns3_dbg_dev_info(struct hnae3_handle *h, char *buf, int len)
+{
+	int pos = 0;
+
+	hns3_dbg_dev_caps(h, buf, len, &pos);
+
+	hns3_dbg_dev_specs(h, buf, len, &pos);
+
+	return 0;
+}
+
 static int hns3_dbg_rx_bd_info(struct hns3_dbg_data *d, char *buf, int len)
 {
 	char data_str[ARRAY_SIZE(rx_bd_info_items)][HNS3_DBG_DATA_STR_LEN];
@@ -661,10 +990,10 @@ static const struct hns3_dbg_item tx_bd_info_items[] = {
 	{ "T_CS_VLAN_TSO", 2 },
 	{ "OT_VLAN_TAG", 3 },
 	{ "TV", 5 },
-	{ "OLT_VLAN_LEN", 2},
-	{ "PAYLEN_OL4CS", 2},
-	{ "BD_FE_SC_VLD", 2},
-	{ "MSS", 2},
+	{ "OLT_VLAN_LEN", 2 },
+	{ "PAYLEN_FDOP_OL4CS", 2 },
+	{ "BD_FE_SC_VLD", 2 },
+	{ "MSS_HW_CSUM", 0 },
 };
 
 static void hns3_dump_tx_bd_info(struct hns3_nic_priv *priv,
@@ -682,9 +1011,9 @@ static void hns3_dump_tx_bd_info(struct hns3_nic_priv *priv,
 	sprintf(result[j++], "%5u", le16_to_cpu(desc->tx.tv));
 	sprintf(result[j++], "%10u",
 		le32_to_cpu(desc->tx.ol_type_vlan_len_msec));
-	sprintf(result[j++], "%#x", le32_to_cpu(desc->tx.paylen));
+	sprintf(result[j++], "%#x", le32_to_cpu(desc->tx.paylen_fdop_ol4cs));
 	sprintf(result[j++], "%#x", le16_to_cpu(desc->tx.bdtp_fe_sc_vld_ra_ri));
-	sprintf(result[j++], "%5u", le16_to_cpu(desc->tx.mss));
+	sprintf(result[j++], "%5u", le16_to_cpu(desc->tx.mss_hw_csum));
 }
 
 static int hns3_dbg_tx_bd_info(struct hns3_dbg_data *d, char *buf, int len)
@@ -763,6 +1092,14 @@ static const struct hns3_dbg_func hns3_dbg_cmd_func[] = {
 	{
 		.cmd = HNAE3_DBG_CMD_TX_QUEUE_INFO,
 		.dbg_dump = hns3_dbg_tx_queue_info,
+	},
+	{
+		.cmd = HNAE3_DBG_CMD_DEV_INFO,
+		.dbg_dump = hns3_dbg_dev_info,
+	},
+	{
+		.cmd = HNAE3_DBG_CMD_COAL_INFO,
+		.dbg_dump = hns3_dbg_coal_info,
 	},
 };
 

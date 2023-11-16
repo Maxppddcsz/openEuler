@@ -225,6 +225,7 @@ enum tunable_id {
 	ETHTOOL_RX_COPYBREAK,
 	ETHTOOL_TX_COPYBREAK,
 	ETHTOOL_PFC_PREVENTION_TOUT, /* timeout in msecs */
+	ETHTOOL_TX_COPYBREAK_BUF_SIZE,
 	/*
 	 * Add your fresh new tunable attribute above and remember to update
 	 * tunable_strings[] in net/core/ethtool.c
@@ -259,6 +260,8 @@ struct ethtool_tunable {
 enum phy_tunable_id {
 	ETHTOOL_PHY_ID_UNSPEC,
 	ETHTOOL_PHY_DOWNSHIFT,
+	ETHTOOL_PHY_FAST_LINK_DOWN,
+	ETHTOOL_PHY_EDPD,
 	/*
 	 * Add your fresh new phy tunable attribute above and remember to update
 	 * phy_tunable_strings[] in net/core/ethtool.c
@@ -553,6 +556,78 @@ struct ethtool_pauseparam {
 	__u32	tx_pause;
 };
 
+/**
+ * enum ethtool_link_ext_state - link extended state
+ */
+enum ethtool_link_ext_state {
+	ETHTOOL_LINK_EXT_STATE_AUTONEG,
+	ETHTOOL_LINK_EXT_STATE_LINK_TRAINING_FAILURE,
+	ETHTOOL_LINK_EXT_STATE_LINK_LOGICAL_MISMATCH,
+	ETHTOOL_LINK_EXT_STATE_BAD_SIGNAL_INTEGRITY,
+	ETHTOOL_LINK_EXT_STATE_NO_CABLE,
+	ETHTOOL_LINK_EXT_STATE_CABLE_ISSUE,
+	ETHTOOL_LINK_EXT_STATE_EEPROM_ISSUE,
+	ETHTOOL_LINK_EXT_STATE_CALIBRATION_FAILURE,
+	ETHTOOL_LINK_EXT_STATE_POWER_BUDGET_EXCEEDED,
+	ETHTOOL_LINK_EXT_STATE_OVERHEAT,
+};
+
+/**
+ * enum ethtool_link_ext_substate_autoneg - more information in addition to
+ * ETHTOOL_LINK_EXT_STATE_AUTONEG.
+ */
+enum ethtool_link_ext_substate_autoneg {
+	ETHTOOL_LINK_EXT_SUBSTATE_AN_NO_PARTNER_DETECTED = 1,
+	ETHTOOL_LINK_EXT_SUBSTATE_AN_ACK_NOT_RECEIVED,
+	ETHTOOL_LINK_EXT_SUBSTATE_AN_NEXT_PAGE_EXCHANGE_FAILED,
+	ETHTOOL_LINK_EXT_SUBSTATE_AN_NO_PARTNER_DETECTED_FORCE_MODE,
+	ETHTOOL_LINK_EXT_SUBSTATE_AN_FEC_MISMATCH_DURING_OVERRIDE,
+	ETHTOOL_LINK_EXT_SUBSTATE_AN_NO_HCD,
+};
+
+/**
+ * enum ethtool_link_ext_substate_link_training - more information
+ * in addition to ETHTOOL_LINK_EXT_STATE_LINK_TRAINING_FAILURE.
+ */
+enum ethtool_link_ext_substate_link_training {
+	ETHTOOL_LINK_EXT_SUBSTATE_LT_KR_FRAME_LOCK_NOT_ACQUIRED = 1,
+	ETHTOOL_LINK_EXT_SUBSTATE_LT_KR_LINK_INHIBIT_TIMEOUT,
+	ETHTOOL_LINK_EXT_SUBSTATE_LT_KR_LINK_PARTNER_DID_NOT_SET_RECEIVER_READY,
+	ETHTOOL_LINK_EXT_SUBSTATE_LT_REMOTE_FAULT,
+};
+
+/**
+ * enum ethtool_link_ext_substate_logical_mismatch - more information
+ * in addition to ETHTOOL_LINK_EXT_STATE_LINK_LOGICAL_MISMATCH.
+ */
+enum ethtool_link_ext_substate_link_logical_mismatch {
+	ETHTOOL_LINK_EXT_SUBSTATE_LLM_PCS_DID_NOT_ACQUIRE_BLOCK_LOCK = 1,
+	ETHTOOL_LINK_EXT_SUBSTATE_LLM_PCS_DID_NOT_ACQUIRE_AM_LOCK,
+	ETHTOOL_LINK_EXT_SUBSTATE_LLM_PCS_DID_NOT_GET_ALIGN_STATUS,
+	ETHTOOL_LINK_EXT_SUBSTATE_LLM_FC_FEC_IS_NOT_LOCKED,
+	ETHTOOL_LINK_EXT_SUBSTATE_LLM_RS_FEC_IS_NOT_LOCKED,
+};
+
+/**
+ * enum ethtool_link_ext_substate_bad_signal_integrity - more information in
+ * addition to ETHTOOL_LINK_EXT_STATE_BAD_SIGNAL_INTEGRITY.
+ */
+enum ethtool_link_ext_substate_bad_signal_integrity {
+	ETHTOOL_LINK_EXT_SUBSTATE_BSI_LARGE_NUMBER_OF_PHYSICAL_ERRORS = 1,
+	ETHTOOL_LINK_EXT_SUBSTATE_BSI_UNSUPPORTED_RATE,
+	ETHTOOL_LINK_EXT_SUBSTATE_BSI_SERDES_REFERENCE_CLOCK_LOST,
+	ETHTOOL_LINK_EXT_SUBSTATE_BSI_SERDES_ALOS,
+};
+
+/**
+ * enum ethtool_link_ext_substate_cable_issue - more information in
+ * addition to ETHTOOL_LINK_EXT_STATE_CABLE_ISSUE.
+ */
+enum ethtool_link_ext_substate_cable_issue {
+	ETHTOOL_LINK_EXT_SUBSTATE_CI_UNSUPPORTED_CABLE = 1,
+	ETHTOOL_LINK_EXT_SUBSTATE_CI_CABLE_TEST_FAILURE,
+};
+
 #define ETH_GSTRING_LEN		32
 
 /**
@@ -567,6 +642,7 @@ struct ethtool_pauseparam {
  * @ETH_SS_RSS_HASH_FUNCS: RSS hush function names
  * @ETH_SS_PHY_STATS: Statistic names, for use with %ETHTOOL_GPHYSTATS
  * @ETH_SS_PHY_TUNABLES: PHY tunable names
+ * @ETH_SS_LINK_MODES: link mode names
  */
 enum ethtool_stringset {
 	ETH_SS_TEST		= 0,
@@ -578,6 +654,7 @@ enum ethtool_stringset {
 	ETH_SS_TUNABLES,
 	ETH_SS_PHY_STATS,
 	ETH_SS_PHY_TUNABLES,
+	ETH_SS_LINK_MODES,
 };
 
 /**
@@ -774,6 +851,28 @@ struct ethtool_usrip4_spec {
 };
 
 /**
+ * struct ethtool_vxlan4_spec - general flow specification for VxLAN IPv4
+ * @vni: VxLAN network identifier
+ * @dst: Inner destination eth addr
+ * @src: Inner source eth addr
+ * @eth_type: Inner ethernet type
+ * @tos: Inner type-of-service
+ * @l4_proto: Inner transport protocol number
+ * @ip4src: Inner source host
+ * @ip4dst: Inner destination host
+ */
+struct ethtool_vxlan4_spec {
+	__be32	vni;
+	__u8	dst[ETH_ALEN];
+	__u8	src[ETH_ALEN];
+	__be16	eth_type;
+	__u8	tos;
+	__u8	l4_proto;
+	__be32	ip4src;
+	__be32	ip4dst;
+};
+
+/**
  * struct ethtool_tcpip6_spec - flow specification for TCP/IPv6 etc.
  * @ip6src: Source host
  * @ip6dst: Destination host
@@ -823,6 +922,28 @@ struct ethtool_usrip6_spec {
 	__u8    l4_proto;
 };
 
+/**
+ * struct ethtool_vxlan6_spec - general flow specification for VxLAN IPv6
+ * @vni: VxLAN network identifier
+ * @dst: Inner destination eth addr
+ * @src: Inner source eth addr
+ * @eth_type: Inner ethernet type
+ * @tclass: Inner traffic Class
+ * @l4_proto: Inner transport protocol number
+ * @ip6src: Inner source host
+ * @ip6dst: Inner destination host
+ */
+struct ethtool_vxlan6_spec {
+	__be32	vni;
+	__u8	dst[ETH_ALEN];
+	__u8	src[ETH_ALEN];
+	__be16	eth_type;
+	__u8	tclass;
+	__u8	l4_proto;
+	__be32	ip6src[4];
+	__be32	ip6dst[4];
+};
+
 union ethtool_flow_union {
 	struct ethtool_tcpip4_spec		tcp_ip4_spec;
 	struct ethtool_tcpip4_spec		udp_ip4_spec;
@@ -838,6 +959,10 @@ union ethtool_flow_union {
 	struct ethtool_usrip6_spec		usr_ip6_spec;
 	struct ethhdr				ether_spec;
 	__u8					hdata[52];
+#ifndef __GENKSYMS__
+	struct ethtool_vxlan4_spec  vxlan_ip4_spec;
+	struct ethtool_vxlan6_spec  vxlan_ip6_spec;
+#endif
 };
 
 /**
@@ -1295,6 +1420,7 @@ enum ethtool_fec_config_bits {
 	ETHTOOL_FEC_OFF_BIT,
 	ETHTOOL_FEC_RS_BIT,
 	ETHTOOL_FEC_BASER_BIT,
+	ETHTOOL_FEC_LLRS_BIT,
 };
 
 #define ETHTOOL_FEC_NONE		(1 << ETHTOOL_FEC_NONE_BIT)
@@ -1302,6 +1428,7 @@ enum ethtool_fec_config_bits {
 #define ETHTOOL_FEC_OFF			(1 << ETHTOOL_FEC_OFF_BIT)
 #define ETHTOOL_FEC_RS			(1 << ETHTOOL_FEC_RS_BIT)
 #define ETHTOOL_FEC_BASER		(1 << ETHTOOL_FEC_BASER_BIT)
+#define ETHTOOL_FEC_LLRS		(1 << ETHTOOL_FEC_LLRS_BIT)
 
 /* CMDs currently supported */
 #define ETHTOOL_GSET		0x00000001 /* DEPRECATED, Get settings.
@@ -1457,15 +1584,57 @@ enum ethtool_link_mode_bit_indices {
 	ETHTOOL_LINK_MODE_FEC_NONE_BIT	= 49,
 	ETHTOOL_LINK_MODE_FEC_RS_BIT	= 50,
 	ETHTOOL_LINK_MODE_FEC_BASER_BIT	= 51,
-
+	ETHTOOL_LINK_MODE_50000baseKR_Full_BIT		 = 52,
+	ETHTOOL_LINK_MODE_50000baseSR_Full_BIT		 = 53,
+	ETHTOOL_LINK_MODE_50000baseCR_Full_BIT		 = 54,
+	ETHTOOL_LINK_MODE_50000baseLR_ER_FR_Full_BIT	 = 55,
+	ETHTOOL_LINK_MODE_50000baseDR_Full_BIT		 = 56,
+	ETHTOOL_LINK_MODE_100000baseKR2_Full_BIT	 = 57,
+	ETHTOOL_LINK_MODE_100000baseSR2_Full_BIT	 = 58,
+	ETHTOOL_LINK_MODE_100000baseCR2_Full_BIT	 = 59,
+	ETHTOOL_LINK_MODE_100000baseLR2_ER2_FR2_Full_BIT = 60,
+	ETHTOOL_LINK_MODE_100000baseDR2_Full_BIT	 = 61,
+	ETHTOOL_LINK_MODE_200000baseKR4_Full_BIT	 = 62,
+	ETHTOOL_LINK_MODE_200000baseSR4_Full_BIT	 = 63,
+	ETHTOOL_LINK_MODE_200000baseLR4_ER4_FR4_Full_BIT = 64,
+	ETHTOOL_LINK_MODE_200000baseDR4_Full_BIT	 = 65,
+	ETHTOOL_LINK_MODE_200000baseCR4_Full_BIT	 = 66,
+	ETHTOOL_LINK_MODE_100baseT1_Full_BIT		 = 67,
+	ETHTOOL_LINK_MODE_1000baseT1_Full_BIT		 = 68,
+	ETHTOOL_LINK_MODE_400000baseKR8_Full_BIT	 = 69,
+	ETHTOOL_LINK_MODE_400000baseSR8_Full_BIT	 = 70,
+	ETHTOOL_LINK_MODE_400000baseLR8_ER8_FR8_Full_BIT = 71,
+	ETHTOOL_LINK_MODE_400000baseDR8_Full_BIT	 = 72,
+	ETHTOOL_LINK_MODE_400000baseCR8_Full_BIT	 = 73,
+	ETHTOOL_LINK_MODE_FEC_LLRS_BIT			 = 74,
+	ETHTOOL_LINK_MODE_100000baseKR_Full_BIT		 = 75,
+	ETHTOOL_LINK_MODE_100000baseSR_Full_BIT		 = 76,
+	ETHTOOL_LINK_MODE_100000baseLR_ER_FR_Full_BIT	 = 77,
+	ETHTOOL_LINK_MODE_100000baseCR_Full_BIT		 = 78,
+	ETHTOOL_LINK_MODE_100000baseDR_Full_BIT		 = 79,
+	ETHTOOL_LINK_MODE_200000baseKR2_Full_BIT	 = 80,
+	ETHTOOL_LINK_MODE_200000baseSR2_Full_BIT	 = 81,
+	ETHTOOL_LINK_MODE_200000baseLR2_ER2_FR2_Full_BIT = 82,
+	ETHTOOL_LINK_MODE_200000baseDR2_Full_BIT	 = 83,
+	ETHTOOL_LINK_MODE_200000baseCR2_Full_BIT	 = 84,
+	ETHTOOL_LINK_MODE_400000baseKR4_Full_BIT	 = 85,
+	ETHTOOL_LINK_MODE_400000baseSR4_Full_BIT	 = 86,
+	ETHTOOL_LINK_MODE_400000baseLR4_ER4_FR4_Full_BIT = 87,
+	ETHTOOL_LINK_MODE_400000baseDR4_Full_BIT	 = 88,
+	ETHTOOL_LINK_MODE_400000baseCR4_Full_BIT	 = 89,
+	ETHTOOL_LINK_MODE_100baseFX_Half_BIT		 = 90,
+	ETHTOOL_LINK_MODE_100baseFX_Full_BIT		 = 91,
 	/* Last allowed bit for __ETHTOOL_LINK_MODE_LEGACY_MASK is bit
 	 * 31. Please do NOT define any SUPPORTED_* or ADVERTISED_*
 	 * macro for bits > 31. The only way to use indices > 31 is to
 	 * use the new ETHTOOL_GLINKSETTINGS/ETHTOOL_SLINKSETTINGS API.
 	 */
-
+#ifndef __GENKSYMS__
+	__ETHTOOL_LINK_MODE_MASK_NBITS,
+#else
 	__ETHTOOL_LINK_MODE_LAST
 	  = ETHTOOL_LINK_MODE_FEC_BASER_BIT,
+#endif
 };
 
 #define __ETHTOOL_LINK_MODE_LEGACY_MASK(base_name)	\
@@ -1573,6 +1742,8 @@ enum ethtool_link_mode_bit_indices {
 #define SPEED_50000		50000
 #define SPEED_56000		56000
 #define SPEED_100000		100000
+#define SPEED_200000		200000
+#define SPEED_400000		400000
 
 #define SPEED_UNKNOWN		-1
 
@@ -1597,6 +1768,18 @@ static inline int ethtool_validate_duplex(__u8 duplex)
 
 	return 0;
 }
+
+#define MASTER_SLAVE_CFG_UNSUPPORTED			0
+#define MASTER_SLAVE_CFG_UNKNOWN 				1
+#define MASTER_SLAVE_CFG_MASTER_PREFERRED		2
+#define MASTER_SLAVE_CFG_SLAVE_PREFERRED		3
+#define MASTER_SLAVE_CFG_MASTER_FORCE			4
+#define MASTER_SLAVE_CFG_SLAVE_FORCE			5
+#define MASTER_SLAVE_STATE_UNSUPPORTED			0
+#define MASTER_SLAVE_STATE_UNKNOWN				1
+#define MASTER_SLAVE_STATE_MASTER				2
+#define MASTER_SLAVE_STATE_SLAVE				3
+#define MASTER_SLAVE_STATE_ERR					4
 
 /* Which connector port. */
 #define PORT_TP			0x00
@@ -1656,6 +1839,8 @@ static inline int ethtool_validate_duplex(__u8 duplex)
 #define	IPV4_FLOW	0x10	/* hash only */
 #define	IPV6_FLOW	0x11	/* hash only */
 #define	ETHER_FLOW	0x12	/* spec only (ether_spec) */
+#define	VXLAN_V4_FLOW	0x43	/* spec only (vxlan_ip4_spec) */
+#define	VXLAN_V6_FLOW	0x44	/* spec only (vxlan_ip6_spec) */
 /* Flag to enable additional fields in struct ethtool_rx_flow_spec */
 #define	FLOW_EXT	0x80000000
 #define	FLOW_MAC_EXT	0x40000000
@@ -1836,7 +2021,13 @@ struct ethtool_link_settings {
 	__u8	eth_tp_mdix_ctrl;
 	__s8	link_mode_masks_nwords;
 	__u8	transceiver;
-	__u8	reserved1[3];
+#ifndef __GENKSYMS__
+	__u8    master_slave_cfg;
+	__u8    master_slave_state;
+	__u8    reserved1[1];
+#else
+	__u8   reserved1[3];
+#endif
 	__u32	reserved[7];
 	__u32	link_mode_masks[0];
 	/* layout of link_mode_masks fields:

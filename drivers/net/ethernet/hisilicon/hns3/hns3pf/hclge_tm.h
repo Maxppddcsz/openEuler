@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0+
+/* SPDX-License-Identifier: GPL-2.0+ */
 // Copyright (c) 2016-2017 Hisilicon Limited.
 
 #ifndef __HCLGE_TM_H
@@ -17,10 +17,18 @@
 
 /* SP or DWRR */
 #define HCLGE_TM_TX_SCHD_DWRR_MSK	BIT(0)
-#define HCLGE_TM_TX_SCHD_SP_MSK		(0xFE)
+#define HCLGE_TM_TX_SCHD_SP_MSK		0xFE
+
+#define HCLGE_ETHER_MAX_RATE   100000
 
 #define HCLGE_TM_PF_MAX_PRI_NUM		8
 #define HCLGE_TM_PF_MAX_QSET_NUM	8
+
+#define HCLGE_DSCP_MAP_TC_BD_NUM	2
+#define HCLGE_DSCP_TC_SHIFT(n)		(((n) & 1) * 4)
+
+#define HCLGE_TM_FLUSH_TIME_MS	10
+#define HCLGE_TM_FLUSH_EN_MSK	BIT(0)
 
 struct hclge_pg_to_pri_link_cmd {
 	u8 pg_id;
@@ -132,6 +140,9 @@ struct hclge_bp_to_qs_map_cmd {
 	u32 rsvd1;
 };
 
+#define HCLGE_PFC_DISABLE	0
+#define HCLGE_PFC_TX_RX_DISABLE	0
+
 struct hclge_pfc_en_cmd {
 	u8 tx_rx_en_bitmap;
 	u8 pri_en_bitmap;
@@ -166,13 +177,19 @@ struct hclge_tm_shaper_para {
 	u8 flag;
 };
 
+struct hclge_shaper_ir_para {
+	u8 ir_b; /* IR_B parameter of IR shaper */
+	u8 ir_u; /* IR_U parameter of IR shaper */
+	u8 ir_s; /* IR_S parameter of IR shaper */
+};
+
 #define hclge_tm_set_field(dest, string, val) \
 			   hnae3_set_field((dest), \
 			   (HCLGE_TM_SHAP_##string##_MSK), \
 			   (HCLGE_TM_SHAP_##string##_LSH), val)
 #define hclge_tm_get_field(src, string) \
-			hnae3_get_field((src), (HCLGE_TM_SHAP_##string##_MSK), \
-				       (HCLGE_TM_SHAP_##string##_LSH))
+			hnae3_get_field((src), HCLGE_TM_SHAP_##string##_MSK, \
+					HCLGE_TM_SHAP_##string##_LSH)
 
 int hclge_tm_schd_init(struct hclge_dev *hdev);
 int hclge_tm_vport_map_update(struct hclge_dev *hdev);
@@ -184,7 +201,12 @@ void hclge_tm_pfc_info_update(struct hclge_dev *hdev);
 int hclge_tm_dwrr_cfg(struct hclge_dev *hdev);
 int hclge_tm_init_hw(struct hclge_dev *hdev, bool init);
 int hclge_mac_pause_en_cfg(struct hclge_dev *hdev, bool tx, bool rx);
+int hclge_pfc_pause_en_cfg(struct hclge_dev *hdev, u8 tx_rx_bitmap,
+			   u8 pfc_bitmap);
+int hclge_pause_param_cfg(struct hclge_dev *hdev, const u8 *addr,
+			  u8 pause_trans_gap, u16 pause_trans_time);
 int hclge_pause_addr_cfg(struct hclge_dev *hdev, const u8 *mac_addr);
+int hclge_mac_pause_setup_hw(struct hclge_dev *hdev);
 void hclge_pfc_rx_stats_get(struct hclge_dev *hdev, u64 *stats);
 void hclge_pfc_tx_stats_get(struct hclge_dev *hdev, u64 *stats);
 int hclge_tm_qs_shaper_cfg(struct hclge_vport *vport, int max_tx_rate);
@@ -212,4 +234,7 @@ int hclge_tm_get_pg_shaper(struct hclge_dev *hdev, u8 pg_id,
 			   struct hclge_tm_shaper_para *para);
 int hclge_tm_get_port_shaper(struct hclge_dev *hdev,
 			     struct hclge_tm_shaper_para *para);
+int hclge_up_to_tc_map(struct hclge_dev *hdev);
+int hclge_dscp_to_tc_map(struct hclge_dev *hdev);
+int hclge_tm_flush_cfg(struct hclge_dev *hdev, bool enable);
 #endif

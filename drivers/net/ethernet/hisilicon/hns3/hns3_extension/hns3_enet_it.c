@@ -12,7 +12,6 @@
 #include "hns3_enet_it.h"
 #include "hns3_enet.h"
 
-extern const char hns3_driver_string[];
 extern const char hns3_copyright[];
 
 #ifdef CONFIG_IT_VALIDATION
@@ -21,7 +20,9 @@ extern struct net_device_ops hns3_nic_netdev_ops;
 extern const struct hnae3_client_ops client_ops;
 extern struct hnae3_client client;
 extern struct pci_driver hns3_driver;
-extern const char hns3_driver_name[];
+static const char hns3_driver_name[] = "hns3";
+static const char hns3_driver_string[] =
+			"Hisilicon Ethernet Network Driver for Hip08 Family";
 
 #if (KERNEL_VERSION(4, 19, 0) > LINUX_VERSION_CODE)
 u16 hns3_nic_select_queue_it(struct net_device *ndev, struct sk_buff *skb,
@@ -50,9 +51,6 @@ static int __init hns3_init_module_it(void)
 
 	pr_info("%s: %s - version\n", hns3_driver_name, hns3_driver_string);
 	pr_info("%s: %s\n", hns3_driver_name, hns3_copyright);
-
-	strncpy(hns3_driver_version, HNS3_MOD_VERSION,
-		strlen(hns3_driver_version));
 
 	client.type = HNAE3_CLIENT_KNIC;
 	snprintf(client.name, HNAE3_CLIENT_NAME_LENGTH, "%s", hns3_driver_name);

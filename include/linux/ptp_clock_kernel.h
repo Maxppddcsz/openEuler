@@ -39,6 +39,15 @@ struct ptp_clock_request {
 };
 
 struct system_device_crosststamp;
+
+/**
+ * struct ptp_system_timestamp - system time corresponding to a PHC timestamp
+ */
+struct ptp_system_timestamp {
+	struct timespec64 pre_ts;
+	struct timespec64 post_ts;
+};
+
 /**
  * struct ptp_clock_info - decribes a PTP hardware clock
  *
@@ -73,6 +82,8 @@ struct system_device_crosststamp;
  *            parameter delta: Desired change in nanoseconds.
  *
  * @gettime64:  Reads the current time from the hardware clock.
+ *              This method is deprecated.  New drivers should implement
+ *              the @gettimex64 method instead.
  *              parameter ts: Holds the result.
  *
  * @getcrosststamp:  Reads the current time from the hardware clock and
@@ -123,6 +134,10 @@ struct ptp_clock_info {
 	int (*adjfine)(struct ptp_clock_info *ptp, long scaled_ppm);
 	int (*adjfreq)(struct ptp_clock_info *ptp, s32 delta);
 	int (*adjtime)(struct ptp_clock_info *ptp, s64 delta);
+#ifndef __GENKSYMS__
+	int (*gettimex64)(struct ptp_clock_info *ptp, struct timespec64 *ts,
+			  struct ptp_system_timestamp *sts);
+#endif
 	int (*gettime64)(struct ptp_clock_info *ptp, struct timespec64 *ts);
 	int (*getcrosststamp)(struct ptp_clock_info *ptp,
 			      struct system_device_crosststamp *cts);

@@ -261,5 +261,9 @@ do {									\
 })
 #endif
 
+#ifndef io_stop_wc
+#define io_stop_wc() do { } while (0)
+#endif
+
 #endif /* !__ASSEMBLY__ */
 #endif /* __ASM_GENERIC_BARRIER_H */

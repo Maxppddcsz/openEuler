@@ -3373,10 +3373,10 @@ static int pqi_alloc_admin_queues(struct pqi_ctrl_info *ctrl_info)
 		PQI_QUEUE_ELEMENT_ARRAY_ALIGNMENT;
 
 	ctrl_info->admin_queue_memory_base =
-		dma_zalloc_coherent(&ctrl_info->pci_dev->dev,
-			alloc_length,
-			&ctrl_info->admin_queue_memory_base_dma_handle,
-			GFP_KERNEL);
+		dma_alloc_coherent(&ctrl_info->pci_dev->dev,
+			      	   alloc_length,
+				   &ctrl_info->admin_queue_memory_base_dma_handle,
+				   GFP_KERNEL);
 
 	if (!ctrl_info->admin_queue_memory_base)
 		return -ENOMEM;
