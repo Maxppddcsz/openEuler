@@ -16,6 +16,7 @@
 #include <linux/kabi.h>
 #include <linux/bitmap.h>
 #include <linux/compat.h>
+#include <linux/netlink.h>
 #include <uapi/linux/ethtool.h>
 
 #ifdef CONFIG_COMPAT
@@ -71,6 +72,22 @@ enum {
 	ETH_RSS_HASH_FUNCS_COUNT
 };
 
+/**
+ * struct kernel_ethtool_ringparam - RX/TX ring configuration
+ * @rx_buf_len: Current length of buffers on the rx ring.
+ */
+struct kernel_ethtool_ringparam {
+	u32 rx_buf_len;
+};
+
+/**
+ * enum ethtool_supported_ring_param - indicator caps for setting ring params
+ * @ETHTOOL_RING_USE_RX_BUF_LEN: capture for setting rx_buf_len
+ */
+enum ethtool_supported_ring_param {
+	ETHTOOL_RING_USE_RX_BUF_LEN = BIT(0),
+};
+
 #define __ETH_RSS_HASH_BIT(bit)	((u32)1 << (bit))
 #define __ETH_RSS_HASH(name)	__ETH_RSS_HASH_BIT(ETH_RSS_HASH_##name##_BIT)
 
@@ -88,6 +105,21 @@ u32 ethtool_op_get_link(struct net_device *dev);
 int ethtool_op_get_ts_info(struct net_device *dev, struct ethtool_ts_info *eti);
 
 /**
+ * struct ethtool_link_ext_state_info - link extended state and substate.
+ */
+struct ethtool_link_ext_state_info {
+	enum ethtool_link_ext_state link_ext_state;
+	union {
+		enum ethtool_link_ext_substate_autoneg autoneg;
+		enum ethtool_link_ext_substate_link_training link_training;
+		enum ethtool_link_ext_substate_link_logical_mismatch link_logical_mismatch;
+		enum ethtool_link_ext_substate_bad_signal_integrity bad_signal_integrity;
+		enum ethtool_link_ext_substate_cable_issue cable_issue;
+		u8 __link_ext_substate;
+	};
+};
+
+/**
  * ethtool_rxfh_indir_default - get default value for RX flow hash indirection
  * @index: Index in RX flow hash indirection table
  * @n_rx_rings: Number of RX rings to use
@@ -98,10 +130,6 @@ static inline u32 ethtool_rxfh_indir_default(u32 index, u32 n_rx_rings)
 {
 	return index % n_rx_rings;
 }
-
-/* number of link mode bits/ulongs handled internally by kernel */
-#define __ETHTOOL_LINK_MODE_MASK_NBITS			\
-	(__ETHTOOL_LINK_MODE_LAST + 1)
 
 /* declare a link mode bitmap */
 #define __ETHTOOL_DECLARE_LINK_MODE_MASK(name)		\
@@ -182,16 +210,87 @@ void ethtool_convert_legacy_u32_to_link_mode(unsigned long *dst,
 bool ethtool_convert_link_mode_to_legacy_u32(u32 *legacy_u32,
 				     const unsigned long *src);
 
+#define ETHTOOL_COALESCE_RX_USECS              BIT(0)
+#define ETHTOOL_COALESCE_RX_MAX_FRAMES         BIT(1)
+#define ETHTOOL_COALESCE_RX_USECS_IRQ          BIT(2)
+#define ETHTOOL_COALESCE_RX_MAX_FRAMES_IRQ     BIT(3)
+#define ETHTOOL_COALESCE_TX_USECS              BIT(4)
+#define ETHTOOL_COALESCE_TX_MAX_FRAMES         BIT(5)
+#define ETHTOOL_COALESCE_TX_USECS_IRQ          BIT(6)
+#define ETHTOOL_COALESCE_TX_MAX_FRAMES_IRQ     BIT(7)
+#define ETHTOOL_COALESCE_STATS_BLOCK_USECS     BIT(8)
+#define ETHTOOL_COALESCE_USE_ADAPTIVE_RX       BIT(9)
+#define ETHTOOL_COALESCE_USE_ADAPTIVE_TX       BIT(10)
+#define ETHTOOL_COALESCE_PKT_RATE_LOW          BIT(11)
+#define ETHTOOL_COALESCE_RX_USECS_LOW          BIT(12)
+#define ETHTOOL_COALESCE_RX_MAX_FRAMES_LOW     BIT(13)
+#define ETHTOOL_COALESCE_TX_USECS_LOW          BIT(14)
+#define ETHTOOL_COALESCE_TX_MAX_FRAMES_LOW     BIT(15)
+#define ETHTOOL_COALESCE_PKT_RATE_HIGH         BIT(16)
+#define ETHTOOL_COALESCE_RX_USECS_HIGH         BIT(17)
+#define ETHTOOL_COALESCE_RX_MAX_FRAMES_HIGH    BIT(18)
+#define ETHTOOL_COALESCE_TX_USECS_HIGH         BIT(19)
+#define ETHTOOL_COALESCE_TX_MAX_FRAMES_HIGH    BIT(20)
+#define ETHTOOL_COALESCE_RATE_SAMPLE_INTERVAL  BIT(21)
+
+#define ETHTOOL_COALESCE_USECS						\
+	(ETHTOOL_COALESCE_RX_USECS | ETHTOOL_COALESCE_TX_USECS)
+#define ETHTOOL_COALESCE_MAX_FRAMES					\
+	(ETHTOOL_COALESCE_RX_MAX_FRAMES | ETHTOOL_COALESCE_TX_MAX_FRAMES)
+#define ETHTOOL_COALESCE_USECS_IRQ					\
+	(ETHTOOL_COALESCE_RX_USECS_IRQ | ETHTOOL_COALESCE_TX_USECS_IRQ)
+#define ETHTOOL_COALESCE_MAX_FRAMES_IRQ					\
+	(ETHTOOL_COALESCE_RX_MAX_FRAMES_IRQ |				\
+	ETHTOOL_COALESCE_TX_MAX_FRAMES_IRQ)
+#define ETHTOOL_COALESCE_USE_ADAPTIVE					\
+	(ETHTOOL_COALESCE_USE_ADAPTIVE_RX | ETHTOOL_COALESCE_USE_ADAPTIVE_TX)
+
+
+#define ETHTOOL_STAT_NOT_SET	(~0ULL)
+
+static inline void ethtool_stats_init(u64 *stats, unsigned int n)
+{
+	while (n--)
+		stats[n] = ETHTOOL_STAT_NOT_SET;
+}
+
+#define ETHTOOL_MAX_LANES	8
+
+/**
+ * struct ethtool_fec_stats - statistics for IEEE 802.3 FEC
+ * @corrected_blocks: number of received blocks corrected by FEC
+ *	Reported to user space as %ETHTOOL_A_FEC_STAT_CORRECTED.
+ *
+ *	Equivalent to `30.5.1.1.17 aFECCorrectedBlocks` from the standard.
+ *
+ * @uncorrectable_blocks: number of received blocks FEC was not able to correct
+ *	Reported to user space as %ETHTOOL_A_FEC_STAT_UNCORR.
+ *
+ *	Equivalent to `30.5.1.1.18 aFECUncorrectableBlocks` from the standard.
+ *
+ * @corrected_bits: number of bits corrected by FEC
+ *	Similar to @corrected_blocks but counts individual bit changes,
+ *	not entire FEC data blocks. This is a non-standard statistic.
+ *	Reported to user space as %ETHTOOL_A_FEC_STAT_CORR_BITS.
+ *
+ * @lane: per-lane/PCS-instance counts as defined by the standard
+ * @total: error counts for the entire port, for drivers incapable of reporting
+ *	per-lane stats
+ *
+ * Drivers should fill in either only total or per-lane statistics, core
+ * will take care of adding lane values up to produce the total.
+ */
+struct ethtool_fec_stats {
+	struct ethtool_fec_stat {
+		u64 total;
+		u64 lanes[ETHTOOL_MAX_LANES];
+	} corrected_blocks, uncorrectable_blocks, corrected_bits;
+};
+
 /**
  * struct ethtool_ops - optional netdev operations
- * @get_settings: DEPRECATED, use %get_link_ksettings/%set_link_ksettings
- *	API. Get various device settings including Ethernet link
- *	settings. The @cmd parameter is expected to have been cleared
- *	before get_settings is called. Returns a negative error code
- *	or zero.
- * @set_settings: DEPRECATED, use %get_link_ksettings/%set_link_ksettings
- *	API. Set various device settings including Ethernet link
- *	settings.  Returns a negative error code or zero.
+ * @supported_coalesce_params: supported types of interrupt coalescing.
+ * @supported_ring_params: supported ring params.
  * @get_drvinfo: Report driver/device information.  Should only set the
  *	@driver, @version, @fw_version and @bus_info fields.  If not
  *	implemented, the @driver and @bus_info fields will be filled in
@@ -220,8 +319,9 @@ bool ethtool_convert_link_mode_to_legacy_u32(u32 *legacy_u32,
  *	or zero.
  * @get_coalesce: Get interrupt coalescing parameters.  Returns a negative
  *	error code or zero.
- * @set_coalesce: Set interrupt coalescing parameters.  Returns a negative
- *	error code or zero.
+ * @set_coalesce: Set interrupt coalescing parameters.  Supported coalescing
+ *     types should be set in @supported_coalesce_params.
+ *     Returns a negative error code or zero.
  * @get_ringparam: Report ring sizes
  * @set_ringparam: Set ring sizes.  Returns a negative error code or zero.
  * @get_pauseparam: Report pause parameters
@@ -291,26 +391,29 @@ bool ethtool_convert_link_mode_to_legacy_u32(u32 *legacy_u32,
  * @get_per_queue_coalesce: Get interrupt coalescing parameters per queue.
  *	It must check that the given queue number is valid. If neither a RX nor
  *	a TX queue has this number, return -EINVAL. If only a RX queue or a TX
- *	queue has this number, set the inapplicable fields to ~0 and return 0.
+ *     queue has this number, ignore the inapplicable fields. Supported
+ *     coalescing types should be set in @supported_coalesce_params.
  *	Returns a negative error code or zero.
  * @set_per_queue_coalesce: Set interrupt coalescing parameters per queue.
  *	It must check that the given queue number is valid. If neither a RX nor
  *	a TX queue has this number, return -EINVAL. If only a RX queue or a TX
  *	queue has this number, ignore the inapplicable fields.
  *	Returns a negative error code or zero.
- * @get_link_ksettings: When defined, takes precedence over the
- *	%get_settings method. Get various device settings
- *	including Ethernet link settings. The %cmd and
- *	%link_mode_masks_nwords fields should be ignored (use
- *	%__ETHTOOL_LINK_MODE_MASK_NBITS instead of the latter), any
- *	change to them will be overwritten by kernel. Returns a
- *	negative error code or zero.
- * @set_link_ksettings: When defined, takes precedence over the
- *	%set_settings method. Set various device settings including
- *	Ethernet link settings. The %cmd and %link_mode_masks_nwords
- *	fields should be ignored (use %__ETHTOOL_LINK_MODE_MASK_NBITS
- *	instead of the latter), any change to them will be overwritten
- *	by kernel. Returns a negative error code or zero.
+ * @get_link_ksettings: Get various device settings including Ethernet link
+ *	settings. The %cmd and %link_mode_masks_nwords fields should be
+ *	ignored (use %__ETHTOOL_LINK_MODE_MASK_NBITS instead of the latter),
+ *	any change to them will be overwritten by kernel. Returns a negative
+ *	error code or zero.
+ * @set_link_ksettings: Set various device settings including Ethernet link
+ *	settings. The %cmd and %link_mode_masks_nwords fields should be
+ *	ignored (use %__ETHTOOL_LINK_MODE_MASK_NBITS instead of the latter),
+ *	any change to them will be overwritten by kernel. Returns a negative
+ *	error code or zero.
+ * @get_fec_stats: Report FEC statistics.
+ *	Core will sum up per-lane stats to get the total.
+ *	Drivers must not zero statistics which they don't report. The stats
+ *	structure is initialized to ETHTOOL_STAT_NOT_SET indicating driver does
+ *	not report statistics.
  * @get_fecparam: Get the network device Forward Error Correction parameters.
  * @set_fecparam: Set the network device Forward Error Correction parameters.
  * @get_ethtool_phy_stats: Return extended statistics about the PHY device.
@@ -348,10 +451,21 @@ struct ethtool_ops {
 			      struct ethtool_eeprom *, u8 *);
 	int	(*get_coalesce)(struct net_device *, struct ethtool_coalesce *);
 	int	(*set_coalesce)(struct net_device *, struct ethtool_coalesce *);
+#ifdef __GENKSYMS__
+	void    (*get_ringparam)(struct net_device *,
+				 struct ethtool_ringparam *);
+	int     (*set_ringparam)(struct net_device *,
+				 struct ethtool_ringparam *);
+#else
 	void	(*get_ringparam)(struct net_device *,
-				 struct ethtool_ringparam *);
+				 struct ethtool_ringparam *,
+				 struct kernel_ethtool_ringparam *,
+				 struct netlink_ext_ack *);
 	int	(*set_ringparam)(struct net_device *,
-				 struct ethtool_ringparam *);
+				 struct ethtool_ringparam *,
+				 struct kernel_ethtool_ringparam *,
+				 struct netlink_ext_ack *);
+#endif
 	void	(*get_pauseparam)(struct net_device *,
 				  struct ethtool_pauseparam*);
 	int	(*set_pauseparam)(struct net_device *,
@@ -413,10 +527,19 @@ struct ethtool_ops {
 				      struct ethtool_fecparam *);
 	void	(*get_ethtool_phy_stats)(struct net_device *,
 					 struct ethtool_stats *, u64 *);
+#ifndef __GENKSYMS__
+	u32     supported_coalesce_params;
+	u32     supported_ring_params;
 
+	int     (*get_link_ext_state)(struct net_device *,
+				      struct ethtool_link_ext_state_info *);
+	void    (*get_fec_stats)(struct net_device *dev,
+				 struct ethtool_fec_stats *fec_stats);
+#else
 	KABI_RESERVE(1)
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
+#endif
 	KABI_RESERVE(4)
 	KABI_RESERVE(5)
 	KABI_RESERVE(6)

@@ -104,28 +104,32 @@ static int hclge_dcb_common_validate(struct hclge_dev *hdev, u8 num_tc,
 	return 0;
 }
 
-static int hclge_ets_validate(struct hclge_dev *hdev, struct ieee_ets *ets,
-			      u8 *tc, bool *changed)
+static u8 hclge_ets_tc_changed(struct hclge_dev *hdev, struct ieee_ets *ets,
+			       bool *changed)
 {
-	bool has_ets_tc = false;
-	u32 total_ets_bw = 0;
-	u8 max_tc = 0;
-	int ret;
+	u8 max_tc_id = 0;
 	u8 i;
 
 	for (i = 0; i < HNAE3_MAX_USER_PRIO; i++) {
 		if (ets->prio_tc[i] != hdev->tm_info.prio_tc[i])
 			*changed = true;
 
-		if (ets->prio_tc[i] > max_tc)
-			max_tc = ets->prio_tc[i];
+		if (ets->prio_tc[i] > max_tc_id)
+			max_tc_id = ets->prio_tc[i];
 	}
 
-	ret = hclge_dcb_common_validate(hdev, max_tc + 1, ets->prio_tc);
-	if (ret)
-		return ret;
+	/* return max tc number, max tc id need to plus 1 */
+	return max_tc_id + 1;
+}
 
-	for (i = 0; i < hdev->tc_max; i++) {
+static int hclge_ets_sch_mode_validate(struct hclge_dev *hdev,
+				       struct ieee_ets *ets, bool *changed)
+{
+	bool has_ets_tc = false;
+	u32 total_ets_bw = 0;
+	u8 i;
+
+	for (i = 0; i < HNAE3_MAX_TC; i++) {
 		switch (ets->tc_tsa[i]) {
 		case IEEE_8021QAZ_TSA_STRICT:
 			if (hdev->tm_info.tc_info[i].tc_sch_mode !=
@@ -133,6 +137,15 @@ static int hclge_ets_validate(struct hclge_dev *hdev, struct ieee_ets *ets,
 				*changed = true;
 			break;
 		case IEEE_8021QAZ_TSA_ETS:
+			/* The hardware will switch to sp mode if bandwidth is
+			 * 0, so limit ets bandwidth must be greater than 0.
+			 */
+			if (!ets->tc_tx_bw[i]) {
+				dev_err(&hdev->pdev->dev,
+					"tc%u ets bw cannot be 0\n", i);
+				return -EINVAL;
+			}
+
 			if (hdev->tm_info.tc_info[i].tc_sch_mode !=
 				HCLGE_SCH_MODE_DWRR)
 				*changed = true;
@@ -148,7 +161,26 @@ static int hclge_ets_validate(struct hclge_dev *hdev, struct ieee_ets *ets,
 	if (has_ets_tc && total_ets_bw != BW_PERCENT)
 		return -EINVAL;
 
-	*tc = max_tc + 1;
+	return 0;
+}
+
+static int hclge_ets_validate(struct hclge_dev *hdev, struct ieee_ets *ets,
+			      u8 *tc, bool *changed)
+{
+	u8 tc_num;
+	int ret;
+
+	tc_num = hclge_ets_tc_changed(hdev, ets, changed);
+
+	ret = hclge_dcb_common_validate(hdev, tc_num, ets->prio_tc);
+	if (ret)
+		return ret;
+
+	ret = hclge_ets_sch_mode_validate(hdev, ets, changed);
+	if (ret)
+		return ret;
+
+	*tc = tc_num;
 	if (*tc != hdev->tm_info.num_tc)
 		*changed = true;
 
@@ -184,6 +216,10 @@ static int hclge_notify_down_uinit(struct hclge_dev *hdev)
 	if (ret)
 		return ret;
 
+	ret = hclge_tm_flush_cfg(hdev, true);
+	if (ret)
+		return ret;
+
 	return hclge_notify_client(hdev, HNAE3_UNINIT_CLIENT);
 }
 
@@ -192,6 +228,10 @@ static int hclge_notify_init_up(struct hclge_dev *hdev)
 	int ret;
 
 	ret = hclge_notify_client(hdev, HNAE3_INIT_CLIENT);
+	if (ret)
+		return ret;
+
+	ret = hclge_tm_flush_cfg(hdev, false);
 	if (ret)
 		return ret;
 
@@ -239,9 +279,7 @@ static int hclge_ieee_setets(struct hnae3_handle *h, struct ieee_ets *ets)
 		if (ret)
 			goto err_out;
 
-		ret = hclge_notify_init_up(hdev);
-		if (ret)
-			return ret;
+		return hclge_notify_init_up(hdev);
 	}
 
 	return hclge_tm_dwrr_cfg(hdev);
@@ -284,6 +322,7 @@ static int hclge_ieee_setpfc(struct hnae3_handle *h, struct ieee_pfc *pfc)
 	struct net_device *netdev = h->kinfo.netdev;
 	struct hclge_dev *hdev = vport->back;
 	u8 i, j, pfc_map, *prio_tc;
+	int last_bad_ret = 0;
 	int ret;
 
 	if (!(hdev->dcbx_cap & DCB_CAP_DCBX_VER_IEEE))
@@ -322,13 +361,115 @@ static int hclge_ieee_setpfc(struct hnae3_handle *h, struct ieee_pfc *pfc)
 	if (ret)
 		return ret;
 
+	ret = hclge_tm_flush_cfg(hdev, true);
+	if (ret)
+		return ret;
+
+	/* No matter whether the following operations are performed
+	 * successfully or not, disabling the tm flush and notify
+	 * the network status to up are necessary.
+	 * Do not return immediately.
+	 */
 	ret = hclge_buffer_alloc(hdev);
+	if (ret)
+		last_bad_ret = ret;
+
+	ret = hclge_tm_flush_cfg(hdev, false);
+	if (ret)
+		last_bad_ret = ret;
+
+	ret = hclge_notify_client(hdev, HNAE3_UP_CLIENT);
+	if (ret)
+		last_bad_ret = ret;
+
+	return last_bad_ret;
+}
+
+static int hclge_ieee_setapp(struct hnae3_handle *h, struct dcb_app *app)
+{
+	struct hclge_vport *vport = hclge_get_vport(h);
+	struct net_device *netdev = h->kinfo.netdev;
+	struct hclge_dev *hdev = vport->back;
+	struct dcb_app old_app;
+	int ret;
+
+	if (app->selector != IEEE_8021QAZ_APP_SEL_DSCP ||
+	    app->protocol >= HCLGE_MAX_DSCP ||
+	    app->priority >= HNAE3_MAX_USER_PRIO)
+		return -EINVAL;
+
+	dev_info(&hdev->pdev->dev, "setapp dscp=%u priority=%u\n",
+		 app->protocol, app->priority);
+
+	if (app->priority == hdev->tm_info.dscp_prio[app->protocol])
+		return 0;
+
+	ret = dcb_ieee_setapp(netdev, app);
+	if (ret)
+		return ret;
+
+	old_app.selector = IEEE_8021QAZ_APP_SEL_DSCP;
+	old_app.protocol = app->protocol;
+	old_app.priority = hdev->tm_info.dscp_prio[app->protocol];
+
+	hdev->tm_info.dscp_prio[app->protocol] = app->priority;
+	ret = hclge_dscp_to_tc_map(hdev);
 	if (ret) {
-		hclge_notify_client(hdev, HNAE3_UP_CLIENT);
+		dev_err(&hdev->pdev->dev,
+			"failed to set dscp to tc map, ret = %d\n", ret);
+		hdev->tm_info.dscp_prio[app->protocol] = old_app.priority;
+		(void)dcb_ieee_delapp(netdev, app);
 		return ret;
 	}
 
-	return hclge_notify_client(hdev, HNAE3_UP_CLIENT);
+	vport->nic.kinfo.tc_map_mode = HNAE3_TC_MAP_MODE_DSCP;
+	if (old_app.priority == HCLGE_PRIO_ID_INVALID)
+		hdev->tm_info.dscp_app_cnt++;
+	else
+		ret = dcb_ieee_delapp(netdev, &old_app);
+
+	return ret;
+}
+
+static int hclge_ieee_delapp(struct hnae3_handle *h, struct dcb_app *app)
+{
+	struct hclge_vport *vport = hclge_get_vport(h);
+	struct net_device *netdev = h->kinfo.netdev;
+	struct hclge_dev *hdev = vport->back;
+	int ret;
+
+	if (app->selector != IEEE_8021QAZ_APP_SEL_DSCP ||
+	    app->protocol >= HCLGE_MAX_DSCP ||
+	    app->priority >= HNAE3_MAX_USER_PRIO ||
+	    app->priority != hdev->tm_info.dscp_prio[app->protocol])
+		return -EINVAL;
+
+	dev_info(&hdev->pdev->dev, "delapp dscp=%u priority=%u\n",
+		 app->protocol, app->priority);
+
+	ret = dcb_ieee_delapp(netdev, app);
+	if (ret)
+		return ret;
+
+	hdev->tm_info.dscp_prio[app->protocol] = HCLGE_PRIO_ID_INVALID;
+	ret = hclge_dscp_to_tc_map(hdev);
+	if (ret) {
+		dev_err(&hdev->pdev->dev,
+			"failed to del dscp to tc map, ret = %d\n", ret);
+		hdev->tm_info.dscp_prio[app->protocol] = app->priority;
+		(void)dcb_ieee_setapp(netdev, app);
+		return ret;
+	}
+
+	if (hdev->tm_info.dscp_app_cnt)
+		hdev->tm_info.dscp_app_cnt--;
+
+	if (!hdev->tm_info.dscp_app_cnt) {
+		vport->nic.kinfo.tc_map_mode = HNAE3_TC_MAP_MODE_PRIO;
+		ret = hclge_up_to_tc_map(hdev);
+	}
+
+	return ret;
 }
 
 /* DCBX configuration */
@@ -495,13 +636,18 @@ static int hclge_setup_tc(struct hnae3_handle *h,
 	return hclge_notify_init_up(hdev);
 
 err_out:
-	/* roll-back */
-	memcpy(&kinfo->tc_info, &old_tc_info, sizeof(old_tc_info));
-	if (hclge_config_tc(hdev, &kinfo->tc_info))
-		dev_err(&hdev->pdev->dev,
-			"failed to roll back tc configuration\n");
-
-	(void)hclge_notify_init_up(hdev);
+	if (!tc) {
+		dev_warn(&hdev->pdev->dev,
+			 "failed to destroy mqprio, will active after reset, ret = %d\n",
+			 ret);
+	} else {
+		/* roll-back */
+		memcpy(&kinfo->tc_info, &old_tc_info, sizeof(old_tc_info));
+		if (hclge_config_tc(hdev, &kinfo->tc_info))
+			dev_err(&hdev->pdev->dev,
+				"failed to roll back tc configuration\n");
+	}
+	hclge_notify_init_up(hdev);
 
 	return ret;
 }
@@ -511,6 +657,8 @@ static const struct hnae3_dcb_ops hns3_dcb_ops = {
 	.ieee_setets	= hclge_ieee_setets,
 	.ieee_getpfc	= hclge_ieee_getpfc,
 	.ieee_setpfc	= hclge_ieee_setpfc,
+	.ieee_setapp    = hclge_ieee_setapp,
+	.ieee_delapp    = hclge_ieee_delapp,
 	.getdcbx	= hclge_getdcbx,
 	.setdcbx	= hclge_setdcbx,
 	.setup_tc	= hclge_setup_tc,

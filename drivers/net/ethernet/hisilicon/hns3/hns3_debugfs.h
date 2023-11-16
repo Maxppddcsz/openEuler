@@ -10,6 +10,7 @@
 #define HNS3_DBG_READ_LEN_128KB	0x20000
 #define HNS3_DBG_READ_LEN_1MB	0x100000
 #define HNS3_DBG_READ_LEN_4MB	0x400000
+#define HNS3_DBG_READ_LEN_5MB	0x500000
 #define HNS3_DBG_WRITE_LEN	1024
 
 #define HNS3_DBG_DATA_STR_LEN	32
@@ -56,6 +57,11 @@ struct hns3_dbg_func {
 	enum hnae3_dbg_cmd cmd;
 	int (*dbg_dump)(struct hnae3_handle *handle, char *buf, int len);
 	int (*dbg_dump_bd)(struct hns3_dbg_data *data, char *buf, int len);
+};
+
+struct hns3_dbg_cap_info {
+	const char *name;
+	enum HNAE3_DEV_CAP_BITS cap_bit;
 };
 
 #endif

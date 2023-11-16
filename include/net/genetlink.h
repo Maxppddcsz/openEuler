@@ -141,7 +141,7 @@ static inline int genl_err_attr(struct genl_info *info, int err,
  * @done: completion callback for dumps
  */
 struct genl_ops {
-	const struct nla_policy	*policy;
+	const struct nla_policy *policy;
 	int		       (*doit)(struct sk_buff *skb,
 				       struct genl_info *info);
 	int		       (*start)(struct netlink_callback *cb);
@@ -152,7 +152,12 @@ struct genl_ops {
 	u8			internal_flags;
 	u8			flags;
 
+#ifndef __GENKSYMS__
+	unsigned int		maxattr;
+	unsigned int		reserve;
+#else
 	KABI_RESERVE(1)
+#endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)

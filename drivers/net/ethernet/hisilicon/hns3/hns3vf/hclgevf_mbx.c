@@ -75,7 +75,8 @@ static int hclgevf_get_mbx_resp(struct hclgevf_dev *hdev, u16 code0, u16 code1,
 	}
 
 	while ((!hdev->mbx_resp.received_resp) && (i < HCLGEVF_MAX_TRY_TIMES)) {
-		if (test_bit(HCLGEVF_STATE_CMD_DISABLE, &hdev->state))
+		if (test_bit(HCLGE_COMM_STATE_CMD_DISABLE,
+			     &hdev->hw.hw.comm_state))
 			return -EIO;
 
 		usleep_range(HCLGEVF_SLEEP_USECOND, HCLGEVF_SLEEP_USECOND * 2);
@@ -122,7 +123,7 @@ int hclgevf_send_mbx_msg(struct hclgevf_dev *hdev,
 			 u8 *resp_data, u16 resp_len)
 {
 	struct hclge_mbx_vf_to_pf_cmd *req;
-	struct hclgevf_desc desc;
+	struct hclge_desc desc;
 	int status;
 
 	req = (struct hclge_mbx_vf_to_pf_cmd *)desc.data;
@@ -176,27 +177,76 @@ int hclgevf_send_mbx_msg(struct hclgevf_dev *hdev,
 
 static bool hclgevf_cmd_crq_empty(struct hclgevf_hw *hw)
 {
-	u32 tail = hclgevf_read_dev(hw, HCLGEVF_NIC_CRQ_TAIL_REG);
+	u32 tail = hclgevf_read_dev(hw, HCLGE_COMM_NIC_CRQ_TAIL_REG);
 
-	return tail == hw->cmq.crq.next_to_use;
+	return tail == hw->hw.cmq.crq.next_to_use;
+}
+
+static void hclgevf_handle_mbx_response(struct hclgevf_dev *hdev,
+					struct hclge_mbx_pf_to_vf_cmd *req)
+{
+	struct hclgevf_mbx_resp_status *resp = &hdev->mbx_resp;
+
+	if (resp->received_resp)
+		dev_warn(&hdev->pdev->dev,
+			 "VF mbx resp flag not clear(%u)\n",
+			 req->msg.vf_mbx_msg_code);
+
+	resp->origin_mbx_msg =
+			(req->msg.vf_mbx_msg_code << 16);
+	resp->origin_mbx_msg |= req->msg.vf_mbx_msg_subcode;
+	resp->resp_status =
+		hclgevf_resp_to_errno(req->msg.resp_status);
+	memcpy(resp->additional_info, req->msg.resp_data,
+	       HCLGE_MBX_MAX_RESP_DATA_SIZE * sizeof(u8));
+	if (req->match_id) {
+		/* If match_id is not zero, it means PF support match_id.
+		 * if the match_id is right, VF get the right response, or
+		 * ignore the response. and driver will clear hdev->mbx_resp
+		 * when send next message which need response.
+		 */
+		if (req->match_id == resp->match_id)
+			resp->received_resp = true;
+	} else {
+		resp->received_resp = true;
+	}
+}
+
+static void hclgevf_handle_mbx_msg(struct hclgevf_dev *hdev,
+				   struct hclge_mbx_pf_to_vf_cmd *req)
+{
+	/* we will drop the async msg if we find ARQ as full
+	 * and continue with next message
+	 */
+	if (atomic_read(&hdev->arq.count) >=
+	    HCLGE_MBX_MAX_ARQ_MSG_NUM) {
+		dev_warn(&hdev->pdev->dev,
+			 "Async Q full, dropping msg(%u)\n",
+			 req->msg.code);
+		return;
+	}
+
+	/* tail the async message in arq */
+	memcpy(hdev->arq.msg_q[hdev->arq.tail], &req->msg,
+	       HCLGE_MBX_MAX_ARQ_MSG_SIZE * sizeof(u16));
+	hclge_mbx_tail_ptr_move_arq(hdev->arq);
+	atomic_inc(&hdev->arq.count);
+
+	hclgevf_mbx_task_schedule(hdev);
 }
 
 void hclgevf_mbx_handler(struct hclgevf_dev *hdev)
 {
-	struct hclgevf_mbx_resp_status *resp;
 	struct hclge_mbx_pf_to_vf_cmd *req;
-	struct hclgevf_cmq_ring *crq;
-	struct hclgevf_desc *desc;
-	u16 *msg_q;
+	struct hclge_comm_cmq_ring *crq;
+	struct hclge_desc *desc;
 	u16 flag;
-	u8 *temp;
-	int i;
 
-	resp = &hdev->mbx_resp;
-	crq = &hdev->hw.cmq.crq;
+	crq = &hdev->hw.hw.cmq.crq;
 
 	while (!hclgevf_cmd_crq_empty(&hdev->hw)) {
-		if (test_bit(HCLGEVF_STATE_CMD_DISABLE, &hdev->state)) {
+		if (test_bit(HCLGE_COMM_STATE_CMD_DISABLE,
+			     &hdev->hw.hw.comm_state)) {
 			dev_info(&hdev->pdev->dev, "vf crq need init\n");
 			return;
 		}
@@ -226,66 +276,15 @@ void hclgevf_mbx_handler(struct hclgevf_dev *hdev)
 		 */
 		switch (req->msg.code) {
 		case HCLGE_MBX_PF_VF_RESP:
-			if (resp->received_resp)
-				dev_warn(&hdev->pdev->dev,
-					 "VF mbx resp flag not clear(%u)\n",
-					 req->msg.vf_mbx_msg_code);
-
-			resp->origin_mbx_msg =
-					(req->msg.vf_mbx_msg_code << 16);
-			resp->origin_mbx_msg |= req->msg.vf_mbx_msg_subcode;
-			resp->resp_status =
-				hclgevf_resp_to_errno(req->msg.resp_status);
-
-			temp = (u8 *)req->msg.resp_data;
-			for (i = 0; i < HCLGE_MBX_MAX_RESP_DATA_SIZE; i++) {
-				resp->additional_info[i] = *temp;
-				temp++;
-			}
-
-			/* ensure additional_info will be seen before setting
-			 * received_resp
-			 */
-			smp_wmb();
-
-			if (req->match_id) {
-				/* If match_id is not zero, it means PF support
-				 * match_id. If the match_id is right, VF get
-				 * the right response, orignore the response,
-				 * and driver will clear hdev->mbx_resp when
-				 * send next message which need response.
-				 */
-				if (req->match_id == resp->match_id)
-					resp->received_resp = true;
-			} else {
-				resp->received_resp = true;
-			}
+			hclgevf_handle_mbx_response(hdev, req);
 			break;
 		case HCLGE_MBX_LINK_STAT_CHANGE:
 		case HCLGE_MBX_ASSERTING_RESET:
 		case HCLGE_MBX_LINK_STAT_MODE:
 		case HCLGE_MBX_PUSH_VLAN_INFO:
 		case HCLGE_MBX_PUSH_PROMISC_INFO:
-			/* we will drop the async msg if we find ARQ as full
-			 * and continue with next message
-			 */
-			if (atomic_read(&hdev->arq.count) >=
-			    HCLGE_MBX_MAX_ARQ_MSG_NUM) {
-				dev_warn(&hdev->pdev->dev,
-					 "Async Q full, dropping msg(%u)\n",
-					 req->msg.code);
-				break;
-			}
-
-			/* tail the async message in arq */
-			msg_q = hdev->arq.msg_q[hdev->arq.tail];
-			memcpy(&msg_q[0], &req->msg,
-			       HCLGE_MBX_MAX_ARQ_MSG_SIZE * sizeof(u16));
-			hclge_mbx_tail_ptr_move_arq(hdev->arq);
-			atomic_inc(&hdev->arq.count);
-
-			hclgevf_mbx_task_schedule(hdev);
-
+		case HCLGE_MBX_PUSH_QB_STATE:
+			hclgevf_handle_mbx_msg(hdev, req);
 			break;
 		default:
 			dev_err(&hdev->pdev->dev,
@@ -298,7 +297,7 @@ void hclgevf_mbx_handler(struct hclgevf_dev *hdev)
 	}
 
 	/* Write back CMDQ_RQ header pointer, M7 need this pointer */
-	hclgevf_write_dev(&hdev->hw, HCLGEVF_NIC_CRQ_HEAD_REG,
+	hclgevf_write_dev(&hdev->hw, HCLGE_COMM_NIC_CRQ_HEAD_REG,
 			  crq->next_to_use);
 }
 
@@ -308,6 +307,19 @@ static void hclgevf_parse_promisc_info(struct hclgevf_dev *hdev,
 	if (!promisc_info)
 		dev_info(&hdev->pdev->dev,
 			 "Promisc mode is closed by host for being untrusted.\n");
+}
+
+static void hclgevf_parse_qb_info(struct hclgevf_dev *hdev, u16 qb_state)
+{
+#define HCLGEVF_HW_QB_ON       1
+#define HCLGEVF_HW_QB_OFF      0
+
+	if (qb_state > HCLGEVF_HW_QB_ON) {
+		dev_warn(&hdev->pdev->dev, "Invalid state, ignored.\n");
+		return;
+	}
+
+	hdev->qb_cfg.hw_qb_en = qb_state > HCLGEVF_HW_QB_OFF;
 }
 
 void hclgevf_mbx_async_handler(struct hclgevf_dev *hdev)
@@ -325,7 +337,8 @@ void hclgevf_mbx_async_handler(struct hclgevf_dev *hdev)
 
 	/* process all the async queue messages */
 	while (tail != hdev->arq.head) {
-		if (test_bit(HCLGEVF_STATE_CMD_DISABLE, &hdev->state)) {
+		if (test_bit(HCLGE_COMM_STATE_CMD_DISABLE,
+			     &hdev->hw.hw.comm_state)) {
 			dev_info(&hdev->pdev->dev,
 				 "vf crq need init in async\n");
 			return;
@@ -343,6 +356,7 @@ void hclgevf_mbx_async_handler(struct hclgevf_dev *hdev)
 			/* update upper layer with new link link status */
 			hclgevf_update_speed_duplex(hdev, speed, duplex);
 			hclgevf_update_link_status(hdev, link_status);
+
 			if (flag & HCLGE_MBX_PUSH_LINK_STATUS_EN)
 				set_bit(HCLGEVF_STATE_PF_PUSH_LINK_STATUS,
 					&hdev->state);
@@ -377,6 +391,9 @@ void hclgevf_mbx_async_handler(struct hclgevf_dev *hdev)
 			break;
 		case HCLGE_MBX_PUSH_PROMISC_INFO:
 			hclgevf_parse_promisc_info(hdev, msg_q[1]);
+			break;
+		case HCLGE_MBX_PUSH_QB_STATE:
+			hclgevf_parse_qb_info(hdev, msg_q[1]);
 			break;
 		default:
 			dev_err(&hdev->pdev->dev,

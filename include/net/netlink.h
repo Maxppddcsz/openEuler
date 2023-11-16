@@ -173,6 +173,7 @@ enum {
 	NLA_MSECS,
 	NLA_NESTED,
 	NLA_NESTED_COMPAT,
+	NLA_NESTED_ARRAY,
 	NLA_NUL_STRING,
 	NLA_BINARY,
 	NLA_S8,
@@ -180,7 +181,12 @@ enum {
 	NLA_S32,
 	NLA_S64,
 	NLA_BITFIELD32,
+	NLA_REJECT,
+	NLA_EXACT_LEN,
+	NLA_EXACT_LEN_WARN,
+	NLA_MIN_LEN,
 	__NLA_TYPE_MAX,
+
 };
 
 #define NLA_TYPE_MAX (__NLA_TYPE_MAX - 1)
@@ -222,7 +228,7 @@ enum {
 struct nla_policy {
 	u16		type;
 	u16		len;
-	void            *validation_data;
+	void		*validation_data;
 };
 
 /**

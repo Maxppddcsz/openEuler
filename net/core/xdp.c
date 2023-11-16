@@ -14,6 +14,9 @@
 #include <net/page_pool.h>
 
 #include <net/xdp.h>
+#ifndef __GENKSYMS__
+#include <trace/events/xdp.h>
+#endif
 
 #define REG_STATE_NEW		0x0
 #define REG_STATE_REGISTERED	0x1

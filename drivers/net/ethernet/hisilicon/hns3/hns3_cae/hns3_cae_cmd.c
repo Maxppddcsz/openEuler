@@ -3,7 +3,7 @@
 
 #include "hns3_cae_cmd.h"
 
-static int hns3_cae_ring_space(struct hclge_cmq_ring *ring)
+static int hns3_cae_ring_space(struct hclge_comm_cmq_ring *ring)
 {
 	int ntu = ring->next_to_use;
 	int ntc = ring->next_to_clean;
@@ -12,7 +12,7 @@ static int hns3_cae_ring_space(struct hclge_cmq_ring *ring)
 	return ring->desc_num - used - 1;
 }
 
-static int is_valid_csq_clean_head(struct hclge_cmq_ring *ring, int head)
+static int is_valid_csq_clean_head(struct hclge_comm_cmq_ring *ring, int head)
 {
 	int ntu = ring->next_to_use;
 	int ntc = ring->next_to_clean;
@@ -51,29 +51,29 @@ static bool hns3_cae_is_special_opcode(u16 opcode)
 static int hns3_cae_cmd_convert_err_code(u16 desc_ret)
 {
 	switch (desc_ret) {
-	case HCLGE_CMD_EXEC_SUCCESS:
+	case HCLGE_COMM_CMD_EXEC_SUCCESS:
 		return 0;
-	case HCLGE_CMD_NO_AUTH:
+	case HCLGE_COMM_CMD_NO_AUTH:
 		return -EPERM;
-	case HCLGE_CMD_NOT_SUPPORTED:
+	case HCLGE_COMM_CMD_NOT_SUPPORTED:
 		return -EOPNOTSUPP;
-	case HCLGE_CMD_QUEUE_FULL:
+	case HCLGE_COMM_CMD_QUEUE_FULL:
 		return -EXFULL;
-	case HCLGE_CMD_NEXT_ERR:
+	case HCLGE_COMM_CMD_NEXT_ERR:
 		return -ENOSR;
-	case HCLGE_CMD_UNEXE_ERR:
+	case HCLGE_COMM_CMD_UNEXE_ERR:
 		return -ENOTBLK;
-	case HCLGE_CMD_PARA_ERR:
+	case HCLGE_COMM_CMD_PARA_ERR:
 		return -EINVAL;
-	case HCLGE_CMD_RESULT_ERR:
+	case HCLGE_COMM_CMD_RESULT_ERR:
 		return -ERANGE;
-	case HCLGE_CMD_TIMEOUT:
+	case HCLGE_COMM_CMD_TIMEOUT:
 		return -ETIME;
-	case HCLGE_CMD_HILINK_ERR:
+	case HCLGE_COMM_CMD_HILINK_ERR:
 		return -ENOLINK;
-	case HCLGE_CMD_QUEUE_ILLEGAL:
+	case HCLGE_COMM_CMD_QUEUE_ILLEGAL:
 		return -ENXIO;
-	case HCLGE_CMD_INVALID:
+	case HCLGE_COMM_CMD_INVALID:
 		return -EBADR;
 	default:
 		return -EIO;
@@ -84,13 +84,13 @@ static int hns3_cae_cmd_csq_done(struct hclge_hw *hw)
 {
 	u32 head = hclge_read_dev(hw, HCLGE_NIC_CSQ_HEAD_REG);
 
-	return head == hw->cmq.csq.next_to_use;
+	return head == hw->hw.cmq.csq.next_to_use;
 }
 
 static int hns3_cae_cmd_csq_clean(struct hclge_hw *hw)
 {
 	struct hclge_dev *hdev = container_of(hw, struct hclge_dev, hw);
-	struct hclge_cmq_ring *csq = &hw->cmq.csq;
+	struct hclge_comm_cmq_ring *csq = &hw->hw.cmq.csq;
 	int clean;
 	u32 head;
 
@@ -120,9 +120,9 @@ static int hns3_cae_cmd_check_retval(struct hclge_hw *hw,
 
 	opcode = le16_to_cpu(desc[0].opcode);
 	for (handle = 0; handle < num; handle++) {
-		desc[handle] = hw->cmq.csq.desc[ntc];
+		desc[handle] = hw->hw.cmq.csq.desc[ntc];
 		ntc++;
-		if (ntc >= hw->cmq.csq.desc_num)
+		if (ntc >= hw->hw.cmq.csq.desc_num)
 			ntc = 0;
 	}
 	if (likely(!hns3_cae_is_special_opcode(opcode)))
@@ -130,18 +130,18 @@ static int hns3_cae_cmd_check_retval(struct hclge_hw *hw,
 	else
 		desc_ret = le16_to_cpu(desc[0].retval);
 
-	hw->cmq.last_status = desc_ret;
+	hw->hw.cmq.last_status = desc_ret;
 
 	return hns3_cae_cmd_convert_err_code(desc_ret);
 }
 
 void hns3_cae_cmd_reuse_desc(struct hclge_desc *desc, bool is_read)
 {
-	desc->flag = cpu_to_le16(HCLGE_CMD_FLAG_NO_INTR | HCLGE_CMD_FLAG_IN);
+	desc->flag = cpu_to_le16(HCLGE_COMM_CMD_FLAG_NO_INTR | HCLGE_COMM_CMD_FLAG_IN);
 	if (is_read)
-		desc->flag |= cpu_to_le16(HCLGE_CMD_FLAG_WR);
+		desc->flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_WR);
 	else
-		desc->flag &= cpu_to_le16(~HCLGE_CMD_FLAG_WR);
+		desc->flag &= cpu_to_le16(~HCLGE_COMM_CMD_FLAG_WR);
 }
 
 void hns3_cae_cmd_setup_basic_desc(struct hclge_desc *desc,
@@ -149,10 +149,10 @@ void hns3_cae_cmd_setup_basic_desc(struct hclge_desc *desc,
 {
 	memset((void *)desc, 0, sizeof(struct hclge_desc));
 	desc->opcode = cpu_to_le16(opcode);
-	desc->flag = cpu_to_le16(HCLGE_CMD_FLAG_NO_INTR | HCLGE_CMD_FLAG_IN);
+	desc->flag = cpu_to_le16(HCLGE_COMM_CMD_FLAG_NO_INTR | HCLGE_COMM_CMD_FLAG_IN);
 
 	if (is_read)
-		desc->flag |= cpu_to_le16(HCLGE_CMD_FLAG_WR);
+		desc->flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_WR);
 }
 
 /**
@@ -167,28 +167,28 @@ void hns3_cae_cmd_setup_basic_desc(struct hclge_desc *desc,
 int hns3_cae_cmd_send(struct hclge_dev *hdev, struct hclge_desc *desc, int num)
 {
 	struct hclge_desc *desc_to_use = NULL;
-	struct hclge_cmq_ring *csq = NULL;
+	struct hclge_comm_cmq_ring *csq = NULL;
 	bool complete = false;
 	u32 timeout = 0;
 	int handle = 0;
 	int retval;
 	int ntc;
 
-	csq = &hdev->hw.cmq.csq;
-	spin_lock_bh(&hdev->hw.cmq.csq.lock);
+	csq = &hdev->hw.hw.cmq.csq;
+	spin_lock_bh(&hdev->hw.hw.cmq.csq.lock);
 
 	if (test_bit(HCLGE_STATE_CMD_DISABLE, &hdev->state)) {
-		spin_unlock_bh(&hdev->hw.cmq.csq.lock);
+		spin_unlock_bh(&hdev->hw.hw.cmq.csq.lock);
 		return -EBUSY;
 	}
 
-	if (num > hns3_cae_ring_space(&hdev->hw.cmq.csq)) {
+	if (num > hns3_cae_ring_space(&hdev->hw.hw.cmq.csq)) {
 		/* If CMDQ ring is full, SW HEAD and HW HEAD may be different,
 		 * need update the SW HEAD pointer csq->next_to_clean
 		 */
 		csq->next_to_clean = hclge_read_dev(&hdev->hw,
 						    HCLGE_NIC_CSQ_HEAD_REG);
-		spin_unlock_bh(&hdev->hw.cmq.csq.lock);
+		spin_unlock_bh(&hdev->hw.hw.cmq.csq.lock);
 		return -EBUSY;
 	}
 
@@ -196,26 +196,26 @@ int hns3_cae_cmd_send(struct hclge_dev *hdev, struct hclge_desc *desc, int num)
 	 * Record the location of desc in the ring for this time
 	 * which will be use for hardware to write back
 	 */
-	ntc = hdev->hw.cmq.csq.next_to_use;
+	ntc = hdev->hw.hw.cmq.csq.next_to_use;
 	while (handle < num) {
 		desc_to_use =
-			&hdev->hw.cmq.csq.desc[hdev->hw.cmq.csq.next_to_use];
+			&hdev->hw.hw.cmq.csq.desc[hdev->hw.hw.cmq.csq.next_to_use];
 		*desc_to_use = desc[handle];
-		(hdev->hw.cmq.csq.next_to_use)++;
-		if (hdev->hw.cmq.csq.next_to_use >= hdev->hw.cmq.csq.desc_num)
-			hdev->hw.cmq.csq.next_to_use = 0;
+		(hdev->hw.hw.cmq.csq.next_to_use)++;
+		if (hdev->hw.hw.cmq.csq.next_to_use >= hdev->hw.hw.cmq.csq.desc_num)
+			hdev->hw.hw.cmq.csq.next_to_use = 0;
 		handle++;
 	}
 
 	/* Write to hardware */
 	hclge_write_dev(&hdev->hw, HCLGE_NIC_CSQ_TAIL_REG,
-			hdev->hw.cmq.csq.next_to_use);
+			hdev->hw.hw.cmq.csq.next_to_use);
 
 	/**
 	 * If the command is sync, wait for the firmware to write back,
 	 * if multi descriptors to be sent, use the first one to check
 	 */
-	if (HCLGE_SEND_SYNC(le16_to_cpu(desc->flag))) {
+	if (HCLGE_COMM_SEND_SYNC(le16_to_cpu(desc->flag))) {
 		do {
 			if (hns3_cae_cmd_csq_done(&hdev->hw)) {
 				complete = true;
@@ -223,7 +223,7 @@ int hns3_cae_cmd_send(struct hclge_dev *hdev, struct hclge_desc *desc, int num)
 			}
 			udelay(1);
 			timeout++;
-		} while (timeout < hdev->hw.cmq.tx_timeout);
+		} while (timeout < hdev->hw.hw.cmq.tx_timeout);
 	}
 
 	if (!complete)
@@ -238,7 +238,7 @@ int hns3_cae_cmd_send(struct hclge_dev *hdev, struct hclge_desc *desc, int num)
 		dev_warn(&hdev->pdev->dev,
 			 "cleaned %d, need to clean %d\n", handle, num);
 
-	spin_unlock_bh(&hdev->hw.cmq.csq.lock);
+	spin_unlock_bh(&hdev->hw.hw.cmq.csq.lock);
 
 	return retval;
 }
