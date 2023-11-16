@@ -130,10 +130,12 @@ static inline u32 ethtool_rxfh_indir_default(u32 index, u32 n_rx_rings)
 	return index % n_rx_rings;
 }
 
-#ifdef __GENKSYMS__
+/* number of link mode bits/ulongs handled internally by kernel */
 #define __ETHTOOL_LINK_MODE_MASK_NBITS			\
 	(__ETHTOOL_LINK_MODE_LAST + 1)
-#endif
+
+#define __ETHTOOL_LINK_MODE_MASK_ASSERT_NBITS			\
+	(ETHTOOL_LINK_MODE_100baseFX_Full_BIT + 1)
 
 /* declare a link mode bitmap */
 #define __ETHTOOL_DECLARE_LINK_MODE_MASK(name)		\
@@ -292,6 +294,14 @@ struct ethtool_fec_stats {
 
 /**
  * struct ethtool_ops - optional netdev operations
+ * @get_settings: DEPRECATED, use %get_link_ksettings/%set_link_ksettings
+ *	API. Get various device settings including Ethernet link
+ *	settings. The @cmd parameter is expected to have been cleared
+ *	before get_settings is called. Returns a negative error code
+ *	or zero.
+ * @set_settings: DEPRECATED, use %get_link_ksettings/%set_link_ksettings
+ *	API. Set various device settings including Ethernet link
+ *	settings.  Returns a negative error code or zero.
  * @supported_coalesce_params: supported types of interrupt coalescing.
  * @supported_ring_params: supported ring params.
  * @get_drvinfo: Report driver/device information.  Should only set the
@@ -322,9 +332,8 @@ struct ethtool_fec_stats {
  *	or zero.
  * @get_coalesce: Get interrupt coalescing parameters.  Returns a negative
  *	error code or zero.
- * @set_coalesce: Set interrupt coalescing parameters.  Supported coalescing
- *     types should be set in @supported_coalesce_params.
- *     Returns a negative error code or zero.
+ * @set_coalesce: Set interrupt coalescing parameters.  Returns a negative
+ *	error code or zero.
  * @get_ringparam: Report ring sizes
  * @set_ringparam: Set ring sizes.  Returns a negative error code or zero.
  * @get_pauseparam: Report pause parameters
@@ -454,9 +463,9 @@ struct ethtool_ops {
 			      struct ethtool_eeprom *, u8 *);
 	int	(*get_coalesce)(struct net_device *, struct ethtool_coalesce *);
 	int	(*set_coalesce)(struct net_device *, struct ethtool_coalesce *);
-	void    (*get_ringparam)(struct net_device *,
+	void	(*get_ringparam)(struct net_device *,
 				 struct ethtool_ringparam *);
-	int     (*set_ringparam)(struct net_device *,
+	int	(*set_ringparam)(struct net_device *,
 				 struct ethtool_ringparam *);
 	void	(*get_pauseparam)(struct net_device *,
 				  struct ethtool_pauseparam*);

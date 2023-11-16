@@ -173,7 +173,6 @@ enum {
 	NLA_MSECS,
 	NLA_NESTED,
 	NLA_NESTED_COMPAT,
-	NLA_NESTED_ARRAY,
 	NLA_NUL_STRING,
 	NLA_BINARY,
 	NLA_S8,
@@ -228,7 +227,7 @@ enum {
 struct nla_policy {
 	u16		type;
 	u16		len;
-	void		*validation_data;
+	void            *validation_data;
 };
 
 /**

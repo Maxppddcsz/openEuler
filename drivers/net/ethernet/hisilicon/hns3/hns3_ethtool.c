@@ -726,7 +726,6 @@ static void hns3_get_ringparam(struct net_device *netdev,
 
 	param->tx_pending = priv->ring[0].desc_num;
 	param->rx_pending = priv->ring[rx_queue_index].desc_num;
-	kernel_param->rx_buf_len = priv->ring[rx_queue_index].buf_size;
 }
 
 static void hns3_get_pauseparam(struct net_device *netdev,
@@ -1129,8 +1128,7 @@ static struct hns3_enet_ring *hns3_backup_ringparam(struct hns3_nic_priv *priv)
 }
 
 static int hns3_check_ringparam(struct net_device *ndev,
-				struct ethtool_ringparam *param,
-				struct kernel_ethtool_ringparam *kernel_param)
+				struct ethtool_ringparam *param)
 {
 #define RX_BUF_LEN_2K 2048
 #define RX_BUF_LEN_4K 4096
@@ -1139,12 +1137,6 @@ static int hns3_check_ringparam(struct net_device *ndev,
 
 	if (param->rx_mini_pending || param->rx_jumbo_pending)
 		return -EINVAL;
-
-	if (kernel_param->rx_buf_len != RX_BUF_LEN_2K &&
-	    kernel_param->rx_buf_len != RX_BUF_LEN_4K) {
-		netdev_err(ndev, "Rx buf len only support 2048 and 4096\n");
-		return -EINVAL;
-	}
 
 	if (param->tx_pending > HNS3_RING_MAX_PENDING ||
 	    param->tx_pending < HNS3_RING_MIN_PENDING ||
@@ -1187,7 +1179,7 @@ static int hns3_set_ringparam(struct net_device *ndev,
 	u32 old_rx_buf_len;
 	int ret, i;
 
-	ret = hns3_check_ringparam(ndev, param, kernel_param);
+	ret = hns3_check_ringparam(ndev, param);
 	if (ret)
 		return ret;
 
@@ -1198,8 +1190,7 @@ static int hns3_set_ringparam(struct net_device *ndev,
 	old_rx_desc_num = priv->ring[queue_num].desc_num;
 	old_rx_buf_len = priv->ring[queue_num].buf_size;
 	if (old_tx_desc_num == new_tx_desc_num &&
-	    old_rx_desc_num == new_rx_desc_num &&
-	    kernel_param->rx_buf_len == old_rx_buf_len)
+	    old_rx_desc_num == new_rx_desc_num)
 		return 0;
 
 	tmp_rings = hns3_backup_ringparam(priv);
@@ -1210,16 +1201,14 @@ static int hns3_set_ringparam(struct net_device *ndev,
 	}
 
 	netdev_info(ndev,
-		    "Changing Tx/Rx ring depth from %u/%u to %u/%u, Changing rx buffer len from %d to %d\n",
+		    "Changing Tx/Rx ring depth from %u/%u to %u/%u\n",
 		    old_tx_desc_num, old_rx_desc_num,
-		    new_tx_desc_num, new_rx_desc_num,
-		    old_rx_buf_len, kernel_param->rx_buf_len);
+		    new_tx_desc_num, new_rx_desc_num);
 
 	if (if_running)
 		ndev->netdev_ops->ndo_stop(ndev);
 
 	hns3_change_all_ring_bd_num(priv, new_tx_desc_num, new_rx_desc_num);
-	hns3_change_rx_buf_len(ndev, kernel_param->rx_buf_len);
 	ret = hns3_init_all_ring(priv);
 	if (ret) {
 		netdev_err(ndev, "set ringparam fail, revert to old value(%d)\n",

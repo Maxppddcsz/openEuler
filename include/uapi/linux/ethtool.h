@@ -228,7 +228,7 @@ enum tunable_id {
 	ETHTOOL_TX_COPYBREAK_BUF_SIZE,
 	/*
 	 * Add your fresh new tunable attribute above and remember to update
-	 * tunable_strings[] in net/core/ethtool.c
+	 * tunable_strings[] in net/ethtool/common.c
 	 */
 	__ETHTOOL_TUNABLE_COUNT,
 };
@@ -264,7 +264,7 @@ enum phy_tunable_id {
 	ETHTOOL_PHY_EDPD,
 	/*
 	 * Add your fresh new phy tunable attribute above and remember to update
-	 * phy_tunable_strings[] in net/core/ethtool.c
+	 * phy_tunable_strings[] in net/ethtool/common.c
 	 */
 	__ETHTOOL_PHY_TUNABLE_COUNT,
 };
@@ -1629,12 +1629,9 @@ enum ethtool_link_mode_bit_indices {
 	 * macro for bits > 31. The only way to use indices > 31 is to
 	 * use the new ETHTOOL_GLINKSETTINGS/ETHTOOL_SLINKSETTINGS API.
 	 */
-#ifndef __GENKSYMS__
-	__ETHTOOL_LINK_MODE_MASK_NBITS,
-#else
+
 	__ETHTOOL_LINK_MODE_LAST
 	  = ETHTOOL_LINK_MODE_FEC_BASER_BIT,
-#endif
 };
 
 #define __ETHTOOL_LINK_MODE_LEGACY_MASK(base_name)	\

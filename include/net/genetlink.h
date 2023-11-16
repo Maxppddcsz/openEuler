@@ -141,7 +141,7 @@ static inline int genl_err_attr(struct genl_info *info, int err,
  * @done: completion callback for dumps
  */
 struct genl_ops {
-	const struct nla_policy *policy;
+	const struct nla_policy	*policy;
 	int		       (*doit)(struct sk_buff *skb,
 				       struct genl_info *info);
 	int		       (*start)(struct netlink_callback *cb);
