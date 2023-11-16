@@ -37,7 +37,11 @@ struct blk_mq_hw_ctx {
 	struct blk_mq_ctx	*dispatch_from;
 	unsigned int		dispatch_busy;
 
-	unsigned int		nr_ctx;
+#ifndef __GENKSYMS__
+	unsigned short		nr_ctx;
+#else
+	unsigned int            nr_ctx;
+#endif
 	struct blk_mq_ctx	**ctxs;
 
 	spinlock_t		dispatch_wait_lock;
@@ -71,7 +75,11 @@ struct blk_mq_hw_ctx {
 #endif
 
 	struct list_head hctx_list;
+#ifndef __GENKSYMS__
+	unsigned short          type;
+#else
 	KABI_RESERVE(1)
+#endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
@@ -84,10 +92,36 @@ struct blk_mq_hw_ctx {
 	struct srcu_struct	srcu[0];
 };
 
+struct blk_mq_queue_map {
+	unsigned int *mq_map;
+	unsigned int nr_queues;
+	unsigned int queue_offset;
+};
+
+enum hctx_type {
+	HCTX_TYPE_DEFAULT,	/* all I/O not otherwise accounted for */
+	HCTX_TYPE_READ,		/* just for READ I/O */
+	HCTX_TYPE_POLL,		/* polled I/O of any kind */
+
+	HCTX_MAX_TYPES,
+};
+
+/**
+ * struct blk_mq_tag_set - tag set that can be shared between request queues
+ * @active_queues_shared_sbitmap:
+ *                 number of active request queues per tag set.
+ * @__bitmap_tags: A shared tags sbitmap, used over all hctx's
+ * @__breserved_tags:
+ *		   A shared reserved tags sbitmap, used over all hctx's
+ */
 struct blk_mq_tag_set {
-	unsigned int		*mq_map;
+#ifdef __GENKSYMS__
+	unsigned int            *mq_map;
+#else
+	struct blk_mq_queue_map map[HCTX_MAX_TYPES];
+#endif
 	const struct blk_mq_ops	*ops;
-	unsigned int		nr_hw_queues;
+	unsigned int		nr_hw_queues;	/* nr hw queues across maps */
 	unsigned int		queue_depth;	/* max hw supported */
 	unsigned int		reserved_tags;
 	unsigned int		cmd_size;	/* per-request extra data */
@@ -101,10 +135,17 @@ struct blk_mq_tag_set {
 	struct mutex		tag_list_lock;
 	struct list_head	tag_list;
 
+#ifndef __GENKSYMS__
+	unsigned int            nr_maps;        /* nr entries in map[] */
+	struct sbitmap_queue    __bitmap_tags;
+	struct sbitmap_queue    __breserved_tags;
+	atomic_t                active_queues_shared_sbitmap;
+#else
 	KABI_RESERVE(1)
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
+#endif
 	KABI_RESERVE(5)
 	KABI_RESERVE(6)
 	KABI_RESERVE(7)
@@ -215,8 +256,9 @@ struct blk_mq_ops {
 
 enum {
 	BLK_MQ_F_SHOULD_MERGE	= 1 << 0,
-	BLK_MQ_F_TAG_SHARED	= 1 << 1,
+	BLK_MQ_F_TAG_QUEUE_SHARED = 1 << 1,
 	BLK_MQ_F_SG_MERGE	= 1 << 2,
+	BLK_MQ_F_TAG_HCTX_SHARED = 1 << 3,
 	BLK_MQ_F_BLOCKING	= 1 << 5,
 	BLK_MQ_F_NO_SCHED	= 1 << 6,
 	BLK_MQ_F_ALLOC_POLICY_START_BIT = 8,
@@ -326,7 +368,7 @@ void blk_mq_freeze_queue_wait(struct request_queue *q);
 int blk_mq_freeze_queue_wait_timeout(struct request_queue *q,
 				     unsigned long timeout);
 
-int blk_mq_map_queues(struct blk_mq_tag_set *set);
+int blk_mq_map_queues_by_qmap(struct blk_mq_queue_map *qmap);
 void blk_mq_update_nr_hw_queues(struct blk_mq_tag_set *set, int nr_hw_queues);
 
 void blk_mq_quiesce_queue_nowait(struct request_queue *q);

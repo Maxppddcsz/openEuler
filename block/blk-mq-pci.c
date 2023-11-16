@@ -19,9 +19,35 @@
 
 #include "blk-mq.h"
 
+
+int blk_mq_pci_map_queues_by_qmap(struct blk_mq_queue_map *qmap,
+				  struct pci_dev *pdev,
+				  int offset)
+{
+	const struct cpumask *mask;
+	unsigned int queue, cpu;
+
+	for (queue = 0; queue < qmap->nr_queues; queue++) {
+		mask = pci_irq_get_affinity(pdev, queue + offset);
+		if (!mask)
+			goto fallback;
+
+		for_each_cpu(cpu, mask)
+			qmap->mq_map[cpu] = qmap->queue_offset + queue;
+	}
+
+	return 0;
+
+fallback:
+	WARN_ON_ONCE(qmap->nr_queues > 1);
+	blk_mq_clear_mq_map(qmap);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(blk_mq_pci_map_queues_by_qmap);
+
 /**
  * blk_mq_pci_map_queues - provide a default queue mapping for PCI device
- * @set:	tagset to provide the mapping for
+ * @qmap:	CPU to hardware queue map.
  * @pdev:	PCI device associated with @set.
  * @offset:	Offset to use for the pci irq vector
  *
@@ -31,26 +57,9 @@
  * that maps a queue to the CPUs that have irq affinity for the corresponding
  * vector.
  */
-int blk_mq_pci_map_queues(struct blk_mq_tag_set *set, struct pci_dev *pdev,
-			    int offset)
+int blk_mq_pci_map_queues(struct blk_mq_tag_set *set,  struct pci_dev *pdev,
+			  int offset)
 {
-	const struct cpumask *mask;
-	unsigned int queue, cpu;
-
-	for (queue = 0; queue < set->nr_hw_queues; queue++) {
-		mask = pci_irq_get_affinity(pdev, queue + offset);
-		if (!mask)
-			goto fallback;
-
-		for_each_cpu(cpu, mask)
-			set->mq_map[cpu] = queue;
-	}
-
-	return 0;
-
-fallback:
-	WARN_ON_ONCE(set->nr_hw_queues > 1);
-	blk_mq_clear_mq_map(set);
-	return 0;
+	return blk_mq_pci_map_queues_by_qmap(&set->map[0], pdev, offset);
 }
 EXPORT_SYMBOL_GPL(blk_mq_pci_map_queues);

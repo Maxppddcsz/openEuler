@@ -23,11 +23,11 @@
  * @nvec:	The number of vectors used in this entry
  * @affinity:	Optional pointer to an affinity mask array size of @nvec
  *
- * If @affinity is not NULL then a an affinity array[@nvec] is allocated
- * and the affinity masks from @affinity are copied.
+ * If @affinity is not NULL then an affinity array[@nvec] is allocated
+ * and the affinity masks and flags from @affinity are copied.
  */
-struct msi_desc *
-alloc_msi_entry(struct device *dev, int nvec, const struct cpumask *affinity)
+struct msi_desc *alloc_msi_entry(struct device *dev, int nvec,
+				 const struct irq_affinity_desc *affinity)
 {
 	struct msi_desc *desc;
 
@@ -457,6 +457,21 @@ int msi_domain_alloc_irqs(struct irq_domain *domain, struct device *dev,
 			irqd_clr_can_reserve(irq_data);
 			if (domain->flags & IRQ_DOMAIN_MSI_NOMASK_QUIRK)
 				irqd_set_msi_nomask_quirk(irq_data);
+
+			/*
+			 * If the interrupt is managed but no CPU is available
+			 * to service it, shut it down until better times. Note
+			 * that we only do this on the !RESERVE path as x86
+			 * (the only architecture using this flag) deals with
+			 * this in a different way by using a catch-all vector.
+			 */
+			if ((info->flags & MSI_FLAG_ACTIVATE_EARLY) &&
+			    irqd_affinity_is_managed(irq_data) &&
+			    !cpumask_intersects(irq_data_get_affinity_mask(irq_data),
+						cpu_online_mask)) {
+				irqd_set_managed_shutdown(irq_data);
+				return 0;
+			}
 		}
 		ret = irq_domain_activate_irq(irq_data, can_reserve);
 		if (ret)

@@ -16,8 +16,8 @@
 
 /**
  * blk_mq_rdma_map_queues - provide a default queue mapping for rdma device
- * @set:	tagset to provide the mapping for
- * @dev:	rdma device associated with @set.
+ * @map:	CPU to hardware queue map.
+ * @dev:	rdma device to provide a mapping for.
  * @first_vec:	first interrupt vectors to use for queues (usually 0)
  *
  * This function assumes the rdma device @dev has at least as many available
@@ -41,12 +41,12 @@ int blk_mq_rdma_map_queues(struct blk_mq_tag_set *set,
 			goto fallback;
 
 		for_each_cpu(cpu, mask)
-			set->mq_map[cpu] = queue;
+			set->map[0].mq_map[cpu] = queue;
 	}
 
 	return 0;
 
 fallback:
-	return blk_mq_map_queues(set);
+	return blk_mq_map_queues_by_qmap(&set->map[0]);
 }
 EXPORT_SYMBOL_GPL(blk_mq_rdma_map_queues);

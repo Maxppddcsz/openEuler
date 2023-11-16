@@ -488,7 +488,12 @@ struct scsi_host_template {
 	unsigned int cmd_size;
 	struct scsi_host_cmd_pool *cmd_pool;
 
+#ifndef __GENKSYMS__
+	/* True if the host uses host-wide tagspace */
+	unsigned host_tagset:1;
+#else
 	KABI_RESERVE(1)
+#endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
@@ -618,7 +623,8 @@ struct Scsi_Host {
 	 *
 	 * Note: it is assumed that each hardware queue has a queue depth of
 	 * can_queue. In other words, the total queue depth per host
-	 * is nr_hw_queues * can_queue.
+	 * is nr_hw_queues * can_queue. However, for when host_tagset is set,
+	 * the total queue depth is can_queue.
 	 */
 	unsigned nr_hw_queues;
 	/* 
@@ -710,16 +716,17 @@ struct Scsi_Host {
 	 */
 	struct device *dma_dev;
 
-
 #ifndef __GENKSYMS__
 	union {
 		bool is_builtin;
 		KABI_RESERVE(1)
 	};
+	/* True if the host uses host-wide tagspace */
+	unsigned host_tagset:1;
 #else
 	KABI_RESERVE(1)
-#endif
 	KABI_RESERVE(2)
+#endif
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
 	KABI_RESERVE(5)

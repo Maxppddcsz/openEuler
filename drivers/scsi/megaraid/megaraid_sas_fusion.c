@@ -262,10 +262,10 @@ megasas_fusion_update_can_queue(struct megasas_instance *instance, int fw_boot_c
 
 	reg_set = instance->reg_set;
 
-	/* ventura FW does not fill outbound_scratch_pad_3 with queue depth */
+	/* ventura FW does not fill outbound_scratch_pad_2 with queue depth */
 	if (instance->adapter_type < VENTURA_SERIES)
 		cur_max_fw_cmds =
-		readl(&instance->reg_set->outbound_scratch_pad_3) & 0x00FFFF;
+		readl(&instance->reg_set->outbound_scratch_pad_2) & 0x00FFFF;
 
 	if (dual_qdepth_disable || !cur_max_fw_cmds)
 		cur_max_fw_cmds = instance->instancet->read_fw_status_reg(reg_set) & 0x00FFFF;
@@ -301,6 +301,44 @@ megasas_fusion_update_can_queue(struct megasas_instance *instance, int fw_boot_c
 		instance->max_fw_cmds = instance->max_fw_cmds-1;
 	}
 }
+
+static inline void
+megasas_get_msix_index(struct megasas_instance *instance,
+		       struct scsi_cmnd *scmd,
+		       struct megasas_cmd_fusion *cmd,
+		       u8 data_arms)
+{
+	int sdev_busy;
+
+	/* TBD - if sml remove device_busy in future, driver
+	 * should track counter in internal structure.
+	 */
+	sdev_busy = atomic_read(&scmd->device->device_busy);
+
+	if (instance->perf_mode == MR_BALANCED_PERF_MODE &&
+	    sdev_busy > (data_arms * MR_DEVICE_HIGH_IOPS_DEPTH)) {
+		cmd->request_desc->SCSIIO.MSIxIndex =
+			mega_mod64((atomic64_add_return(1,
+					&instance->high_iops_outstanding) /
+					MR_HIGH_IOPS_BATCH_COUNT),
+					instance->low_latency_index_start);
+	} else if (instance->msix_load_balance) {
+		cmd->request_desc->SCSIIO.MSIxIndex =
+			(mega_mod64(atomic64_add_return(1,
+				&instance->total_io_count),
+				instance->msix_vectors));
+	} else if (instance->host->nr_hw_queues > 1) {
+		u32 tag = blk_mq_unique_tag(scmd->request);
+
+		cmd->request_desc->SCSIIO.MSIxIndex =
+			blk_mq_unique_tag_to_hwq(tag) +
+			instance->low_latency_index_start;
+	} else {
+		cmd->request_desc->SCSIIO.MSIxIndex =
+			instance->reply_map[raw_smp_processor_id()];
+	}
+}
+
 /**
  * megasas_free_cmds_fusion -	Free all the cmds in the free cmd pool
  * @instance:		Adapter soft state
@@ -878,9 +916,6 @@ megasas_alloc_cmds_fusion(struct megasas_instance *instance)
 	if (megasas_alloc_cmdlist_fusion(instance))
 		goto fail_exit;
 
-	dev_info(&instance->pdev->dev, "Configured max firmware commands: %d\n",
-		 instance->max_fw_cmds);
-
 	/* The first 256 bytes (SMID 0) is not used. Don't add to the cmd list */
 	io_req_base = fusion->io_request_frames + MEGA_MPI2_RAID_DEFAULT_IO_FRAME_SIZE;
 	io_req_base_phys = fusion->io_request_frames_phys + MEGA_MPI2_RAID_DEFAULT_IO_FRAME_SIZE;
@@ -974,9 +1009,10 @@ megasas_ioc_init_fusion(struct megasas_instance *instance)
 	struct megasas_header *frame_hdr;
 	const char *sys_info;
 	MFI_CAPABILITIES *drv_ops;
-	u32 scratch_pad_2;
+	u32 scratch_pad_1;
 	ktime_t time;
 	bool cur_fw_64bit_dma_capable;
+	bool cur_intr_coalescing;
 
 	fusion = instance->ctrl_context;
 
@@ -985,14 +1021,15 @@ megasas_ioc_init_fusion(struct megasas_instance *instance)
 
 	cmd = fusion->ioc_init_cmd;
 
-	scratch_pad_2 = readl
-		(&instance->reg_set->outbound_scratch_pad_2);
+	scratch_pad_1 = readl
+		(&instance->reg_set->outbound_scratch_pad_1);
 
-	cur_rdpq_mode = (scratch_pad_2 & MR_RDPQ_MODE_OFFSET) ? 1 : 0;
+	cur_rdpq_mode = (scratch_pad_1 & MR_RDPQ_MODE_OFFSET) ? 1 : 0;
 
 	if (instance->adapter_type == INVADER_SERIES) {
 		cur_fw_64bit_dma_capable =
-			(scratch_pad_2 & MR_CAN_HANDLE_64_BIT_DMA_OFFSET) ? true : false;
+			(scratch_pad_1 & MR_CAN_HANDLE_64_BIT_DMA_OFFSET) ?
+			true : false;
 
 		if (instance->consistent_mask_64bit && !cur_fw_64bit_dma_capable) {
 			dev_err(&instance->pdev->dev, "Driver was operating on 64bit "
@@ -1010,7 +1047,18 @@ megasas_ioc_init_fusion(struct megasas_instance *instance)
 		goto fail_fw_init;
 	}
 
-	instance->fw_sync_cache_support = (scratch_pad_2 &
+	cur_intr_coalescing = (scratch_pad_1 & MR_INTR_COALESCING_SUPPORT_OFFSET) ?
+							true : false;
+
+	if ((instance->low_latency_index_start ==
+		MR_HIGH_IOPS_QUEUE_COUNT) && cur_intr_coalescing)
+		instance->perf_mode = MR_BALANCED_PERF_MODE;
+
+	dev_info(&instance->pdev->dev, "Performance mode :%s (latency index = %d)\n",
+		MEGASAS_PERF_MODE_2STR(instance->perf_mode),
+		instance->low_latency_index_start);
+
+	instance->fw_sync_cache_support = (scratch_pad_1 &
 		MR_CAN_HANDLE_SYNC_CACHE_OFFSET) ? 1 : 0;
 	dev_info(&instance->pdev->dev, "FW supports sync cache\t: %s\n",
 		 instance->fw_sync_cache_support ? "Yes" : "No");
@@ -1094,6 +1142,23 @@ megasas_ioc_init_fusion(struct megasas_instance *instance)
 	init_frame->queue_info_new_phys_addr_lo =
 		cpu_to_le32(lower_32_bits(ioc_init_handle));
 	init_frame->data_xfer_len = cpu_to_le32(sizeof(struct MPI2_IOC_INIT_REQUEST));
+
+	/*
+	 * Each bit in replyqueue_mask represents one group of MSI-x vectors
+	 * (each group has 8 vectors)
+	 */
+	switch (instance->perf_mode) {
+	case MR_BALANCED_PERF_MODE:
+		init_frame->replyqueue_mask =
+			cpu_to_le16(~(~0 <<
+			instance->low_latency_index_start/8));
+		break;
+	case MR_IOPS_PERF_MODE:
+		init_frame->replyqueue_mask =
+		       cpu_to_le16(~(~0 << instance->msix_vectors/8));
+		break;
+	}
+
 
 	req_desc.u.low = cpu_to_le32(lower_32_bits(cmd->frame_phys_addr));
 	req_desc.u.high = cpu_to_le32(upper_32_bits(cmd->frame_phys_addr));
@@ -1642,7 +1707,7 @@ megasas_init_adapter_fusion(struct megasas_instance *instance)
 {
 	struct megasas_register_set __iomem *reg_set;
 	struct fusion_context *fusion;
-	u32 scratch_pad_2;
+	u32 scratch_pad_1;
 	int i = 0, count;
 
 	fusion = instance->ctrl_context;
@@ -1659,20 +1724,20 @@ megasas_init_adapter_fusion(struct megasas_instance *instance)
 
 	megasas_configure_queue_sizes(instance);
 
-	scratch_pad_2 = readl(&instance->reg_set->outbound_scratch_pad_2);
-	/* If scratch_pad_2 & MEGASAS_MAX_CHAIN_SIZE_UNITS_MASK is set,
+	scratch_pad_1 = readl(&instance->reg_set->outbound_scratch_pad_1);
+	/* If scratch_pad_1 & MEGASAS_MAX_CHAIN_SIZE_UNITS_MASK is set,
 	 * Firmware support extended IO chain frame which is 4 times more than
 	 * legacy Firmware.
 	 * Legacy Firmware - Frame size is (8 * 128) = 1K
 	 * 1M IO Firmware  - Frame size is (8 * 128 * 4)  = 4K
 	 */
-	if (scratch_pad_2 & MEGASAS_MAX_CHAIN_SIZE_UNITS_MASK)
+	if (scratch_pad_1 & MEGASAS_MAX_CHAIN_SIZE_UNITS_MASK)
 		instance->max_chain_frame_sz =
-			((scratch_pad_2 & MEGASAS_MAX_CHAIN_SIZE_MASK) >>
+			((scratch_pad_1 & MEGASAS_MAX_CHAIN_SIZE_MASK) >>
 			MEGASAS_MAX_CHAIN_SHIFT) * MEGASAS_1MB_IO;
 	else
 		instance->max_chain_frame_sz =
-			((scratch_pad_2 & MEGASAS_MAX_CHAIN_SIZE_MASK) >>
+			((scratch_pad_1 & MEGASAS_MAX_CHAIN_SIZE_MASK) >>
 			MEGASAS_MAX_CHAIN_SHIFT) * MEGASAS_256K_IO;
 
 	if (instance->max_chain_frame_sz < MEGASAS_CHAIN_FRAME_SZ_MIN) {
@@ -2450,9 +2515,10 @@ static void megasas_stream_detect(struct megasas_instance *instance,
  *
  */
 static void
-megasas_set_raidflag_cpu_affinity(union RAID_CONTEXT_UNION *praid_context,
-				  struct MR_LD_RAID *raid, bool fp_possible,
-				  u8 is_read, u32 scsi_buff_len)
+megasas_set_raidflag_cpu_affinity(struct fusion_context *fusion,
+				union RAID_CONTEXT_UNION *praid_context,
+				struct MR_LD_RAID *raid, bool fp_possible,
+				u8 is_read, u32 scsi_buff_len)
 {
 	u8 cpu_sel = MR_RAID_CTX_CPUSEL_0;
 	struct RAID_CONTEXT_G35 *rctx_g35;
@@ -2510,11 +2576,11 @@ megasas_set_raidflag_cpu_affinity(union RAID_CONTEXT_UNION *praid_context,
 	 * vs MR_RAID_FLAGS_IO_SUB_TYPE_CACHE_BYPASS.
 	 * IO Subtype is not bitmap.
 	 */
-	if ((raid->level == 1) && (!is_read)) {
-		if (scsi_buff_len > MR_LARGE_IO_MIN_SIZE)
-			praid_context->raid_context_g35.raid_flags =
-				(MR_RAID_FLAGS_IO_SUB_TYPE_LDIO_BW_LIMIT
-				<< MR_RAID_CTX_RAID_FLAGS_IO_SUB_TYPE_SHIFT);
+	if ((fusion->pcie_bw_limitation) && (raid->level == 1) && (!is_read) &&
+			(scsi_buff_len > MR_LARGE_IO_MIN_SIZE)) {
+		praid_context->raid_context_g35.raid_flags =
+			(MR_RAID_FLAGS_IO_SUB_TYPE_LDIO_BW_LIMIT
+			<< MR_RAID_CTX_RAID_FLAGS_IO_SUB_TYPE_SHIFT);
 	}
 }
 
@@ -2620,6 +2686,7 @@ megasas_build_ldio_fusion(struct megasas_instance *instance,
 	io_info.r1_alt_dev_handle = MR_DEVHANDLE_INVALID;
 	scsi_buff_len = scsi_bufflen(scp);
 	io_request->DataLength = cpu_to_le32(scsi_buff_len);
+	io_info.data_arms = 1;
 
 	if (scp->sc_data_direction == PCI_DMA_FROMDEVICE)
 		io_info.isRead = 1;
@@ -2640,8 +2707,7 @@ megasas_build_ldio_fusion(struct megasas_instance *instance,
 			fp_possible = (io_info.fpOkForIo > 0) ? true : false;
 	}
 
-	cmd->request_desc->SCSIIO.MSIxIndex =
-		instance->reply_map[raw_smp_processor_id()];
+	megasas_get_msix_index(instance, scp, cmd, io_info.data_arms);
 
 	praid_context = &io_request->RaidContext;
 
@@ -2661,8 +2727,9 @@ megasas_build_ldio_fusion(struct megasas_instance *instance,
 				(instance->host->can_queue)) {
 				fp_possible = false;
 				atomic_dec(&instance->fw_outstanding);
-			} else if ((scsi_buff_len > MR_LARGE_IO_MIN_SIZE) ||
-				   (atomic_dec_if_positive(&mrdev_priv->r1_ldio_hint) > 0)) {
+			} else if (fusion->pcie_bw_limitation &&
+				((scsi_buff_len > MR_LARGE_IO_MIN_SIZE) ||
+				(atomic_dec_if_positive(&mrdev_priv->r1_ldio_hint) > 0))) {
 				fp_possible = false;
 				atomic_dec(&instance->fw_outstanding);
 				if (scsi_buff_len > MR_LARGE_IO_MIN_SIZE)
@@ -2687,7 +2754,7 @@ megasas_build_ldio_fusion(struct megasas_instance *instance,
 
 		/* If raid is NULL, set CPU affinity to default CPU0 */
 		if (raid)
-			megasas_set_raidflag_cpu_affinity(praid_context,
+			megasas_set_raidflag_cpu_affinity(fusion, praid_context,
 				raid, fp_possible, io_info.isRead,
 				scsi_buff_len);
 		else
@@ -2968,8 +3035,7 @@ megasas_build_syspd_fusion(struct megasas_instance *instance,
 
 	cmd->request_desc->SCSIIO.DevHandle = io_request->DevHandle;
 
-	cmd->request_desc->SCSIIO.MSIxIndex =
-		instance->reply_map[raw_smp_processor_id()];
+	megasas_get_msix_index(instance, scmd, cmd, 1);
 
 	if (!fp_possible) {
 		/* system pd firmware path */
@@ -3694,7 +3760,7 @@ megasas_release_fusion(struct megasas_instance *instance)
 static u32
 megasas_read_fw_status_reg_fusion(struct megasas_register_set __iomem *regs)
 {
-	return readl(&(regs)->outbound_scratch_pad);
+	return readl(&(regs)->outbound_scratch_pad_0);
 }
 
 /**
@@ -4777,8 +4843,8 @@ void  megasas_fusion_crash_dump_wq(struct work_struct *work)
 				"crash dump and initiating OCR\n");
 			status_reg |= MFI_STATE_CRASH_DUMP_DONE;
 			writel(status_reg,
-				&instance->reg_set->outbound_scratch_pad);
-			readl(&instance->reg_set->outbound_scratch_pad);
+				&instance->reg_set->outbound_scratch_pad_0);
+			readl(&instance->reg_set->outbound_scratch_pad_0);
 			return;
 		}
 		megasas_alloc_host_crash_buffer(instance);
@@ -4809,13 +4875,13 @@ void  megasas_fusion_crash_dump_wq(struct work_struct *work)
 		instance->fw_crash_buffer_size =  instance->drv_buf_index;
 		instance->fw_crash_state = AVAILABLE;
 		instance->drv_buf_index = 0;
-		writel(status_reg, &instance->reg_set->outbound_scratch_pad);
-		readl(&instance->reg_set->outbound_scratch_pad);
+		writel(status_reg, &instance->reg_set->outbound_scratch_pad_0);
+		readl(&instance->reg_set->outbound_scratch_pad_0);
 		if (!partial_copy)
 			megasas_reset_fusion(instance->host, 0);
 	} else {
-		writel(status_reg, &instance->reg_set->outbound_scratch_pad);
-		readl(&instance->reg_set->outbound_scratch_pad);
+		writel(status_reg, &instance->reg_set->outbound_scratch_pad_0);
+		readl(&instance->reg_set->outbound_scratch_pad_0);
 	}
 }
 

@@ -277,6 +277,9 @@ struct request {
 #ifdef CONFIG_BLK_CGROUP
 	struct request_list *rl;		/* rl this rq is alloced from */
 #endif
+#ifndef __GENKSYMS__
+	struct blk_mq_hw_ctx *mq_hctx;
+#endif
 };
 
 static inline bool blk_op_is_scsi(unsigned int op)
@@ -487,7 +490,9 @@ struct request_queue {
 
 	const struct blk_mq_ops	*mq_ops;
 
+#ifdef __GENKSYMS__
 	unsigned int		*mq_map;
+#endif
 
 	/* sw queues */
 	struct blk_mq_ctx __percpu	*queue_ctx;
@@ -703,6 +708,9 @@ struct request_queue {
 
 #define BLK_MAX_WRITE_HINTS	5
 	u64			write_hints[BLK_MAX_WRITE_HINTS];
+#ifndef __GENKSYMS__
+	atomic_t                nr_active_requests_shared_sbitmap;
+#endif
 };
 
 #define QUEUE_FLAG_QUEUED	0	/* uses generic tag queueing */
@@ -741,6 +749,7 @@ struct request_queue {
 #define QUEUE_FLAG_QUIESCED_INTERNAL 30
 /* bio will be dispatched asynchronous */
 #define QUEUE_FLAG_DISPATCH_ASYNC 31
+#define QUEUE_FLAG_HCTX_ACTIVE 32       /* at least one blk-mq hctx is active */
 
 #define QUEUE_FLAG_DEFAULT	((1 << QUEUE_FLAG_IO_STAT) |		\
 				 (1 << QUEUE_FLAG_SAME_COMP)	|	\
@@ -1332,29 +1341,6 @@ struct request_queue *blk_alloc_queue_node(gfp_t gfp_mask, int node_id,
 					   spinlock_t *lock);
 extern void blk_put_queue(struct request_queue *);
 extern void blk_set_queue_dying(struct request_queue *);
-
-/*
- * block layer runtime pm functions
- */
-#ifdef CONFIG_PM
-extern void blk_pm_runtime_init(struct request_queue *q, struct device *dev);
-extern int blk_pre_runtime_suspend(struct request_queue *q);
-extern void blk_post_runtime_suspend(struct request_queue *q, int err);
-extern void blk_pre_runtime_resume(struct request_queue *q);
-extern void blk_post_runtime_resume(struct request_queue *q, int err);
-extern void blk_set_runtime_active(struct request_queue *q);
-#else
-static inline void blk_pm_runtime_init(struct request_queue *q,
-	struct device *dev) {}
-static inline int blk_pre_runtime_suspend(struct request_queue *q)
-{
-	return -ENOSYS;
-}
-static inline void blk_post_runtime_suspend(struct request_queue *q, int err) {}
-static inline void blk_pre_runtime_resume(struct request_queue *q) {}
-static inline void blk_post_runtime_resume(struct request_queue *q, int err) {}
-static inline void blk_set_runtime_active(struct request_queue *q) {}
-#endif
 
 /*
  * blk_plug permits building a queue of related requests by holding the I/O

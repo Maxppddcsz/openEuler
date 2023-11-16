@@ -56,6 +56,8 @@ void sas_suspend_sata(struct asd_sas_port *port);
 void sas_resume_sata(struct asd_sas_port *port);
 void sas_ata_end_eh(struct ata_port *ap);
 void sas_ata_check_topology(struct asd_sas_port *port);
+void sas_ata_device_link_abort(struct domain_device *dev, bool force_reset);
+int smp_ata_check_ready_type(struct ata_link *link);
 #else
 
 
@@ -113,6 +115,15 @@ static inline void sas_ata_check_topology(struct asd_sas_port *port)
 {
 }
 
+static inline void sas_ata_device_link_abort(struct domain_device *dev,
+					     bool force_reset)
+{
+}
+
+static inline int smp_ata_check_ready_type(struct ata_link *link)
+{
+	return 0;
+}
 #endif
 
 #endif /* _SAS_ATA_H_ */

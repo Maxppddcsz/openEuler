@@ -952,6 +952,7 @@ struct IO_REQUEST_INFO {
 	u8  pd_after_lb;
 	u16 r1_alt_dev_handle; /* raid 1/10 only */
 	bool ra_capable;
+	u8 data_arms;
 };
 
 struct MR_LD_TARGET_SYNC {
@@ -1333,7 +1334,7 @@ struct fusion_context {
 	dma_addr_t ioc_init_request_phys;
 	struct MPI2_IOC_INIT_REQUEST *ioc_init_request;
 	struct megasas_cmd *ioc_init_cmd;
-
+	bool pcie_bw_limitation;
 };
 
 union desc_value {

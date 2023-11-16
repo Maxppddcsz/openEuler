@@ -457,7 +457,8 @@ static int nvme_pci_map_queues(struct blk_mq_tag_set *set)
 {
 	struct nvme_dev *dev = set->driver_data;
 
-	return blk_mq_pci_map_queues(set, to_pci_dev(dev->dev),
+	return blk_mq_pci_map_queues_by_qmap(&set->map[HCTX_TYPE_DEFAULT],
+			to_pci_dev(dev->dev),
 			dev->num_vecs > 1 ? 1 /* admin queue */ : 0);
 }
 
@@ -2065,6 +2066,7 @@ static int nvme_dev_add(struct nvme_dev *dev)
 	if (!dev->ctrl.tagset) {
 		dev->tagset.ops = &nvme_mq_ops;
 		dev->tagset.nr_hw_queues = dev->online_queues - 1;
+		dev->tagset.nr_maps = HCTX_MAX_TYPES;
 		dev->tagset.timeout = NVME_IO_TIMEOUT;
 		dev->tagset.numa_node = dev_to_node(dev->dev);
 		dev->tagset.queue_depth = min_t(unsigned int, dev->q_depth,
