@@ -612,7 +612,7 @@ static int pm8001_dev_found_notify(struct domain_device *dev)
 	dev->lldd_dev = pm8001_device;
 	pm8001_device->dev_type = dev->dev_type;
 	pm8001_device->dcompletion = &completion;
-	if (parent_dev && DEV_IS_EXPANDER(parent_dev->dev_type)) {
+	if (parent_dev && dev_is_expander(parent_dev->dev_type)) {
 		int phy_id;
 		struct ex_phy *phy;
 		for (phy_id = 0; phy_id < parent_dev->ex_dev.num_phys;
@@ -1319,4 +1319,3 @@ int pm8001_clear_task_set(struct domain_device *dev, u8 *lun)
 	rc = pm8001_issue_ssp_tmf(dev, lun, &tmf_task);
 	return rc;
 }
-
