@@ -191,7 +191,7 @@
 
 #define encode_getxattr_maxsz   (op_encode_hdr_maxsz + 1 + \
 				 nfs4_xattr_name_maxsz)
-#define decode_getxattr_maxsz   (op_decode_hdr_maxsz + 1 + 1)
+#define decode_getxattr_maxsz   (op_decode_hdr_maxsz + 1 + pagepad_maxsz)
 #define encode_setxattr_maxsz   (op_encode_hdr_maxsz + \
 				 1 + nfs4_xattr_name_maxsz + 1)
 #define decode_setxattr_maxsz   (op_decode_hdr_maxsz + decode_change_info_maxsz)
@@ -489,6 +489,12 @@ static int decode_getxattr(struct xdr_stream *xdr,
 		return -EIO;
 
 	len = be32_to_cpup(p);
+
+	/*
+	 * Only check against the page length here. The actual
+	 * requested length may be smaller, but that is only
+	 * checked against after possibly caching a valid reply.
+	 */
 	if (len > req->rq_rcv_buf.page_len)
 		return -ERANGE;
 
@@ -1473,18 +1479,16 @@ static void nfs4_xdr_enc_getxattr(struct rpc_rqst *req, struct xdr_stream *xdr,
 	struct compound_hdr hdr = {
 		.minorversion = nfs4_xdr_minorversion(&args->seq_args),
 	};
-	size_t plen;
+	uint32_t replen;
 
 	encode_compound_hdr(xdr, req, &hdr);
 	encode_sequence(xdr, &args->seq_args, &hdr);
 	encode_putfh(xdr, args->fh, &hdr);
+	replen = hdr.replen + op_decode_hdr_maxsz + 1;
 	encode_getxattr(xdr, args->xattr_name, &hdr);
 
-	plen = args->xattr_len ? args->xattr_len : XATTR_SIZE_MAX;
-
-	rpc_prepare_reply_pages(req, args->xattr_pages, 0, plen,
-	    hdr.replen);
-	req->rq_rcv_buf.flags |= XDRBUF_SPARSE_PAGES;
+	rpc_prepare_reply_pages(req, args->xattr_pages, 0, args->xattr_len,
+				replen);
 
 	encode_nops(&hdr);
 }
@@ -1517,14 +1521,15 @@ static void nfs4_xdr_enc_listxattrs(struct rpc_rqst *req,
 	struct compound_hdr hdr = {
 		.minorversion = nfs4_xdr_minorversion(&args->seq_args),
 	};
+	uint32_t replen;
 
 	encode_compound_hdr(xdr, req, &hdr);
 	encode_sequence(xdr, &args->seq_args, &hdr);
 	encode_putfh(xdr, args->fh, &hdr);
+	replen = hdr.replen + op_decode_hdr_maxsz + 2 + 1;
 	encode_listxattrs(xdr, args, &hdr);
 
-	rpc_prepare_reply_pages(req, args->xattr_pages, 0, args->count,
-	    hdr.replen);
+	rpc_prepare_reply_pages(req, args->xattr_pages, 0, args->count, replen);
 
 	encode_nops(&hdr);
 }
