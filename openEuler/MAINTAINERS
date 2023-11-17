@@ -267,3 +267,10 @@ L:	kernel@openeuler.org
 S:	Buried alive in reporters
 F:	*
 F:	*/
+
+IGC NETWORK DRIVER
+M:	Yurii Huang <yurii.huang@dbappsecurity.com.cn>
+M:	Yusu Weng <yusu.weng@dbappsecurity.com.cn>
+M:	jiabao Li <jiabao.li@dbappsecurity.com.cn>
+S:	Maintained
+F:	drivers/net/ethernet/intel/igc/*
