@@ -3440,6 +3440,80 @@ static const struct file_operations proc_preferred_swap_operations = {
 };
 #endif /* CONFIG_PREFERRED_SWAP */
 
+static ssize_t proc_enable_swap_read(struct file *file, char __user *buf,
+				      size_t count, loff_t *ppos)
+{
+	struct task_struct *task = get_proc_task(file_inode(file));
+	struct mm_struct *mm;
+	int ret, enable_swap;
+	size_t len;
+	char buffer[PROC_NUMBUF];
+	if (!task)
+		return -ESRCH;
+
+	ret = 0;
+	mm = get_task_mm(task);
+	if (mm) {
+		enable_swap = test_bit(MMF_DISABLE_SWAP, &mm->flags) ? 0 : 1;
+		len = snprintf(buffer, sizeof(buffer), "%d\n", enable_swap);
+		mmput(mm);
+		ret = simple_read_from_buffer(buf, count, ppos, buffer, len);
+	}
+
+	put_task_struct(task);
+
+	return ret;
+}
+
+static ssize_t proc_enable_swap_write(struct file *file, const char __user *buf,
+				      size_t count, loff_t *ppos)
+{
+	struct task_struct *task;
+	struct mm_struct *mm;
+	bool enable_swap;
+	unsigned val;
+	int ret;
+
+	ret = kstrtouint_from_user(buf, count, 0, &val);
+	if (ret < 0)
+		return ret;
+	if (val == 0)
+		enable_swap = false;
+	else if (val == 1)
+		enable_swap = true;
+	else
+		return -EINVAL;
+
+	ret = -ESRCH;
+	task = get_proc_task(file_inode(file));
+	if (!task)
+		goto out_no_task;
+
+	mm = get_task_mm(task);
+	if (!mm)
+		goto out_no_mm;
+	ret = 0;
+
+	if (enable_swap)
+		clear_bit(MMF_DISABLE_SWAP, &mm->flags);
+	else
+		set_bit(MMF_DISABLE_SWAP, &mm->flags);
+
+	mmput(mm);
+out_no_mm:
+	put_task_struct(task);
+out_no_task:
+	if (ret < 0)
+		return ret;
+	return count;
+}
+
+static const struct file_operations proc_enable_swap_operations = {
+	.write	= proc_enable_swap_write,
+	.read	= proc_enable_swap_read,
+	.llseek	= generic_file_llseek,
+};
+
 static int proc_pid_personality(struct seq_file *m, struct pid_namespace *ns,
 				struct pid *pid, struct task_struct *task)
 {
@@ -3632,6 +3706,7 @@ static const struct pid_entry tgid_base_stuff[] = {
 #ifdef CONFIG_ASCEND_SHARE_POOL
 	ONE("sp_group", 0444, proc_sp_group_state),
 #endif
+	REG("enable_swap", S_IRUGO|S_IWUSR, proc_enable_swap_operations),
 #ifdef CONFIG_KSM
 	ONE("ksm_merging_pages",  S_IRUSR, proc_pid_ksm_merging_pages),
 	ONE("ksm_stat",  S_IRUSR, proc_pid_ksm_stat),
