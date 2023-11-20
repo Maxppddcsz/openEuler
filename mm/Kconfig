@@ -999,6 +999,13 @@ config EXTEND_HUGEPAGE_MAPPING
 	help
 	  Introduce vmalloc/vmap/remap interfaces that handle only hugepages.
 
+config PREFERRED_SWAP
+	bool "make task only swapping memory to assigned swap"
+	depends on SYSFS
+	default y
+	help
+	  Say Y here to enable kernel to limit tasks only swapping memory to assigned swap.
+
 source "mm/damon/Kconfig"
 
 endmenu

@@ -638,7 +638,11 @@ struct mm_struct {
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 #endif
+#ifdef CONFIG_PREFERRED_SWAP
+	KABI_USE(4, struct swap_info_struct *preferred_swap)
+#else
 	KABI_RESERVE(4)
+#endif
 	KABI_RESERVE(5)
 	KABI_RESERVE(6)
 	KABI_RESERVE(7)

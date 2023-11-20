@@ -3330,6 +3330,116 @@ static const struct file_operations proc_preferred_cpuset_operations = {
 };
 #endif
 
+#ifdef CONFIG_PREFERRED_SWAP
+static ssize_t proc_preferred_swap_read(struct file *file, char __user *buf,
+				      size_t count, loff_t *ppos)
+{
+	struct task_struct *task = get_proc_task(file_inode(file));
+	struct mm_struct *mm;
+	int ret;
+	int err = 0;
+	size_t len;
+	char *buffer;
+	char *path;
+
+	if (!task)
+		return -ESRCH;
+
+	ret = 0;
+	mm = get_task_mm(task);
+	if (!mm)
+		goto out_no_mm;
+
+	if (mm->preferred_swap) {
+		buffer = (char *)kmalloc(PATH_MAX + 1, GFP_KERNEL);
+		if (buffer == NULL) {
+			err = -ENOMEM;
+			goto out;
+		}
+
+		path = d_path(&mm->preferred_swap->swap_file->f_path,
+			      buffer, PATH_MAX);
+
+		if (IS_ERR(path)) {
+			err = PTR_ERR(path);
+			kfree(buffer);
+			goto out;
+		}
+
+		len = snprintf(buffer, strlen(path) + 2, "%s\n", path);
+		ret = simple_read_from_buffer(buf, count, ppos, buffer, len);
+		kfree(buffer);
+	}
+out:
+	mmput(mm);
+out_no_mm:
+	put_task_struct(task);
+	if (err < 0)
+		return err;
+	return ret;
+}
+
+static ssize_t proc_preferred_swap_write(struct file *file,
+		const char __user *buf, size_t count, loff_t *ppos)
+{
+	struct task_struct *task;
+	struct mm_struct *mm;
+	char *buffer;
+	int err = 0;
+
+	if (count >= PATH_MAX)
+		return -EINVAL;
+
+	buffer = (char *)kmalloc(PATH_MAX, GFP_KERNEL);
+	if (buffer == NULL) {
+		err = -ENOMEM;
+		goto out_no_buffer;
+	}
+	if (copy_from_user(buffer, buf, count)) {
+		err = -EFAULT;
+		goto out_no_task;
+	}
+	buffer[count] = '\0';
+	strreplace(buffer, '\n', '\0');
+	task = get_proc_task(file_inode(file));
+	if (!task) {
+		err = -ESRCH;
+		goto out_no_task;
+	}
+	mm = get_task_mm(task);
+	if (!mm) {
+		err = -ESRCH;
+		goto out_no_mm;
+	}
+	if (strlen(buffer) == 0) {
+		mm->preferred_swap = NULL;
+		goto out;
+	}
+	err = find_swap_info(buffer, mm);
+	if (err) {
+		pr_info("%s failed to be found as swap\n", buffer);
+		goto out;
+	}
+
+	preferred_swap_used = 1;
+out:
+	mmput(mm);
+out_no_mm:
+	put_task_struct(task);
+out_no_task:
+	kfree(buffer);
+out_no_buffer:
+	if (err < 0)
+		return err;
+	return count;
+}
+static const struct file_operations proc_preferred_swap_operations = {
+	.write	= proc_preferred_swap_write,
+	.read	= proc_preferred_swap_read,
+	.llseek	= generic_file_llseek,
+};
+#endif /* CONFIG_PREFERRED_SWAP */
+
 static int proc_pid_personality(struct seq_file *m, struct pid_namespace *ns,
 				struct pid *pid, struct task_struct *task)
 {
@@ -3525,6 +3635,9 @@ static const struct pid_entry tgid_base_stuff[] = {
 #ifdef CONFIG_KSM
 	ONE("ksm_merging_pages",  S_IRUSR, proc_pid_ksm_merging_pages),
 	ONE("ksm_stat",  S_IRUSR, proc_pid_ksm_stat),
+#endif
+#ifdef CONFIG_PREFERRED_SWAP
+	REG("preferred_swap", S_IRUGO|S_IWUSR, proc_preferred_swap_operations),
 #endif
 };
 
