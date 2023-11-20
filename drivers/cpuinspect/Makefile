@@ -4,4 +4,5 @@
 #
 ccflags-y = -DDEBUG
 obj-$(CONFIG_CPU_INSPECT) += cpu_inspect.o
+obj-$(CONFIG_CPU_INSPECTOR_ATF) += inspector-atf.o
 cpu_inspect-y = cpuinspect.o inspector.o sysfs.o
