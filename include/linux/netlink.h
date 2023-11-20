@@ -179,7 +179,18 @@ struct netlink_callback {
 	u16			family;
 	u16			min_dump_alloc;
 	unsigned int		prev_seq, seq;
+#ifdef __GENKSYMS__
 	long			args[6];
+#else
+	union {
+		u8              ctx[48];
+
+		/* args is deprecated. Cast a struct over ctx instead
+		 * for proper type safety.
+		 */
+		long            args[6];
+	};
+#endif
 };
 
 struct netlink_notify {

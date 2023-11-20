@@ -152,7 +152,12 @@ struct genl_ops {
 	u8			internal_flags;
 	u8			flags;
 
+#ifndef __GENKSYMS__
+	unsigned int		maxattr;
+	unsigned int		reserve;
+#else
 	KABI_RESERVE(1)
+#endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)

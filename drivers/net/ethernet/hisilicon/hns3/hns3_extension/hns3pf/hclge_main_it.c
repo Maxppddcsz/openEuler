@@ -18,6 +18,7 @@
 #include "hclge_main.h"
 #include "hnae3.h"
 #include "hclge_main_it.h"
+#include "hclge_ext.h"
 #ifdef CONFIG_HNS3_TEST
 #include "hclge_sysfs.h"
 #endif
@@ -26,27 +27,6 @@
 #define HCLGE_RESET_MAX_FAIL_CNT	1
 
 static nic_event_fn_t nic_event_call;
-
-int nic_register_event(nic_event_fn_t event_call)
-{
-	if (!event_call) {
-		pr_err("register event handle is null.\n");
-		return -EINVAL;
-	}
-
-	nic_event_call = event_call;
-
-	pr_info("netdev register success.\n");
-	return 0;
-}
-EXPORT_SYMBOL(nic_register_event);
-
-int nic_unregister_event(void)
-{
-	nic_event_call = NULL;
-	return 0;
-}
-EXPORT_SYMBOL(nic_unregister_event);
 
 static void nic_call_event(struct net_device *netdev,
 			   enum hnae3_event_type_custom event_t)

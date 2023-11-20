@@ -13,16 +13,21 @@
 #include <linux/platform_device.h>
 #include <linux/if_vlan.h>
 #include <linux/crash_dump.h>
+#include <net/ipv6.h>
 #include <net/rtnetlink.h>
 #include "kcompat.h"
+#include <net/vxlan.h>
 #include "hclge_cmd.h"
 #include "hclge_dcb.h"
+#include "hclge_ext.h"
 #include "hclge_main.h"
 #include "hclge_mbx.h"
 #include "hclge_mdio.h"
 #include "hclge_tm.h"
 #include "hclge_err.h"
 #include "hnae3.h"
+#include "hclge_devlink.h"
+#include "hclge_comm_cmd.h"
 
 #define HCLGE_NAME			"hclge"
 
@@ -33,7 +38,6 @@
 #define BUF_MAX_PERCENT		100
 #define BUF_RESERVE_PERCENT	90
 
-#define HCLGE_RESET_MAX_FAIL_CNT	5
 #define HCLGE_RESET_SYNC_TIME		100
 #define HCLGE_PF_RESET_SYNC_TIME	20
 #define HCLGE_PF_RESET_SYNC_CNT		1500
@@ -54,6 +58,8 @@
 
 #define HCLGE_LINK_STATUS_MS	10
 
+#define HCLGE_RESET_MAX_FAIL_CNT        5
+
 static int hclge_set_mac_mtu(struct hclge_dev *hdev, int new_mps);
 static int hclge_init_vlan_config(struct hclge_dev *hdev);
 static void hclge_sync_vlan_filter(struct hclge_dev *hdev);
@@ -66,6 +72,10 @@ static int hclge_set_default_loopback(struct hclge_dev *hdev);
 static void hclge_sync_mac_table(struct hclge_dev *hdev);
 static void hclge_restore_hw_table(struct hclge_dev *hdev);
 static void hclge_sync_promisc_mode(struct hclge_dev *hdev);
+static void hclge_reset_end(struct hnae3_handle *handle, bool done);
+static void hclge_update_fec_stats(struct hclge_dev *hdev);
+static int hclge_mac_link_status_wait(struct hclge_dev *hdev, int link_ret,
+				      int wait_cnt);
 
 static struct hnae3_ae_algo ae_algo;
 
@@ -79,29 +89,33 @@ static const struct pci_device_id ae_algo_pci_tbl[] = {
 	{PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_50GE_RDMA), 0},
 	{PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_50GE_RDMA_MACSEC), 0},
 	{PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_100G_RDMA_MACSEC), 0},
+	{PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_100G_ROH), 0},
+	{PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_200G_RDMA), 0},
+	{PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_200G_ROH), 0},
+	{PCI_VDEVICE(HUAWEI, HNAE3_DEV_ID_400G_ROH), 0},
 	/* required last entry */
 	{0, }
 };
 
 MODULE_DEVICE_TABLE(pci, ae_algo_pci_tbl);
 
-static const u32 cmdq_reg_addr_list[] = {HCLGE_CMDQ_TX_ADDR_L_REG,
-					 HCLGE_CMDQ_TX_ADDR_H_REG,
-					 HCLGE_CMDQ_TX_DEPTH_REG,
-					 HCLGE_CMDQ_TX_TAIL_REG,
-					 HCLGE_CMDQ_TX_HEAD_REG,
-					 HCLGE_CMDQ_RX_ADDR_L_REG,
-					 HCLGE_CMDQ_RX_ADDR_H_REG,
-					 HCLGE_CMDQ_RX_DEPTH_REG,
-					 HCLGE_CMDQ_RX_TAIL_REG,
-					 HCLGE_CMDQ_RX_HEAD_REG,
-					 HCLGE_VECTOR0_CMDQ_SRC_REG,
-					 HCLGE_CMDQ_INTR_STS_REG,
-					 HCLGE_CMDQ_INTR_EN_REG,
-					 HCLGE_CMDQ_INTR_GEN_REG};
+static const u32 cmdq_reg_addr_list[] = {HCLGE_COMM_NIC_CSQ_BASEADDR_L_REG,
+					 HCLGE_COMM_NIC_CSQ_BASEADDR_H_REG,
+					 HCLGE_COMM_NIC_CSQ_DEPTH_REG,
+					 HCLGE_COMM_NIC_CSQ_TAIL_REG,
+					 HCLGE_COMM_NIC_CSQ_HEAD_REG,
+					 HCLGE_COMM_NIC_CRQ_BASEADDR_L_REG,
+					 HCLGE_COMM_NIC_CRQ_BASEADDR_H_REG,
+					 HCLGE_COMM_NIC_CRQ_DEPTH_REG,
+					 HCLGE_COMM_NIC_CRQ_TAIL_REG,
+					 HCLGE_COMM_NIC_CRQ_HEAD_REG,
+					 HCLGE_COMM_VECTOR0_CMDQ_SRC_REG,
+					 HCLGE_COMM_CMDQ_INTR_STS_REG,
+					 HCLGE_COMM_CMDQ_INTR_EN_REG,
+					 HCLGE_COMM_CMDQ_INTR_GEN_REG};
 
 static const u32 common_reg_addr_list[] = {HCLGE_MISC_VECTOR_REG_BASE,
-					   HCLGE_VECTOR0_OTER_EN_REG,
+					   HCLGE_PF_OTHER_INT_REG,
 					   HCLGE_MISC_RESET_STS_REG,
 					   HCLGE_MISC_VECTOR_INT_STS,
 					   HCLGE_GLOBAL_RESET_REG,
@@ -142,189 +156,226 @@ static const u32 tqp_intr_reg_addr_list[] = {HCLGE_TQP_INTR_CTRL_REG,
 					     HCLGE_TQP_INTR_RL_REG};
 
 static const char hns3_nic_test_strs[][ETH_GSTRING_LEN] = {
-	"App    Loopback test",
-	"Serdes serial Loopback test",
-	"Serdes parallel Loopback test",
-	"Phy    Loopback test"
+	"External Loopback test",
+	"App      Loopback test",
+	"Serdes   serial Loopback test",
+	"Serdes   parallel Loopback test",
+	"Phy      Loopback test"
 };
 
 static const struct hclge_comm_stats_str g_mac_stats_string[] = {
-	{"mac_tx_mac_pause_num",
+	{"mac_tx_mac_pause_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_mac_pause_num)},
-	{"mac_rx_mac_pause_num",
+	{"mac_rx_mac_pause_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_mac_pause_num)},
-	{"mac_tx_control_pkt_num",
+	{"mac_tx_pause_xoff_time", HCLGE_MAC_STATS_MAX_NUM_V2,
+		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_pause_xoff_time)},
+	{"mac_rx_pause_xoff_time", HCLGE_MAC_STATS_MAX_NUM_V2,
+		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_pause_xoff_time)},
+	{"mac_tx_control_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_ctrl_pkt_num)},
-	{"mac_rx_control_pkt_num",
+	{"mac_rx_control_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_ctrl_pkt_num)},
-	{"mac_tx_pfc_pkt_num",
+	{"mac_tx_pfc_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_pfc_pause_pkt_num)},
-	{"mac_tx_pfc_pri0_pkt_num",
+	{"mac_tx_pfc_pri0_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_pfc_pri0_pkt_num)},
-	{"mac_tx_pfc_pri1_pkt_num",
+	{"mac_tx_pfc_pri1_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_pfc_pri1_pkt_num)},
-	{"mac_tx_pfc_pri2_pkt_num",
+	{"mac_tx_pfc_pri2_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_pfc_pri2_pkt_num)},
-	{"mac_tx_pfc_pri3_pkt_num",
+	{"mac_tx_pfc_pri3_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_pfc_pri3_pkt_num)},
-	{"mac_tx_pfc_pri4_pkt_num",
+	{"mac_tx_pfc_pri4_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_pfc_pri4_pkt_num)},
-	{"mac_tx_pfc_pri5_pkt_num",
+	{"mac_tx_pfc_pri5_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_pfc_pri5_pkt_num)},
-	{"mac_tx_pfc_pri6_pkt_num",
+	{"mac_tx_pfc_pri6_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_pfc_pri6_pkt_num)},
-	{"mac_tx_pfc_pri7_pkt_num",
+	{"mac_tx_pfc_pri7_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_pfc_pri7_pkt_num)},
-	{"mac_rx_pfc_pkt_num",
+	{"mac_tx_pfc_pri0_xoff_time", HCLGE_MAC_STATS_MAX_NUM_V2,
+		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_pfc_pri0_xoff_time)},
+	{"mac_tx_pfc_pri1_xoff_time", HCLGE_MAC_STATS_MAX_NUM_V2,
+		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_pfc_pri1_xoff_time)},
+	{"mac_tx_pfc_pri2_xoff_time", HCLGE_MAC_STATS_MAX_NUM_V2,
+		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_pfc_pri2_xoff_time)},
+	{"mac_tx_pfc_pri3_xoff_time", HCLGE_MAC_STATS_MAX_NUM_V2,
+		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_pfc_pri3_xoff_time)},
+	{"mac_tx_pfc_pri4_xoff_time", HCLGE_MAC_STATS_MAX_NUM_V2,
+		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_pfc_pri4_xoff_time)},
+	{"mac_tx_pfc_pri5_xoff_time", HCLGE_MAC_STATS_MAX_NUM_V2,
+		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_pfc_pri5_xoff_time)},
+	{"mac_tx_pfc_pri6_xoff_time", HCLGE_MAC_STATS_MAX_NUM_V2,
+		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_pfc_pri6_xoff_time)},
+	{"mac_tx_pfc_pri7_xoff_time", HCLGE_MAC_STATS_MAX_NUM_V2,
+		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_pfc_pri7_xoff_time)},
+	{"mac_rx_pfc_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_pfc_pause_pkt_num)},
-	{"mac_rx_pfc_pri0_pkt_num",
+	{"mac_rx_pfc_pri0_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_pfc_pri0_pkt_num)},
-	{"mac_rx_pfc_pri1_pkt_num",
+	{"mac_rx_pfc_pri1_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_pfc_pri1_pkt_num)},
-	{"mac_rx_pfc_pri2_pkt_num",
+	{"mac_rx_pfc_pri2_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_pfc_pri2_pkt_num)},
-	{"mac_rx_pfc_pri3_pkt_num",
+	{"mac_rx_pfc_pri3_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_pfc_pri3_pkt_num)},
-	{"mac_rx_pfc_pri4_pkt_num",
+	{"mac_rx_pfc_pri4_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_pfc_pri4_pkt_num)},
-	{"mac_rx_pfc_pri5_pkt_num",
+	{"mac_rx_pfc_pri5_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_pfc_pri5_pkt_num)},
-	{"mac_rx_pfc_pri6_pkt_num",
+	{"mac_rx_pfc_pri6_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_pfc_pri6_pkt_num)},
-	{"mac_rx_pfc_pri7_pkt_num",
+	{"mac_rx_pfc_pri7_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_pfc_pri7_pkt_num)},
-	{"mac_tx_total_pkt_num",
+	{"mac_rx_pfc_pri0_xoff_time", HCLGE_MAC_STATS_MAX_NUM_V2,
+		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_pfc_pri0_xoff_time)},
+	{"mac_rx_pfc_pri1_xoff_time", HCLGE_MAC_STATS_MAX_NUM_V2,
+		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_pfc_pri1_xoff_time)},
+	{"mac_rx_pfc_pri2_xoff_time", HCLGE_MAC_STATS_MAX_NUM_V2,
+		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_pfc_pri2_xoff_time)},
+	{"mac_rx_pfc_pri3_xoff_time", HCLGE_MAC_STATS_MAX_NUM_V2,
+		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_pfc_pri3_xoff_time)},
+	{"mac_rx_pfc_pri4_xoff_time", HCLGE_MAC_STATS_MAX_NUM_V2,
+		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_pfc_pri4_xoff_time)},
+	{"mac_rx_pfc_pri5_xoff_time", HCLGE_MAC_STATS_MAX_NUM_V2,
+		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_pfc_pri5_xoff_time)},
+	{"mac_rx_pfc_pri6_xoff_time", HCLGE_MAC_STATS_MAX_NUM_V2,
+		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_pfc_pri6_xoff_time)},
+	{"mac_rx_pfc_pri7_xoff_time", HCLGE_MAC_STATS_MAX_NUM_V2,
+		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_pfc_pri7_xoff_time)},
+	{"mac_tx_total_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_total_pkt_num)},
-	{"mac_tx_total_oct_num",
+	{"mac_tx_total_oct_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_total_oct_num)},
-	{"mac_tx_good_pkt_num",
+	{"mac_tx_good_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_good_pkt_num)},
-	{"mac_tx_bad_pkt_num",
+	{"mac_tx_bad_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_bad_pkt_num)},
-	{"mac_tx_good_oct_num",
+	{"mac_tx_good_oct_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_good_oct_num)},
-	{"mac_tx_bad_oct_num",
+	{"mac_tx_bad_oct_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_bad_oct_num)},
-	{"mac_tx_uni_pkt_num",
+	{"mac_tx_uni_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_uni_pkt_num)},
-	{"mac_tx_multi_pkt_num",
+	{"mac_tx_multi_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_multi_pkt_num)},
-	{"mac_tx_broad_pkt_num",
+	{"mac_tx_broad_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_broad_pkt_num)},
-	{"mac_tx_undersize_pkt_num",
+	{"mac_tx_undersize_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_undersize_pkt_num)},
-	{"mac_tx_oversize_pkt_num",
+	{"mac_tx_oversize_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_oversize_pkt_num)},
-	{"mac_tx_64_oct_pkt_num",
+	{"mac_tx_64_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_64_oct_pkt_num)},
-	{"mac_tx_65_127_oct_pkt_num",
+	{"mac_tx_65_127_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_65_127_oct_pkt_num)},
-	{"mac_tx_128_255_oct_pkt_num",
+	{"mac_tx_128_255_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_128_255_oct_pkt_num)},
-	{"mac_tx_256_511_oct_pkt_num",
+	{"mac_tx_256_511_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_256_511_oct_pkt_num)},
-	{"mac_tx_512_1023_oct_pkt_num",
+	{"mac_tx_512_1023_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_512_1023_oct_pkt_num)},
-	{"mac_tx_1024_1518_oct_pkt_num",
+	{"mac_tx_1024_1518_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_1024_1518_oct_pkt_num)},
-	{"mac_tx_1519_2047_oct_pkt_num",
+	{"mac_tx_1519_2047_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_1519_2047_oct_pkt_num)},
-	{"mac_tx_2048_4095_oct_pkt_num",
+	{"mac_tx_2048_4095_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_2048_4095_oct_pkt_num)},
-	{"mac_tx_4096_8191_oct_pkt_num",
+	{"mac_tx_4096_8191_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_4096_8191_oct_pkt_num)},
-	{"mac_tx_8192_9216_oct_pkt_num",
+	{"mac_tx_8192_9216_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_8192_9216_oct_pkt_num)},
-	{"mac_tx_9217_12287_oct_pkt_num",
+	{"mac_tx_9217_12287_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_9217_12287_oct_pkt_num)},
-	{"mac_tx_12288_16383_oct_pkt_num",
+	{"mac_tx_12288_16383_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_12288_16383_oct_pkt_num)},
-	{"mac_tx_1519_max_good_pkt_num",
+	{"mac_tx_1519_max_good_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_1519_max_good_oct_pkt_num)},
-	{"mac_tx_1519_max_bad_pkt_num",
+	{"mac_tx_1519_max_bad_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_1519_max_bad_oct_pkt_num)},
-	{"mac_rx_total_pkt_num",
+	{"mac_rx_total_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_total_pkt_num)},
-	{"mac_rx_total_oct_num",
+	{"mac_rx_total_oct_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_total_oct_num)},
-	{"mac_rx_good_pkt_num",
+	{"mac_rx_good_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_good_pkt_num)},
-	{"mac_rx_bad_pkt_num",
+	{"mac_rx_bad_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_bad_pkt_num)},
-	{"mac_rx_good_oct_num",
+	{"mac_rx_good_oct_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_good_oct_num)},
-	{"mac_rx_bad_oct_num",
+	{"mac_rx_bad_oct_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_bad_oct_num)},
-	{"mac_rx_uni_pkt_num",
+	{"mac_rx_uni_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_uni_pkt_num)},
-	{"mac_rx_multi_pkt_num",
+	{"mac_rx_multi_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_multi_pkt_num)},
-	{"mac_rx_broad_pkt_num",
+	{"mac_rx_broad_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_broad_pkt_num)},
-	{"mac_rx_undersize_pkt_num",
+	{"mac_rx_undersize_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_undersize_pkt_num)},
-	{"mac_rx_oversize_pkt_num",
+	{"mac_rx_oversize_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_oversize_pkt_num)},
-	{"mac_rx_64_oct_pkt_num",
+	{"mac_rx_64_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_64_oct_pkt_num)},
-	{"mac_rx_65_127_oct_pkt_num",
+	{"mac_rx_65_127_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_65_127_oct_pkt_num)},
-	{"mac_rx_128_255_oct_pkt_num",
+	{"mac_rx_128_255_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_128_255_oct_pkt_num)},
-	{"mac_rx_256_511_oct_pkt_num",
+	{"mac_rx_256_511_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_256_511_oct_pkt_num)},
-	{"mac_rx_512_1023_oct_pkt_num",
+	{"mac_rx_512_1023_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_512_1023_oct_pkt_num)},
-	{"mac_rx_1024_1518_oct_pkt_num",
+	{"mac_rx_1024_1518_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_1024_1518_oct_pkt_num)},
-	{"mac_rx_1519_2047_oct_pkt_num",
+	{"mac_rx_1519_2047_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_1519_2047_oct_pkt_num)},
-	{"mac_rx_2048_4095_oct_pkt_num",
+	{"mac_rx_2048_4095_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_2048_4095_oct_pkt_num)},
-	{"mac_rx_4096_8191_oct_pkt_num",
+	{"mac_rx_4096_8191_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_4096_8191_oct_pkt_num)},
-	{"mac_rx_8192_9216_oct_pkt_num",
+	{"mac_rx_8192_9216_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_8192_9216_oct_pkt_num)},
-	{"mac_rx_9217_12287_oct_pkt_num",
+	{"mac_rx_9217_12287_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_9217_12287_oct_pkt_num)},
-	{"mac_rx_12288_16383_oct_pkt_num",
+	{"mac_rx_12288_16383_oct_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_12288_16383_oct_pkt_num)},
-	{"mac_rx_1519_max_good_pkt_num",
+	{"mac_rx_1519_max_good_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_1519_max_good_oct_pkt_num)},
-	{"mac_rx_1519_max_bad_pkt_num",
+	{"mac_rx_1519_max_bad_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_1519_max_bad_oct_pkt_num)},
 
-	{"mac_tx_fragment_pkt_num",
+	{"mac_tx_fragment_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_fragment_pkt_num)},
-	{"mac_tx_undermin_pkt_num",
+	{"mac_tx_undermin_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_undermin_pkt_num)},
-	{"mac_tx_jabber_pkt_num",
+	{"mac_tx_jabber_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_jabber_pkt_num)},
-	{"mac_tx_err_all_pkt_num",
+	{"mac_tx_err_all_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_err_all_pkt_num)},
-	{"mac_tx_from_app_good_pkt_num",
+	{"mac_tx_from_app_good_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_from_app_good_pkt_num)},
-	{"mac_tx_from_app_bad_pkt_num",
+	{"mac_tx_from_app_bad_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_tx_from_app_bad_pkt_num)},
-	{"mac_rx_fragment_pkt_num",
+	{"mac_rx_fragment_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_fragment_pkt_num)},
-	{"mac_rx_undermin_pkt_num",
+	{"mac_rx_undermin_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_undermin_pkt_num)},
-	{"mac_rx_jabber_pkt_num",
+	{"mac_rx_jabber_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_jabber_pkt_num)},
-	{"mac_rx_fcs_err_pkt_num",
+	{"mac_rx_fcs_err_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_fcs_err_pkt_num)},
-	{"mac_rx_send_app_good_pkt_num",
+	{"mac_rx_send_app_good_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_send_app_good_pkt_num)},
-	{"mac_rx_send_app_bad_pkt_num",
+	{"mac_rx_send_app_bad_pkt_num", HCLGE_MAC_STATS_MAX_NUM_V1,
 		HCLGE_MAC_STATS_FIELD_OFF(mac_rx_send_app_bad_pkt_num)}
 };
 
 static const struct hclge_mac_mgr_tbl_entry_cmd hclge_mgr_table[] = {
 	{
 		.flags = HCLGE_MAC_MGR_MASK_VLAN_B,
-		.ethter_type = cpu_to_le16(HCLGE_MAC_ETHERTYPE_LLDP),
 		.mac_addr = {0x01, 0x80, 0xc2, 0x00, 0x00, 0x0e},
+		.ethter_type = cpu_to_le16(ETH_P_LLDP),
 		.i_port_bitmap = 0x1,
 	},
 };
@@ -368,48 +419,84 @@ static const enum hclge_opcode_type hclge_dfx_reg_opcode_list[] = {
 };
 
 static const struct key_info meta_data_key_info[] = {
-	{ PACKET_TYPE_ID, 6},
-	{ IP_FRAGEMENT, 1},
-	{ ROCE_TYPE, 1},
-	{ NEXT_KEY, 5},
-	{ VLAN_NUMBER, 2},
-	{ SRC_VPORT, 12},
-	{ DST_VPORT, 12},
-	{ TUNNEL_PACKET, 1},
+	{ PACKET_TYPE_ID, 6 },
+	{ IP_FRAGEMENT, 1 },
+	{ ROCE_TYPE, 1 },
+	{ NEXT_KEY, 5 },
+	{ VLAN_NUMBER, 2 },
+	{ SRC_VPORT, 12 },
+	{ DST_VPORT, 12 },
+	{ TUNNEL_PACKET, 1 },
 };
 
 static const struct key_info tuple_key_info[] = {
-	{ OUTER_DST_MAC, 48},
-	{ OUTER_SRC_MAC, 48},
-	{ OUTER_VLAN_TAG_FST, 16},
-	{ OUTER_VLAN_TAG_SEC, 16},
-	{ OUTER_ETH_TYPE, 16},
-	{ OUTER_L2_RSV, 16},
-	{ OUTER_IP_TOS, 8},
-	{ OUTER_IP_PROTO, 8},
-	{ OUTER_SRC_IP, 32},
-	{ OUTER_DST_IP, 32},
-	{ OUTER_L3_RSV, 16},
-	{ OUTER_SRC_PORT, 16},
-	{ OUTER_DST_PORT, 16},
-	{ OUTER_L4_RSV, 32},
-	{ OUTER_TUN_VNI, 24},
-	{ OUTER_TUN_FLOW_ID, 8},
-	{ INNER_DST_MAC, 48},
-	{ INNER_SRC_MAC, 48},
-	{ INNER_VLAN_TAG_FST, 16},
-	{ INNER_VLAN_TAG_SEC, 16},
-	{ INNER_ETH_TYPE, 16},
-	{ INNER_L2_RSV, 16},
-	{ INNER_IP_TOS, 8},
-	{ INNER_IP_PROTO, 8},
-	{ INNER_SRC_IP, 32},
-	{ INNER_DST_IP, 32},
-	{ INNER_L3_RSV, 16},
-	{ INNER_SRC_PORT, 16},
-	{ INNER_DST_PORT, 16},
-	{ INNER_L4_RSV, 32},
+	{ OUTER_DST_MAC, 48, KEY_OPT_MAC, -1, -1 },
+	{ OUTER_SRC_MAC, 48, KEY_OPT_MAC, -1, -1 },
+	{ OUTER_VLAN_TAG_FST, 16, KEY_OPT_LE16, -1, -1 },
+	{ OUTER_VLAN_TAG_SEC, 16, KEY_OPT_LE16, -1, -1 },
+	{ OUTER_ETH_TYPE, 16, KEY_OPT_LE16, -1, -1 },
+	{ OUTER_L2_RSV, 16, KEY_OPT_LE16, -1, -1 },
+	{ OUTER_IP_TOS, 8, KEY_OPT_U8, -1, -1 },
+	{ OUTER_IP_PROTO, 8, KEY_OPT_U8, -1, -1 },
+	{ OUTER_SRC_IP, 32, KEY_OPT_IP, -1, -1 },
+	{ OUTER_DST_IP, 32, KEY_OPT_IP, -1, -1 },
+	{ OUTER_L3_RSV, 16, KEY_OPT_LE16, -1, -1 },
+	{ OUTER_SRC_PORT, 16, KEY_OPT_LE16, -1, -1 },
+	{ OUTER_DST_PORT, 16, KEY_OPT_LE16, -1, -1 },
+	{ OUTER_L4_RSV, 32, KEY_OPT_LE32, -1, -1 },
+	{ OUTER_TUN_VNI, 24, KEY_OPT_VNI,
+	  offsetof(struct hclge_fd_rule, tuples.outer_tun_vni),
+	  offsetof(struct hclge_fd_rule, tuples_mask.outer_tun_vni) },
+	{ OUTER_TUN_FLOW_ID, 8, KEY_OPT_U8, -1, -1 },
+	{ INNER_DST_MAC, 48, KEY_OPT_MAC,
+	  offsetof(struct hclge_fd_rule, tuples.dst_mac),
+	  offsetof(struct hclge_fd_rule, tuples_mask.dst_mac) },
+	{ INNER_SRC_MAC, 48, KEY_OPT_MAC,
+	  offsetof(struct hclge_fd_rule, tuples.src_mac),
+	  offsetof(struct hclge_fd_rule, tuples_mask.src_mac) },
+	{ INNER_VLAN_TAG_FST, 16, KEY_OPT_LE16,
+	  offsetof(struct hclge_fd_rule, tuples.vlan_tag1),
+	  offsetof(struct hclge_fd_rule, tuples_mask.vlan_tag1) },
+	{ INNER_VLAN_TAG_SEC, 16, KEY_OPT_LE16, -1, -1 },
+	{ INNER_ETH_TYPE, 16, KEY_OPT_LE16,
+	  offsetof(struct hclge_fd_rule, tuples.ether_proto),
+	  offsetof(struct hclge_fd_rule, tuples_mask.ether_proto) },
+	{ INNER_L2_RSV, 16, KEY_OPT_LE16, -1, -1 },
+	{ INNER_IP_TOS, 8, KEY_OPT_U8,
+	  offsetof(struct hclge_fd_rule, tuples.ip_tos),
+	  offsetof(struct hclge_fd_rule, tuples_mask.ip_tos) },
+	{ INNER_IP_PROTO, 8, KEY_OPT_U8,
+	  offsetof(struct hclge_fd_rule, tuples.ip_proto),
+	  offsetof(struct hclge_fd_rule, tuples_mask.ip_proto) },
+	{ INNER_SRC_IP, 32, KEY_OPT_IP,
+	  offsetof(struct hclge_fd_rule, tuples.src_ip),
+	  offsetof(struct hclge_fd_rule, tuples_mask.src_ip) },
+	{ INNER_DST_IP, 32, KEY_OPT_IP,
+	  offsetof(struct hclge_fd_rule, tuples.dst_ip),
+	  offsetof(struct hclge_fd_rule, tuples_mask.dst_ip) },
+	{ INNER_L3_RSV, 16, KEY_OPT_LE16, -1, -1 },
+	{ INNER_SRC_PORT, 16, KEY_OPT_LE16,
+	  offsetof(struct hclge_fd_rule, tuples.src_port),
+	  offsetof(struct hclge_fd_rule, tuples_mask.src_port) },
+	{ INNER_DST_PORT, 16, KEY_OPT_LE16,
+	  offsetof(struct hclge_fd_rule, tuples.dst_port),
+	  offsetof(struct hclge_fd_rule, tuples_mask.dst_port) },
+	{ INNER_L4_RSV, 32, KEY_OPT_LE32, -1, -1 },
 };
+
+/**
+ * hclge_cmd_send - send command to command queue
+ * @hw: pointer to the hw struct
+ * @desc: prefilled descriptor for describing the command
+ * @num : the number of descriptors to be sent
+ *
+ * This is the main send command for command queue, it
+ * sends the queue, cleans the queue, etc
+ **/
+int hclge_cmd_send(struct hclge_hw *hw, struct hclge_desc *desc, int num)
+{
+	return hclge_comm_cmd_send(&hw->hw, desc, num);
+}
 
 static int hclge_mac_update_stats_defective(struct hclge_dev *hdev)
 {
@@ -418,8 +505,9 @@ static int hclge_mac_update_stats_defective(struct hclge_dev *hdev)
 	u64 *data = (u64 *)(&hdev->mac_stats);
 	struct hclge_desc desc[HCLGE_MAC_CMD_NUM];
 	__le64 *desc_data;
-	int i, k, n;
+	u32 data_size;
 	int ret;
+	u32 i;
 
 	memset(desc, 0, sizeof(desc));
 	hclge_cmd_setup_basic_desc(&desc[0], HCLGE_OPC_STATS_MAC, true);
@@ -431,33 +519,37 @@ static int hclge_mac_update_stats_defective(struct hclge_dev *hdev)
 		return ret;
 	}
 
-	for (i = 0; i < HCLGE_MAC_CMD_NUM; i++) {
-		/* for special opcode 0032, only the first desc has the head */
-		if (unlikely(i == 0)) {
-			desc_data = (__le64 *)(&desc[i].data[0]);
-			n = HCLGE_RD_FIRST_STATS_NUM;
-		} else {
-			desc_data = (__le64 *)(&desc[i]);
-			n = HCLGE_RD_OTHER_STATS_NUM;
-		}
+	/* The first desc has a 64-bit header, so data size need to minus 1 */
+	data_size = sizeof(desc) / (sizeof(u64)) - 1;
 
-		for (k = 0; k < n; k++) {
-			*data += le64_to_cpu(*desc_data);
-			data++;
-			desc_data++;
-		}
+	desc_data = (__le64 *)(&desc[0].data[0]);
+	for (i = 0; i < data_size; i++) {
+		/* data memory is continuous becase only the first desc has a
+		 * header in this command
+		 */
+		*data += le64_to_cpu(*desc_data);
+		data++;
+		desc_data++;
 	}
 
 	return 0;
 }
 
-static int hclge_mac_update_stats_complete(struct hclge_dev *hdev, u32 desc_num)
+static int hclge_mac_update_stats_complete(struct hclge_dev *hdev)
 {
+#define HCLGE_REG_NUM_PER_DESC		4
+
+	u32 reg_num = hdev->ae_dev->dev_specs.mac_stats_num;
 	u64 *data = (u64 *)(&hdev->mac_stats);
 	struct hclge_desc *desc;
 	__le64 *desc_data;
-	u16 i, k, n;
+	u32 data_size;
+	u32 desc_num;
 	int ret;
+	u32 i;
+
+	/* The first desc has a 64-bit header, so need to consider it */
+	desc_num = reg_num / HCLGE_REG_NUM_PER_DESC + 1;
 
 	/* This may be called inside atomic sections,
 	 * so GFP_ATOMIC is more suitalbe here
@@ -473,21 +565,16 @@ static int hclge_mac_update_stats_complete(struct hclge_dev *hdev, u32 desc_num)
 		return ret;
 	}
 
-	for (i = 0; i < desc_num; i++) {
-		/* for special opcode 0034, only the first desc has the head */
-		if (i == 0) {
-			desc_data = (__le64 *)(&desc[i].data[0]);
-			n = HCLGE_RD_FIRST_STATS_NUM;
-		} else {
-			desc_data = (__le64 *)(&desc[i]);
-			n = HCLGE_RD_OTHER_STATS_NUM;
-		}
+	data_size = min_t(u32, sizeof(hdev->mac_stats) / sizeof(u64), reg_num);
 
-		for (k = 0; k < n; k++) {
-			*data += le64_to_cpu(*desc_data);
-			data++;
-			desc_data++;
-		}
+	desc_data = (__le64 *)(&desc[0].data[0]);
+	for (i = 0; i < data_size; i++) {
+		/* data memory is continuous becase only the first desc has a
+		 * header in this command
+		 */
+		*data += le64_to_cpu(*desc_data);
+		data++;
+		desc_data++;
 	}
 
 	kfree(desc);
@@ -495,26 +582,35 @@ static int hclge_mac_update_stats_complete(struct hclge_dev *hdev, u32 desc_num)
 	return 0;
 }
 
-static int hclge_mac_query_reg_num(struct hclge_dev *hdev, u32 *desc_num)
+static int hclge_mac_query_reg_num(struct hclge_dev *hdev, u32 *reg_num)
 {
 	struct hclge_desc desc;
-	__le32 *desc_data;
-	u32 reg_num;
 	int ret;
+
+	/* Driver needs total register number of both valid registers and
+	 * reserved registers, but the old firmware only returns number
+	 * of valid registers in device V2. To be compatible with these
+	 * devices, driver uses a fixed value.
+	 */
+	if (hdev->ae_dev->dev_version == HNAE3_DEVICE_VERSION_V2) {
+		*reg_num = HCLGE_MAC_STATS_MAX_NUM_V1;
+		return 0;
+	}
 
 	hclge_cmd_setup_basic_desc(&desc, HCLGE_OPC_QUERY_MAC_REG_NUM, true);
 	ret = hclge_cmd_send(&hdev->hw, &desc, 1);
-	if (ret)
+	if (ret) {
+		dev_err(&hdev->pdev->dev,
+			"failed to query mac statistic reg number, ret = %d\n",
+			ret);
 		return ret;
+	}
 
-	desc_data = (__le32 *)(&desc.data[0]);
-	reg_num = le32_to_cpu(*desc_data);
-
-	*desc_num = 1 + ((reg_num - 3) >> 2) +
-		    (u32)(((reg_num - 3) & 0x3) ? 1 : 0);
-	if (!(*desc_num)) {
-		dev_err(&hdev->pdev->dev, "Invalid desc num: %u\n", *desc_num);
-		return -EINVAL;
+	*reg_num = le32_to_cpu(desc.data[0]);
+	if (*reg_num == 0) {
+		dev_err(&hdev->pdev->dev,
+			"mac statistic reg number is invalid!\n");
+		return -ENODATA;
 	}
 
 	return 0;
@@ -522,20 +618,11 @@ static int hclge_mac_query_reg_num(struct hclge_dev *hdev, u32 *desc_num)
 
 int hclge_mac_update_stats(struct hclge_dev *hdev)
 {
-	u32 desc_num;
-	int ret;
-
-	ret = hclge_mac_query_reg_num(hdev, &desc_num);
-
 	/* The firmware supports the new statistics acquisition method */
-	if (!ret)
-		ret = hclge_mac_update_stats_complete(hdev, desc_num);
-	else if (ret == -EOPNOTSUPP)
-		ret = hclge_mac_update_stats_defective(hdev);
+	if (hdev->ae_dev->dev_specs.mac_stats_num)
+		return hclge_mac_update_stats_complete(hdev);
 	else
-		dev_err(&hdev->pdev->dev, "query mac reg num fail!\n");
-
-	return ret;
+		return hclge_mac_update_stats_defective(hdev);
 }
 
 static int hclge_tqps_update_stats(struct hnae3_handle *handle)
@@ -552,7 +639,7 @@ static int hclge_tqps_update_stats(struct hnae3_handle *handle)
 		queue = handle->kinfo.tqp[i];
 		tqp = container_of(queue, struct hclge_tqp, q);
 		/* command : HCLGE_OPC_QUERY_IGU_STAT */
-		hclge_cmd_setup_basic_desc(&desc[0], HCLGE_OPC_QUERY_RX_STATUS,
+		hclge_cmd_setup_basic_desc(&desc[0], HCLGE_OPC_QUERY_RX_STATS,
 					   true);
 
 		desc[0].data[0] = cpu_to_le32((tqp->index & 0x1ff));
@@ -572,7 +659,7 @@ static int hclge_tqps_update_stats(struct hnae3_handle *handle)
 		tqp = container_of(queue, struct hclge_tqp, q);
 		/* command : HCLGE_OPC_QUERY_IGU_STAT */
 		hclge_cmd_setup_basic_desc(&desc[0],
-					   HCLGE_OPC_QUERY_TX_STATUS,
+					   HCLGE_OPC_QUERY_TX_STATS,
 					   true);
 
 		desc[0].data[0] = cpu_to_le32((tqp->index & 0x1ff));
@@ -643,20 +730,39 @@ static u8 *hclge_tqps_get_strings(struct hnae3_handle *handle, u8 *data)
 	return buff;
 }
 
-static u64 *hclge_comm_get_stats(const void *comm_stats,
+static int hclge_comm_get_count(struct hclge_dev *hdev,
+				const struct hclge_comm_stats_str strs[],
+				u32 size)
+{
+	int count = 0;
+	u32 i;
+
+	for (i = 0; i < size; i++)
+		if (strs[i].stats_num <= hdev->ae_dev->dev_specs.mac_stats_num)
+			count++;
+
+	return count;
+}
+
+static u64 *hclge_comm_get_stats(struct hclge_dev *hdev,
 				 const struct hclge_comm_stats_str strs[],
 				 int size, u64 *data)
 {
 	u64 *buf = data;
 	u32 i;
 
-	for (i = 0; i < size; i++)
-		buf[i] = HCLGE_STATS_READ(comm_stats, strs[i].offset);
+	for (i = 0; i < size; i++) {
+		if (strs[i].stats_num > hdev->ae_dev->dev_specs.mac_stats_num)
+			continue;
 
-	return buf + size;
+		*buf = HCLGE_STATS_READ(&hdev->mac_stats, strs[i].offset);
+		buf++;
+	}
+
+	return buf;
 }
 
-static u8 *hclge_comm_get_strings(u32 stringset,
+static u8 *hclge_comm_get_strings(struct hclge_dev *hdev, u32 stringset,
 				  const struct hclge_comm_stats_str strs[],
 				  int size, u8 *data)
 {
@@ -667,6 +773,9 @@ static u8 *hclge_comm_get_strings(u32 stringset,
 		return buff;
 
 	for (i = 0; i < size; i++) {
+		if (strs[i].stats_num > hdev->ae_dev->dev_specs.mac_stats_num)
+			continue;
+
 		snprintf(buff, ETH_GSTRING_LEN, "%s", strs[i].desc);
 		buff = buff + ETH_GSTRING_LEN;
 	}
@@ -688,6 +797,8 @@ static void hclge_update_stats_for_all(struct hclge_dev *hdev)
 				status);
 		}
 	}
+
+	hclge_update_fec_stats(hdev);
 
 	status = hclge_mac_update_stats(hdev);
 	if (status)
@@ -722,10 +833,11 @@ static void hclge_update_stats(struct hnae3_handle *handle,
 
 static int hclge_get_sset_count(struct hnae3_handle *handle, int stringset)
 {
-#define HCLGE_LOOPBACK_TEST_FLAGS (HNAE3_SUPPORT_APP_LOOPBACK |\
-		HNAE3_SUPPORT_PHY_LOOPBACK |\
-		HNAE3_SUPPORT_SERDES_SERIAL_LOOPBACK |\
-		HNAE3_SUPPORT_SERDES_PARALLEL_LOOPBACK)
+#define HCLGE_LOOPBACK_TEST_FLAGS (HNAE3_SUPPORT_APP_LOOPBACK | \
+		HNAE3_SUPPORT_PHY_LOOPBACK | \
+		HNAE3_SUPPORT_SERDES_SERIAL_LOOPBACK | \
+		HNAE3_SUPPORT_SERDES_PARALLEL_LOOPBACK | \
+		HNAE3_SUPPORT_EXTERNAL_LOOPBACK)
 
 	struct hclge_vport *vport = hclge_get_vport(handle);
 	struct hclge_dev *hdev = vport->back;
@@ -739,7 +851,7 @@ static int hclge_get_sset_count(struct hnae3_handle *handle, int stringset)
 	if (stringset == ETH_SS_TEST) {
 		/* clear loopback bit flags at first */
 		handle->flags = (handle->flags & (~HCLGE_LOOPBACK_TEST_FLAGS));
-		if (hdev->pdev->revision >= HNAE3_REVISION_ID_21 ||
+		if (hdev->ae_dev->dev_version >= HNAE3_DEVICE_VERSION_V2 ||
 		    hdev->hw.mac.speed == HCLGE_MAC_SPEED_10M ||
 		    hdev->hw.mac.speed == HCLGE_MAC_SPEED_100M ||
 		    hdev->hw.mac.speed == HCLGE_MAC_SPEED_1G) {
@@ -747,18 +859,22 @@ static int hclge_get_sset_count(struct hnae3_handle *handle, int stringset)
 			handle->flags |= HNAE3_SUPPORT_APP_LOOPBACK;
 		}
 
-		count += 2;
+		count += 1;
 		handle->flags |= HNAE3_SUPPORT_SERDES_SERIAL_LOOPBACK;
+		count += 1;
 		handle->flags |= HNAE3_SUPPORT_SERDES_PARALLEL_LOOPBACK;
+		count += 1;
+		handle->flags |= HNAE3_SUPPORT_EXTERNAL_LOOPBACK;
 
-		if (hdev->hw.mac.phydev && hdev->hw.mac.phydev->drv &&
-		    hdev->hw.mac.phydev->drv->set_loopback) {
+		if ((hdev->hw.mac.phydev && hdev->hw.mac.phydev->drv &&
+		     hdev->hw.mac.phydev->drv->set_loopback) ||
+		    hnae3_dev_phy_imp_supported(hdev)) {
 			count += 1;
 			handle->flags |= HNAE3_SUPPORT_PHY_LOOPBACK;
 		}
-
 	} else if (stringset == ETH_SS_STATS) {
-		count = ARRAY_SIZE(g_mac_stats_string) +
+		count = hclge_comm_get_count(hdev, g_mac_stats_string,
+					     ARRAY_SIZE(g_mac_stats_string)) +
 			hclge_tqps_get_sset_count(handle, stringset);
 	}
 
@@ -768,15 +884,22 @@ static int hclge_get_sset_count(struct hnae3_handle *handle, int stringset)
 static void hclge_get_strings(struct hnae3_handle *handle, u32 stringset,
 			      u8 *data)
 {
+	struct hclge_vport *vport = hclge_get_vport(handle);
+	struct hclge_dev *hdev = vport->back;
 	u8 *p = (char *)data;
 	int size;
 
 	if (stringset == ETH_SS_STATS) {
 		size = ARRAY_SIZE(g_mac_stats_string);
-		p = hclge_comm_get_strings(stringset, g_mac_stats_string,
+		p = hclge_comm_get_strings(hdev, stringset, g_mac_stats_string,
 					   size, p);
 		p = hclge_tqps_get_strings(handle, p);
 	} else if (stringset == ETH_SS_TEST) {
+		if (handle->flags & HNAE3_SUPPORT_EXTERNAL_LOOPBACK) {
+			memcpy(p, hns3_nic_test_strs[HNAE3_LOOP_EXTERNAL],
+			       ETH_GSTRING_LEN);
+			p += ETH_GSTRING_LEN;
+		}
 		if (handle->flags & HNAE3_SUPPORT_APP_LOOPBACK) {
 			memcpy(p, hns3_nic_test_strs[HNAE3_LOOP_APP],
 			       ETH_GSTRING_LEN);
@@ -807,7 +930,7 @@ static void hclge_get_stats(struct hnae3_handle *handle, u64 *data)
 	struct hclge_dev *hdev = vport->back;
 	u64 *p;
 
-	p = hclge_comm_get_stats(&hdev->mac_stats, g_mac_stats_string,
+	p = hclge_comm_get_stats(hdev, g_mac_stats_string,
 				 ARRAY_SIZE(g_mac_stats_string), data);
 	p = hclge_tqps_get_stats(handle, p);
 }
@@ -905,72 +1028,93 @@ static int hclge_query_pf_resource(struct hclge_dev *hdev)
 
 	hdev->dv_buf_size = roundup(hdev->dv_buf_size, HCLGE_BUF_SIZE_UNIT);
 
-	if (hnae3_dev_roce_supported(hdev)) {
-		hdev->roce_base_msix_offset =
-		hnae3_get_field(le16_to_cpu(req->msixcap_localid_ba_rocee),
-				HCLGE_MSIX_OFT_ROCEE_M, HCLGE_MSIX_OFT_ROCEE_S);
-		hdev->num_roce_msi =
-		hnae3_get_field(le16_to_cpu(req->pf_intr_vector_number),
-				HCLGE_PF_VEC_NUM_M, HCLGE_PF_VEC_NUM_S);
+	hdev->num_nic_msi = le16_to_cpu(req->msixcap_localid_number_nic);
+	if (hdev->num_nic_msi < HNAE3_MIN_VECTOR_NUM) {
+		dev_err(&hdev->pdev->dev,
+			"only %u msi resources available, not enough for pf(min:2).\n",
+			hdev->num_nic_msi);
+		return -EINVAL;
+	}
 
-		/* nic's msix numbers is always equals to the roce's. */
-		hdev->num_nic_msi = hdev->num_roce_msi;
+	if (hnae3_dev_roce_supported(hdev)) {
+		hdev->num_roce_msi =
+			le16_to_cpu(req->pf_intr_vector_number_roce);
+		hdev->num_roh_msi =
+			le16_to_cpu(req->pf_intr_vector_number_roh);
 
 		/* PF should have NIC vectors and Roce vectors,
 		 * NIC vectors are queued before Roce vectors.
 		 */
-		hdev->num_msi = hdev->num_roce_msi +
-				hdev->roce_base_msix_offset;
+		hdev->num_msi = hdev->num_nic_msi + hdev->num_roce_msi +
+				hdev->num_roh_msi;
 	} else {
-		hdev->num_msi =
-		hnae3_get_field(le16_to_cpu(req->pf_intr_vector_number),
-				HCLGE_PF_VEC_NUM_M, HCLGE_PF_VEC_NUM_S);
-
-		hdev->num_nic_msi = hdev->num_msi;
-	}
-
-	if (hdev->num_nic_msi < HNAE3_MIN_VECTOR_NUM) {
-		dev_err(&hdev->pdev->dev,
-			"Just %u msi resources, not enough for pf(min:2).\n",
-			hdev->num_nic_msi);
-		return -EINVAL;
+		hdev->num_msi = hdev->num_nic_msi;
 	}
 
 	return 0;
 }
 
-static int hclge_parse_speed(int speed_cmd, int *speed)
+static int hclge_parse_speed(u8 speed_cmd, u32 *speed)
 {
 	switch (speed_cmd) {
-	case 6:
+	case HCLGE_FW_MAC_SPEED_10M:
 		*speed = HCLGE_MAC_SPEED_10M;
 		break;
-	case 7:
+	case HCLGE_FW_MAC_SPEED_100M:
 		*speed = HCLGE_MAC_SPEED_100M;
 		break;
-	case 0:
+	case HCLGE_FW_MAC_SPEED_1G:
 		*speed = HCLGE_MAC_SPEED_1G;
 		break;
-	case 1:
+	case HCLGE_FW_MAC_SPEED_10G:
 		*speed = HCLGE_MAC_SPEED_10G;
 		break;
-	case 2:
+	case HCLGE_FW_MAC_SPEED_25G:
 		*speed = HCLGE_MAC_SPEED_25G;
 		break;
-	case 3:
+	case HCLGE_FW_MAC_SPEED_40G:
 		*speed = HCLGE_MAC_SPEED_40G;
 		break;
-	case 4:
+	case HCLGE_FW_MAC_SPEED_50G:
 		*speed = HCLGE_MAC_SPEED_50G;
 		break;
-	case 5:
+	case HCLGE_FW_MAC_SPEED_100G:
 		*speed = HCLGE_MAC_SPEED_100G;
+		break;
+	case HCLGE_FW_MAC_SPEED_200G:
+		*speed = HCLGE_MAC_SPEED_200G;
 		break;
 	default:
 		return -EINVAL;
 	}
 
 	return 0;
+}
+
+static const struct hclge_speed_bit_map speed_bit_map[] = {
+	{HCLGE_MAC_SPEED_10M, HCLGE_SUPPORT_10M_BIT},
+	{HCLGE_MAC_SPEED_100M, HCLGE_SUPPORT_100M_BIT},
+	{HCLGE_MAC_SPEED_1G, HCLGE_SUPPORT_1G_BIT},
+	{HCLGE_MAC_SPEED_10G, HCLGE_SUPPORT_10G_BIT},
+	{HCLGE_MAC_SPEED_25G, HCLGE_SUPPORT_25G_BIT},
+	{HCLGE_MAC_SPEED_40G, HCLGE_SUPPORT_40G_BIT},
+	{HCLGE_MAC_SPEED_50G, HCLGE_SUPPORT_50G_BIT},
+	{HCLGE_MAC_SPEED_100G, HCLGE_SUPPORT_100G_BIT},
+	{HCLGE_MAC_SPEED_200G, HCLGE_SUPPORT_200G_BIT},
+};
+
+static int hclge_get_speed_bit(u32 speed, u32 *speed_bit)
+{
+	u16 i;
+
+	for (i = 0; i < ARRAY_SIZE(speed_bit_map); i++) {
+		if (speed == speed_bit_map[i].speed) {
+			*speed_bit = speed_bit_map[i].speed_bit;
+			return 0;
+		}
+	}
+
+	return -EINVAL;
 }
 
 static int hclge_check_port_speed(struct hnae3_handle *handle, u32 speed)
@@ -979,35 +1123,11 @@ static int hclge_check_port_speed(struct hnae3_handle *handle, u32 speed)
 	struct hclge_dev *hdev = vport->back;
 	u32 speed_ability = hdev->hw.mac.speed_ability;
 	u32 speed_bit = 0;
+	int ret;
 
-	switch (speed) {
-	case HCLGE_MAC_SPEED_10M:
-		speed_bit = HCLGE_SUPPORT_10M_BIT;
-		break;
-	case HCLGE_MAC_SPEED_100M:
-		speed_bit = HCLGE_SUPPORT_100M_BIT;
-		break;
-	case HCLGE_MAC_SPEED_1G:
-		speed_bit = HCLGE_SUPPORT_1G_BIT;
-		break;
-	case HCLGE_MAC_SPEED_10G:
-		speed_bit = HCLGE_SUPPORT_10G_BIT;
-		break;
-	case HCLGE_MAC_SPEED_25G:
-		speed_bit = HCLGE_SUPPORT_25G_BIT;
-		break;
-	case HCLGE_MAC_SPEED_40G:
-		speed_bit = HCLGE_SUPPORT_40G_BIT;
-		break;
-	case HCLGE_MAC_SPEED_50G:
-		speed_bit = HCLGE_SUPPORT_50G_BIT;
-		break;
-	case HCLGE_MAC_SPEED_100G:
-		speed_bit = HCLGE_SUPPORT_100G_BIT;
-		break;
-	default:
-		return -EINVAL;
-	}
+	ret = hclge_get_speed_bit(speed, &speed_bit);
+	if (ret)
+		return ret;
 
 	if (speed_bit & speed_ability)
 		return 0;
@@ -1015,119 +1135,159 @@ static int hclge_check_port_speed(struct hnae3_handle *handle, u32 speed)
 	return -EINVAL;
 }
 
-#ifdef HAVE_ETHTOOL_CONVERT_U32_AND_LINK_MODE
-static void hclge_convert_setting_sr(struct hclge_mac *mac, u8 speed_ability)
+static void hclge_update_fec_support(struct hclge_mac *mac)
+{
+	linkmode_clear_bit(ETHTOOL_LINK_MODE_FEC_BASER_BIT, mac->supported);
+	linkmode_clear_bit(ETHTOOL_LINK_MODE_FEC_RS_BIT, mac->supported);
+	linkmode_clear_bit(ETHTOOL_LINK_MODE_FEC_LLRS_BIT, mac->supported);
+	linkmode_clear_bit(ETHTOOL_LINK_MODE_FEC_NONE_BIT, mac->supported);
+
+	if (mac->fec_ability & BIT(HNAE3_FEC_BASER))
+		linkmode_set_bit(ETHTOOL_LINK_MODE_FEC_BASER_BIT,
+				 mac->supported);
+	if (mac->fec_ability & BIT(HNAE3_FEC_RS))
+		linkmode_set_bit(ETHTOOL_LINK_MODE_FEC_RS_BIT,
+				 mac->supported);
+	if (mac->fec_ability & BIT(HNAE3_FEC_LLRS))
+		linkmode_set_bit(ETHTOOL_LINK_MODE_FEC_LLRS_BIT,
+				 mac->supported);
+	if (mac->fec_ability & BIT(HNAE3_FEC_NONE))
+		linkmode_set_bit(ETHTOOL_LINK_MODE_FEC_NONE_BIT,
+				 mac->supported);
+}
+
+static void hclge_convert_setting_sr(u16 speed_ability,
+				     unsigned long *link_mode)
 {
 	if (speed_ability & HCLGE_SUPPORT_10G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_10000baseSR_Full_BIT,
-				 mac->supported);
+				 link_mode);
 	if (speed_ability & HCLGE_SUPPORT_25G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_25000baseSR_Full_BIT,
-				 mac->supported);
+				 link_mode);
 	if (speed_ability & HCLGE_SUPPORT_40G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_40000baseSR4_Full_BIT,
-				 mac->supported);
+				 link_mode);
 	if (speed_ability & HCLGE_SUPPORT_50G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_50000baseSR2_Full_BIT,
-				 mac->supported);
+				 link_mode);
 	if (speed_ability & HCLGE_SUPPORT_100G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_100000baseSR4_Full_BIT,
-				 mac->supported);
+				 link_mode);
+	if (speed_ability & HCLGE_SUPPORT_200G_BIT)
+		linkmode_set_bit(ETHTOOL_LINK_MODE_200000baseSR4_Full_BIT,
+				 link_mode);
 }
 
-static void hclge_convert_setting_lr(struct hclge_mac *mac, u8 speed_ability)
+static void hclge_convert_setting_lr(u16 speed_ability,
+				     unsigned long *link_mode)
 {
 	if (speed_ability & HCLGE_SUPPORT_10G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_10000baseLR_Full_BIT,
-				 mac->supported);
+				 link_mode);
 	if (speed_ability & HCLGE_SUPPORT_25G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_25000baseSR_Full_BIT,
-				 mac->supported);
+				 link_mode);
+	if (speed_ability & HCLGE_SUPPORT_50G_BIT)
+		linkmode_set_bit(ETHTOOL_LINK_MODE_50000baseLR_ER_FR_Full_BIT,
+				 link_mode);
 	if (speed_ability & HCLGE_SUPPORT_40G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_40000baseLR4_Full_BIT,
-				 mac->supported);
+				 link_mode);
 	if (speed_ability & HCLGE_SUPPORT_100G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_100000baseLR4_ER4_Full_BIT,
-				 mac->supported);
+				 link_mode);
+	if (speed_ability & HCLGE_SUPPORT_200G_BIT)
+		linkmode_set_bit(
+			ETHTOOL_LINK_MODE_200000baseLR4_ER4_FR4_Full_BIT,
+			link_mode);
 }
 
-static void hclge_convert_setting_cr(struct hclge_mac *mac, u8 speed_ability)
+static void hclge_convert_setting_cr(u16 speed_ability,
+				     unsigned long *link_mode)
 {
 	if (speed_ability & HCLGE_SUPPORT_10G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_10000baseCR_Full_BIT,
-				 mac->supported);
+				 link_mode);
 	if (speed_ability & HCLGE_SUPPORT_25G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_25000baseCR_Full_BIT,
-				 mac->supported);
+				 link_mode);
 	if (speed_ability & HCLGE_SUPPORT_40G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_40000baseCR4_Full_BIT,
-				 mac->supported);
+				 link_mode);
 	if (speed_ability & HCLGE_SUPPORT_50G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_50000baseCR2_Full_BIT,
-				 mac->supported);
+				 link_mode);
 	if (speed_ability & HCLGE_SUPPORT_100G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_100000baseCR4_Full_BIT,
-				 mac->supported);
+				 link_mode);
+	if (speed_ability & HCLGE_SUPPORT_200G_BIT)
+		linkmode_set_bit(ETHTOOL_LINK_MODE_200000baseCR4_Full_BIT,
+				 link_mode);
 }
 
-static void hclge_convert_setting_kr(struct hclge_mac *mac, u8 speed_ability)
+static void hclge_convert_setting_kr(u16 speed_ability,
+				     unsigned long *link_mode)
 {
 	if (speed_ability & HCLGE_SUPPORT_1G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseKX_Full_BIT,
-				 mac->supported);
+				 link_mode);
 	if (speed_ability & HCLGE_SUPPORT_10G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_10000baseKR_Full_BIT,
-				 mac->supported);
+				 link_mode);
 	if (speed_ability & HCLGE_SUPPORT_25G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_25000baseKR_Full_BIT,
-				 mac->supported);
+				 link_mode);
 	if (speed_ability & HCLGE_SUPPORT_40G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_40000baseKR4_Full_BIT,
-				 mac->supported);
+				 link_mode);
 	if (speed_ability & HCLGE_SUPPORT_50G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_50000baseKR2_Full_BIT,
-				 mac->supported);
+				 link_mode);
 	if (speed_ability & HCLGE_SUPPORT_100G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_100000baseKR4_Full_BIT,
-				 mac->supported);
+				 link_mode);
+	if (speed_ability & HCLGE_SUPPORT_200G_BIT)
+		linkmode_set_bit(ETHTOOL_LINK_MODE_200000baseKR4_Full_BIT,
+				 link_mode);
 }
 
 static void hclge_convert_setting_fec(struct hclge_mac *mac)
 {
-	linkmode_clear_bit(ETHTOOL_LINK_MODE_FEC_BASER_BIT, mac->supported);
-	linkmode_clear_bit(ETHTOOL_LINK_MODE_FEC_RS_BIT, mac->supported);
+/* If firmware has reported fec_ability, don't need to convert by speed */
+	if (mac->fec_ability)
+		goto out;
 
 	switch (mac->speed) {
 	case HCLGE_MAC_SPEED_10G:
 	case HCLGE_MAC_SPEED_40G:
-		linkmode_set_bit(ETHTOOL_LINK_MODE_FEC_BASER_BIT,
-				 mac->supported);
-		mac->fec_ability =
-			BIT(HNAE3_FEC_BASER) | BIT(HNAE3_FEC_AUTO);
+		mac->fec_ability = BIT(HNAE3_FEC_BASER) | BIT(HNAE3_FEC_AUTO) |
+				   BIT(HNAE3_FEC_NONE);
 		break;
 	case HCLGE_MAC_SPEED_25G:
 	case HCLGE_MAC_SPEED_50G:
-		linkmode_set_bit(ETHTOOL_LINK_MODE_FEC_BASER_BIT,
-				 mac->supported);
-		linkmode_set_bit(ETHTOOL_LINK_MODE_FEC_RS_BIT,
-				 mac->supported);
-		mac->fec_ability =
-			BIT(HNAE3_FEC_BASER) | BIT(HNAE3_FEC_RS) |
-			BIT(HNAE3_FEC_AUTO);
+		mac->fec_ability = BIT(HNAE3_FEC_BASER) | BIT(HNAE3_FEC_RS) |
+				   BIT(HNAE3_FEC_AUTO) | BIT(HNAE3_FEC_NONE);
 		break;
 	case HCLGE_MAC_SPEED_100G:
-		linkmode_set_bit(ETHTOOL_LINK_MODE_FEC_RS_BIT, mac->supported);
-		mac->fec_ability = BIT(HNAE3_FEC_RS) | BIT(HNAE3_FEC_AUTO);
+		mac->fec_ability = BIT(HNAE3_FEC_RS) | BIT(HNAE3_FEC_AUTO) |
+				   BIT(HNAE3_FEC_NONE);
+		break;
+	case HCLGE_MAC_SPEED_200G:
+		mac->fec_ability = BIT(HNAE3_FEC_RS) | BIT(HNAE3_FEC_AUTO) |
+				   BIT(HNAE3_FEC_LLRS);
 		break;
 	default:
 		mac->fec_ability = 0;
 		break;
 	}
+
+out:
+	hclge_update_fec_support(mac);
 }
-#endif
 
 static void hclge_parse_fiber_link_mode(struct hclge_dev *hdev,
-					u8 speed_ability)
+					u16 speed_ability)
 {
 #ifdef HAVE_ETHTOOL_CONVERT_U32_AND_LINK_MODE
 	struct hclge_mac *mac = &hdev->hw.mac;
@@ -1136,10 +1296,10 @@ static void hclge_parse_fiber_link_mode(struct hclge_dev *hdev,
 		linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseX_Full_BIT,
 				 mac->supported);
 
-	hclge_convert_setting_sr(mac, speed_ability);
-	hclge_convert_setting_lr(mac, speed_ability);
-	hclge_convert_setting_cr(mac, speed_ability);
-	if (hdev->pdev->revision >= 0x21)
+	hclge_convert_setting_sr(speed_ability, mac->supported);
+	hclge_convert_setting_lr(speed_ability, mac->supported);
+	hclge_convert_setting_cr(speed_ability, mac->supported);
+	if (hnae3_dev_fec_supported(hdev))
 		hclge_convert_setting_fec(mac);
 
 	linkmode_set_bit(ETHTOOL_LINK_MODE_FIBRE_BIT, mac->supported);
@@ -1162,14 +1322,15 @@ static void hclge_parse_fiber_link_mode(struct hclge_dev *hdev,
 }
 
 static void hclge_parse_backplane_link_mode(struct hclge_dev *hdev,
-					    u8 speed_ability)
+					    u16 speed_ability)
 {
 	struct hclge_mac *mac = &hdev->hw.mac;
 
 #ifdef HAVE_ETHTOOL_CONVERT_U32_AND_LINK_MODE
-	hclge_convert_setting_kr(mac, speed_ability);
-	if (hdev->pdev->revision >= 0x21)
+	hclge_convert_setting_kr(speed_ability, mac->supported);
+	if (hdev->ae_dev->dev_version >= HNAE3_DEVICE_VERSION_V2)
 		hclge_convert_setting_fec(mac);
+
 #else
 	if (speed_ability & HCLGE_SUPPORT_1G_BIT)
 		linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseKX_Full_BIT,
@@ -1178,12 +1339,13 @@ static void hclge_parse_backplane_link_mode(struct hclge_dev *hdev,
 		linkmode_set_bit(ETHTOOL_LINK_MODE_10000baseKR_Full_BIT,
 				 mac->supported);
 #endif
+
 	linkmode_set_bit(ETHTOOL_LINK_MODE_Backplane_BIT, mac->supported);
 	linkmode_set_bit(ETHTOOL_LINK_MODE_Pause_BIT, mac->supported);
 }
 
 static void hclge_parse_copper_link_mode(struct hclge_dev *hdev,
-					 u8 speed_ability)
+					 u16 speed_ability)
 {
 	unsigned long *supported = hdev->hw.mac.supported;
 
@@ -1213,7 +1375,7 @@ static void hclge_parse_copper_link_mode(struct hclge_dev *hdev,
 	linkmode_set_bit(ETHTOOL_LINK_MODE_Asym_Pause_BIT, supported);
 }
 
-static void hclge_parse_link_mode(struct hclge_dev *hdev, u8 speed_ability)
+static void hclge_parse_link_mode(struct hclge_dev *hdev, u16 speed_ability)
 {
 	u8 media_type = hdev->hw.mac.media_type;
 
@@ -1225,8 +1387,11 @@ static void hclge_parse_link_mode(struct hclge_dev *hdev, u8 speed_ability)
 		hclge_parse_backplane_link_mode(hdev, speed_ability);
 }
 
-static u32 hclge_get_max_speed(u8 speed_ability)
+static u32 hclge_get_max_speed(u16 speed_ability)
 {
+	if (speed_ability & HCLGE_SUPPORT_200G_BIT)
+		return HCLGE_MAC_SPEED_200G;
+
 	if (speed_ability & HCLGE_SUPPORT_100G_BIT)
 		return HCLGE_MAC_SPEED_100G;
 
@@ -1256,17 +1421,18 @@ static u32 hclge_get_max_speed(u8 speed_ability)
 
 static void hclge_parse_cfg(struct hclge_cfg *cfg, struct hclge_desc *desc)
 {
+#define HCLGE_TX_SPARE_SIZE_UNIT		4096
+#define SPEED_ABILITY_EXT_SHIFT                 8
+
 	struct hclge_cfg_param_cmd *req;
 	u64 mac_addr_tmp_high;
+	u16 speed_ability_ext;
 	u64 mac_addr_tmp;
 	unsigned int i;
 
 	req = (struct hclge_cfg_param_cmd *)desc[0].data;
 
 	/* get the configuration */
-	cfg->vmdq_vport_num = hnae3_get_field(__le32_to_cpu(req->param[0]),
-					      HCLGE_CFG_VMDQ_M,
-					      HCLGE_CFG_VMDQ_S);
 	cfg->tc_num = hnae3_get_field(__le32_to_cpu(req->param[0]),
 				      HCLGE_CFG_TC_NUM_M, HCLGE_CFG_TC_NUM_S);
 	cfg->tqp_desc_num = hnae3_get_field(__le32_to_cpu(req->param[0]),
@@ -1306,6 +1472,10 @@ static void hclge_parse_cfg(struct hclge_cfg *cfg, struct hclge_desc *desc)
 	cfg->speed_ability = hnae3_get_field(__le32_to_cpu(req->param[1]),
 					     HCLGE_CFG_SPEED_ABILITY_M,
 					     HCLGE_CFG_SPEED_ABILITY_S);
+	speed_ability_ext = hnae3_get_field(__le32_to_cpu(req->param[1]),
+					    HCLGE_CFG_SPEED_ABILITY_EXT_M,
+					    HCLGE_CFG_SPEED_ABILITY_EXT_S);
+	cfg->speed_ability |= speed_ability_ext << SPEED_ABILITY_EXT_SHIFT;
 
 	cfg->vlan_fliter_cap = hnae3_get_field(__le32_to_cpu(req->param[1]),
 					       HCLGE_CFG_VLAN_FLTR_CAP_M,
@@ -1316,6 +1486,15 @@ static void hclge_parse_cfg(struct hclge_cfg *cfg, struct hclge_desc *desc)
 					 HCLGE_CFG_UMV_TBL_SPACE_S);
 	if (!cfg->umv_space)
 		cfg->umv_space = HCLGE_DEFAULT_UMV_SPACE_PER_PF;
+
+	/* The unit of the tx spare buffer size queried from configuration
+	 * file is HCLGE_TX_SPARE_SIZE_UNIT(4096) bytes, so a conversion is
+	 * needed here.
+	 */
+	cfg->tx_spare_buf_size = hnae3_get_field(__le32_to_cpu(req->param[2]),
+						 HCLGE_CFG_TX_SPARE_BUF_SIZE_M,
+						 HCLGE_CFG_TX_SPARE_BUF_SIZE_S);
+	cfg->tx_spare_buf_size *= HCLGE_TX_SPARE_SIZE_UNIT;
 }
 
 /* hclge_get_cfg: query the static parameter from flash
@@ -1354,6 +1533,101 @@ static int hclge_get_cfg(struct hclge_dev *hdev, struct hclge_cfg *hcfg)
 	return 0;
 }
 
+static void hclge_set_default_dev_specs(struct hclge_dev *hdev)
+{
+#define HCLGE_MAX_NON_TSO_BD_NUM			8U
+
+	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(hdev->pdev);
+
+	ae_dev->dev_specs.max_non_tso_bd_num = HCLGE_MAX_NON_TSO_BD_NUM;
+	ae_dev->dev_specs.rss_ind_tbl_size = HCLGE_RSS_IND_TBL_SIZE;
+	ae_dev->dev_specs.rss_key_size = HCLGE_RSS_KEY_SIZE;
+	ae_dev->dev_specs.max_qset_num = HCLGE_MAX_QSET_NUM;
+	ae_dev->dev_specs.max_tm_rate = HCLGE_ETHER_MAX_RATE;
+	ae_dev->dev_specs.max_int_gl = HCLGE_DEF_MAX_INT_GL;
+}
+
+static void hclge_parse_dev_specs(struct hclge_dev *hdev,
+				  struct hclge_desc *desc)
+{
+	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(hdev->pdev);
+	struct hclge_dev_specs_0_cmd *req0;
+	struct hclge_dev_specs_1_cmd *req1;
+
+	req0 = (struct hclge_dev_specs_0_cmd *)desc[0].data;
+	req1 = (struct hclge_dev_specs_1_cmd *)desc[1].data;
+
+	ae_dev->dev_specs.max_non_tso_bd_num = req0->max_non_tso_bd_num;
+	ae_dev->dev_specs.rss_ind_tbl_size =
+		le16_to_cpu(req0->rss_ind_tbl_size);
+	ae_dev->dev_specs.max_qset_num = le16_to_cpu(req1->max_qset_num);
+	ae_dev->dev_specs.int_ql_max = le16_to_cpu(req0->int_ql_max);
+	ae_dev->dev_specs.rss_key_size = le16_to_cpu(req0->rss_key_size);
+	ae_dev->dev_specs.max_tm_rate = le32_to_cpu(req0->max_tm_rate);
+	ae_dev->dev_specs.max_int_gl = le16_to_cpu(req1->max_int_gl);
+}
+
+static int hclge_query_mac_stats_num(struct hclge_dev *hdev)
+{
+	u32 reg_num = 0;
+	int ret;
+
+	ret = hclge_mac_query_reg_num(hdev, &reg_num);
+	if (ret && ret != -EOPNOTSUPP)
+		return ret;
+
+	hdev->ae_dev->dev_specs.mac_stats_num = reg_num;
+	return 0;
+}
+
+static int hclge_query_dev_specs(struct hclge_dev *hdev)
+{
+	struct hclge_desc desc[HCLGE_QUERY_DEV_SPECS_BD_NUM];
+	int ret;
+	int i;
+
+	ret = hclge_query_mac_stats_num(hdev);
+	if (ret)
+		return ret;
+
+	/* set default specifications as devices lower than version V3 do not
+	 * support querying specifications from firmware.
+	 */
+	if (hdev->ae_dev->dev_version < HNAE3_DEVICE_VERSION_V3) {
+		hclge_set_default_dev_specs(hdev);
+		return 0;
+	}
+
+	for (i = 0; i < HCLGE_QUERY_DEV_SPECS_BD_NUM - 1; i++) {
+		hclge_cmd_setup_basic_desc(&desc[i], HCLGE_OPC_QUERY_DEV_SPECS,
+					   true);
+		desc[i].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
+	}
+	hclge_cmd_setup_basic_desc(&desc[i], HCLGE_OPC_QUERY_DEV_SPECS, true);
+
+	ret = hclge_cmd_send(&hdev->hw, desc, HCLGE_QUERY_DEV_SPECS_BD_NUM);
+	if (ret)
+		return ret;
+
+	hclge_parse_dev_specs(hdev, desc);
+
+	return 0;
+}
+
+static void hclge_mac_type_init(struct hclge_dev *hdev)
+{
+	struct hclge_vport *vport = &hdev->vport[0];
+	struct hnae3_handle *handle = &vport->nic;
+	u32 dev_id = hdev->pdev->device;
+
+	if (dev_id == HNAE3_DEV_ID_100G_ROH ||
+	    dev_id == HNAE3_DEV_ID_200G_ROH ||
+	    dev_id == HNAE3_DEV_ID_400G_ROH)
+		handle->mac_type = HNAE3_MAC_ROH;
+	else
+		handle->mac_type = HNAE3_MAC_ETH;
+}
+
 static int hclge_get_cap(struct hclge_dev *hdev)
 {
 	int ret;
@@ -1381,7 +1655,7 @@ static void hclge_init_kdump_kernel_config(struct hclge_dev *hdev)
 		 "Running kdump kernel. Using minimal resources\n");
 
 	/* minimal queue pairs equals to the number of vports */
-	hdev->num_tqps = hdev->num_vmdq_vport + hdev->num_req_vfs + 1;
+	hdev->num_tqps = hdev->num_req_vfs + 1;
 	hdev->num_tx_desc = HCLGE_MIN_TX_DESC;
 	hdev->num_rx_desc = HCLGE_MIN_RX_DESC;
 }
@@ -1395,12 +1669,9 @@ static int hclge_configure(struct hclge_dev *hdev)
 	int node, ret;
 
 	ret = hclge_get_cfg(hdev, &cfg);
-	if (ret) {
-		dev_err(&hdev->pdev->dev, "get mac mode error %d.\n", ret);
+	if (ret)
 		return ret;
-	}
 
-	hdev->num_vmdq_vport = cfg.vmdq_vport_num;
 	hdev->base_tqp_pid = 0;
 	hdev->rss_size_max = cfg.rss_size_max;
 	hdev->rx_buf_len = cfg.rx_buf_len;
@@ -1413,6 +1684,8 @@ static int hclge_configure(struct hclge_dev *hdev)
 	hdev->tc_max = cfg.tc_num;
 	hdev->tm_info.hw_pfc_map = 0;
 	hdev->wanted_umv_size = cfg.umv_space;
+	hdev->tx_spare_buf_size = cfg.tx_spare_buf_size;
+	hdev->gro_en = true;
 	if (cfg.vlan_fliter_cap == HCLGE_VLAN_FLTR_CAN_MDF)
 		hnae3_set_bit(ae_dev->flag,
 			      HNAE3_DEV_SUPPORT_VLAN_FLTR_MDF_B, 1);
@@ -1468,31 +1741,22 @@ static int hclge_configure(struct hclge_dev *hdev)
 	return ret;
 }
 
-static int hclge_config_tso(struct hclge_dev *hdev, unsigned int tso_mss_min,
-			    unsigned int tso_mss_max)
+static int hclge_config_tso(struct hclge_dev *hdev, u16 tso_mss_min,
+			    u16 tso_mss_max)
 {
 	struct hclge_cfg_tso_status_cmd *req;
 	struct hclge_desc desc;
-	u16 tso_mss;
 
 	hclge_cmd_setup_basic_desc(&desc, HCLGE_OPC_TSO_GENERIC_CONFIG, false);
 
 	req = (struct hclge_cfg_tso_status_cmd *)desc.data;
-
-	tso_mss = 0;
-	hnae3_set_field(tso_mss, HCLGE_TSO_MSS_MIN_M,
-			HCLGE_TSO_MSS_MIN_S, tso_mss_min);
-	req->tso_mss_min = cpu_to_le16(tso_mss);
-
-	tso_mss = 0;
-	hnae3_set_field(tso_mss, HCLGE_TSO_MSS_MIN_M,
-			HCLGE_TSO_MSS_MIN_S, tso_mss_max);
-	req->tso_mss_max = cpu_to_le16(tso_mss);
+	req->tso_mss_min = cpu_to_le16(tso_mss_min);
+	req->tso_mss_max = cpu_to_le16(tso_mss_max);
 
 	return hclge_cmd_send(&hdev->hw, &desc, 1);
 }
 
-static int hclge_config_gro(struct hclge_dev *hdev, bool en)
+static int hclge_config_gro(struct hclge_dev *hdev)
 {
 	struct hclge_cfg_gro_status_cmd *req;
 	struct hclge_desc desc;
@@ -1504,7 +1768,7 @@ static int hclge_config_gro(struct hclge_dev *hdev, bool en)
 	hclge_cmd_setup_basic_desc(&desc, HCLGE_OPC_GRO_GENERIC_CONFIG, false);
 	req = (struct hclge_cfg_gro_status_cmd *)desc.data;
 
-	req->gro_en = cpu_to_le16(en ? 1 : 0);
+	req->gro_en = hdev->gro_en ? 1 : 0;
 
 	ret = hclge_cmd_send(&hdev->hw, &desc, 1);
 	if (ret)
@@ -1517,6 +1781,7 @@ static int hclge_config_gro(struct hclge_dev *hdev, bool en)
 static int hclge_alloc_tqps(struct hclge_dev *hdev)
 {
 	struct hclge_tqp *tqp;
+	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(hdev->pdev);
 	int i;
 
 	hdev->htqp = devm_kcalloc(&hdev->pdev->dev, hdev->num_tqps,
@@ -1534,8 +1799,25 @@ static int hclge_alloc_tqps(struct hclge_dev *hdev)
 		tqp->q.buf_size = hdev->rx_buf_len;
 		tqp->q.tx_desc_num = hdev->num_tx_desc;
 		tqp->q.rx_desc_num = hdev->num_rx_desc;
-		tqp->q.io_base = hdev->hw.io_base + HCLGE_TQP_REG_OFFSET +
-			i * HCLGE_TQP_REG_SIZE;
+
+		if (i < HCLGE_TQP_MAX_SIZE_DEV_V2)
+			tqp->q.io_base = hdev->hw.hw.io_base +
+					 HCLGE_TQP_REG_OFFSET +
+					 i * HCLGE_TQP_REG_SIZE;
+		else
+			tqp->q.io_base = hdev->hw.hw.io_base +
+					 HCLGE_TQP_REG_OFFSET +
+					 HCLGE_TQP_EXT_REG_OFFSET +
+					 (i - HCLGE_TQP_MAX_SIZE_DEV_V2) *
+					 HCLGE_TQP_REG_SIZE;
+
+		/* when device supports tx push and has device memory,
+		 * the queue can execute push mode or doorbell mode on
+		 * device memory.
+		 */
+		if (test_bit(HNAE3_DEV_SUPPORT_TX_PUSH_B, ae_dev->caps))
+			tqp->q.mem_base = hdev->hw.hw.mem_base +
+					  HCLGE_TQP_MEM_OFFSET(hdev, i);
 
 		tqp++;
 	}
@@ -1609,6 +1891,7 @@ static int hclge_knic_setup(struct hclge_vport *vport, u16 num_tqps,
 	kinfo->num_rx_desc = num_rx_desc;
 
 	kinfo->rx_buf_len = hdev->rx_buf_len;
+	kinfo->tx_spare_buf_size = hdev->tx_spare_buf_size;
 
 	kinfo->tqp = devm_kcalloc(&hdev->pdev->dev, num_tqps,
 				  sizeof(struct hnae3_queue *), GFP_KERNEL);
@@ -1651,8 +1934,8 @@ static int hclge_map_tqp(struct hclge_dev *hdev)
 	struct hclge_vport *vport = hdev->vport;
 	u16 i, num_vport;
 
-	num_vport = hdev->num_vmdq_vport + hdev->num_req_vfs + 1;
-	for (i = 0; i < num_vport; i++) {
+	num_vport = hdev->num_req_vfs + 1;
+	for (i = 0; i < num_vport; i++)	{
 		int ret;
 
 		ret = hclge_map_tqp_to_vport(hdev, vport);
@@ -1693,7 +1976,7 @@ static int hclge_alloc_vport(struct hclge_dev *hdev)
 	int ret;
 
 	/* We need to alloc a vport for main NIC of PF */
-	num_vport = hdev->num_vmdq_vport + hdev->num_req_vfs + 1;
+	num_vport = hdev->num_req_vfs + 1;
 
 	if (hdev->num_tqps < num_vport) {
 		dev_err(&hdev->pdev->dev, "tqps(%u) is less than vports(%d)",
@@ -2071,7 +2354,6 @@ static int hclge_only_alloc_priv_buff(struct hclge_dev *hdev,
 			COMPENSATE_HALF_MPS_NUM * half_mps;
 	min_rx_priv = round_up(min_rx_priv, HCLGE_BUF_SIZE_UNIT);
 	rx_priv = round_down(rx_priv, HCLGE_BUF_SIZE_UNIT);
-
 	if (rx_priv < min_rx_priv)
 		return false;
 
@@ -2184,9 +2466,9 @@ static int hclge_rx_priv_wl_config(struct hclge_dev *hdev,
 
 		/* The first descriptor set the NEXT bit to 1 */
 		if (i == 0)
-			desc[i].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+			desc[i].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 		else
-			desc[i].flag &= ~cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+			desc[i].flag &= ~cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 
 		for (j = 0; j < HCLGE_TC_NUM_ONE_DESC; j++) {
 			u32 idx = i * HCLGE_TC_NUM_ONE_DESC + j;
@@ -2229,9 +2511,9 @@ static int hclge_common_thrd_config(struct hclge_dev *hdev,
 
 		/* The first descriptor set the NEXT bit to 1 */
 		if (i == 0)
-			desc[i].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+			desc[i].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 		else
-			desc[i].flag &= ~cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+			desc[i].flag &= ~cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 
 		for (j = 0; j < HCLGE_TC_NUM_ONE_DESC; j++) {
 			tc = &s_buf->tc_thrd[i * HCLGE_TC_NUM_ONE_DESC + j];
@@ -2350,21 +2632,41 @@ static int hclge_init_roce_base_info(struct hclge_vport *vport)
 {
 	struct hnae3_handle *roce = &vport->roce;
 	struct hnae3_handle *nic = &vport->nic;
+	struct hclge_dev *hdev = vport->back;
 
 	roce->rinfo.num_vectors = vport->back->num_roce_msi;
 
-	if (vport->back->num_msi_left < vport->roce.rinfo.num_vectors ||
-	    vport->back->num_msi_left == 0)
+	if (hdev->num_msi < hdev->num_nic_msi + hdev->num_roce_msi)
 		return -EINVAL;
 
-	roce->rinfo.base_vector = vport->back->roce_base_vector;
+	roce->rinfo.base_vector = hdev->num_nic_msi;
 
 	roce->rinfo.netdev = nic->kinfo.netdev;
-	roce->rinfo.roce_io_base = vport->back->hw.io_base;
+	roce->rinfo.roce_io_base = hdev->hw.hw.io_base;
+	roce->rinfo.roce_mem_base = hdev->hw.hw.mem_base;
 
 	roce->pdev = nic->pdev;
 	roce->ae_algo = nic->ae_algo;
 	roce->numa_node_mask = nic->numa_node_mask;
+
+	return 0;
+}
+
+static int hclge_init_roh_base_info(struct hclge_vport *vport)
+{
+	struct hnae3_handle *roh = &vport->roh;
+	struct hnae3_handle *nic = &vport->nic;
+	struct hclge_dev *hdev = vport->back;
+
+	if (hdev->num_msi < hdev->num_nic_msi + hdev->num_roce_msi +
+		hdev->num_roh_msi)
+		return -EINVAL;
+
+	roh->rohinfo.netdev = nic->kinfo.netdev;
+	roh->rohinfo.roh_io_base = hdev->hw.hw.io_base;
+
+	roh->pdev = nic->pdev;
+	roh->ae_algo = nic->ae_algo;
 
 	return 0;
 }
@@ -2391,10 +2693,6 @@ static int hclge_init_msi(struct hclge_dev *hdev)
 
 	hdev->num_msi = vectors;
 	hdev->num_msi_left = vectors;
-
-	hdev->base_msi_vector = pdev->irq;
-	hdev->roce_base_vector = hdev->base_msi_vector +
-				hdev->roce_base_msix_offset;
 
 	hdev->vector_status = devm_kcalloc(&pdev->dev, hdev->num_msi,
 					   sizeof(u16), GFP_KERNEL);
@@ -2424,8 +2722,8 @@ static u8 hclge_check_speed_dup(u8 duplex, int speed)
 	return duplex;
 }
 
-static int hclge_cfg_mac_speed_dup_hw(struct hclge_dev *hdev, int speed,
-				      u8 duplex)
+int hclge_cfg_mac_speed_dup_hw(struct hclge_dev *hdev, int speed,
+			       u8 duplex, u8 lane_num)
 {
 	struct hclge_config_mac_speed_dup_cmd *req;
 	struct hclge_desc desc;
@@ -2441,35 +2739,39 @@ static int hclge_cfg_mac_speed_dup_hw(struct hclge_dev *hdev, int speed,
 	switch (speed) {
 	case HCLGE_MAC_SPEED_10M:
 		hnae3_set_field(req->speed_dup, HCLGE_CFG_SPEED_M,
-				HCLGE_CFG_SPEED_S, 6);
+				HCLGE_CFG_SPEED_S, HCLGE_FW_MAC_SPEED_10M);
 		break;
 	case HCLGE_MAC_SPEED_100M:
 		hnae3_set_field(req->speed_dup, HCLGE_CFG_SPEED_M,
-				HCLGE_CFG_SPEED_S, 7);
+				HCLGE_CFG_SPEED_S, HCLGE_FW_MAC_SPEED_100M);
 		break;
 	case HCLGE_MAC_SPEED_1G:
 		hnae3_set_field(req->speed_dup, HCLGE_CFG_SPEED_M,
-				HCLGE_CFG_SPEED_S, 0);
+				HCLGE_CFG_SPEED_S, HCLGE_FW_MAC_SPEED_1G);
 		break;
 	case HCLGE_MAC_SPEED_10G:
 		hnae3_set_field(req->speed_dup, HCLGE_CFG_SPEED_M,
-				HCLGE_CFG_SPEED_S, 1);
+				HCLGE_CFG_SPEED_S, HCLGE_FW_MAC_SPEED_10G);
 		break;
 	case HCLGE_MAC_SPEED_25G:
 		hnae3_set_field(req->speed_dup, HCLGE_CFG_SPEED_M,
-				HCLGE_CFG_SPEED_S, 2);
+				HCLGE_CFG_SPEED_S, HCLGE_FW_MAC_SPEED_25G);
 		break;
 	case HCLGE_MAC_SPEED_40G:
 		hnae3_set_field(req->speed_dup, HCLGE_CFG_SPEED_M,
-				HCLGE_CFG_SPEED_S, 3);
+				HCLGE_CFG_SPEED_S, HCLGE_FW_MAC_SPEED_40G);
 		break;
 	case HCLGE_MAC_SPEED_50G:
 		hnae3_set_field(req->speed_dup, HCLGE_CFG_SPEED_M,
-				HCLGE_CFG_SPEED_S, 4);
+				HCLGE_CFG_SPEED_S, HCLGE_FW_MAC_SPEED_50G);
 		break;
 	case HCLGE_MAC_SPEED_100G:
 		hnae3_set_field(req->speed_dup, HCLGE_CFG_SPEED_M,
-				HCLGE_CFG_SPEED_S, 5);
+				HCLGE_CFG_SPEED_S, HCLGE_FW_MAC_SPEED_100G);
+		break;
+	case HCLGE_MAC_SPEED_200G:
+		hnae3_set_field(req->speed_dup, HCLGE_CFG_SPEED_M,
+				HCLGE_CFG_SPEED_S, HCLGE_FW_MAC_SPEED_200G);
 		break;
 	default:
 		dev_err(&hdev->pdev->dev, "invalid speed (%d)\n", speed);
@@ -2478,6 +2780,7 @@ static int hclge_cfg_mac_speed_dup_hw(struct hclge_dev *hdev, int speed,
 
 	hnae3_set_bit(req->mac_change_fec_en, HCLGE_CFG_MAC_SPEED_CHANGE_EN_B,
 		      1);
+	req->lane_num = lane_num;
 
 	ret = hclge_cmd_send(&hdev->hw, &desc, 1);
 	if (ret) {
@@ -2499,7 +2802,7 @@ int hclge_cfg_mac_speed_dup(struct hclge_dev *hdev, int speed, u8 duplex)
 	    mac->duplex == duplex)
 		return 0;
 
-	ret = hclge_cfg_mac_speed_dup_hw(hdev, speed, duplex);
+	ret = hclge_cfg_mac_speed_dup_hw(hdev, speed, duplex, 0);
 	if (ret)
 		return ret;
 
@@ -2595,6 +2898,157 @@ static int hclge_halt_autoneg(struct hnae3_handle *handle, bool halt)
 	return 0;
 }
 
+static void hclge_parse_fec_stats_lanes(struct hclge_dev *hdev,
+					struct hclge_desc *desc, u32 desc_len)
+{
+	u32 lane_size = HCLGE_FEC_STATS_MAX_LANES * 2;
+	u32 desc_index = 0;
+	u32 data_index = 0;
+	u32 i;
+
+	for (i = 0; i < lane_size; i++) {
+		if (data_index >= HCLGE_DESC_DATA_LEN) {
+			desc_index++;
+			data_index = 0;
+		}
+
+		if (desc_index >= desc_len)
+			return;
+
+		hdev->fec_stats.per_lanes[i] +=
+			le32_to_cpu(desc[desc_index].data[data_index]);
+		data_index++;
+	}
+}
+
+static void hclge_parse_fec_stats(struct hclge_dev *hdev,
+				  struct hclge_desc *desc, u32 desc_len)
+{
+	struct hclge_query_fec_stats_cmd *req;
+
+	req = (struct hclge_query_fec_stats_cmd *)desc[0].data;
+
+	hdev->fec_stats.base_r_lane_num = req->base_r_lane_num;
+	hdev->fec_stats.rs_corr_blocks +=
+		le32_to_cpu(req->rs_fec_corr_blocks);
+	hdev->fec_stats.rs_uncorr_blocks +=
+		le32_to_cpu(req->rs_fec_uncorr_blocks);
+	hdev->fec_stats.rs_error_blocks +=
+		le32_to_cpu(req->rs_fec_error_blocks);
+	hdev->fec_stats.base_r_corr_blocks +=
+		le32_to_cpu(req->base_r_fec_corr_blocks);
+	hdev->fec_stats.base_r_uncorr_blocks +=
+		le32_to_cpu(req->base_r_fec_uncorr_blocks);
+
+	hclge_parse_fec_stats_lanes(hdev, &desc[1], desc_len - 1);
+}
+
+static int hclge_update_fec_stats_hw(struct hclge_dev *hdev)
+{
+	struct hclge_desc desc[HCLGE_FEC_STATS_CMD_NUM];
+	int ret;
+	u32 i;
+
+	for (i = 0; i < HCLGE_FEC_STATS_CMD_NUM; i++) {
+		hclge_cmd_setup_basic_desc(&desc[i], HCLGE_OPC_QUERY_FEC_STATS,
+					   true);
+		if (i != (HCLGE_FEC_STATS_CMD_NUM - 1))
+			desc[i].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
+	}
+
+	ret = hclge_cmd_send(&hdev->hw, desc, HCLGE_FEC_STATS_CMD_NUM);
+	if (ret)
+		return ret;
+
+	hclge_parse_fec_stats(hdev, desc, HCLGE_FEC_STATS_CMD_NUM);
+
+	return 0;
+}
+
+static void hclge_update_fec_stats(struct hclge_dev *hdev)
+{
+	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(hdev->pdev);
+	int ret;
+
+	if (!hnae3_ae_dev_fec_stats_supported(ae_dev) ||
+	    test_and_set_bit(HCLGE_STATE_FEC_STATS_UPDATING, &hdev->state))
+		return;
+
+	ret = hclge_update_fec_stats_hw(hdev);
+	if (ret)
+		dev_err(&hdev->pdev->dev,
+			"failed to update fec stats, ret = %d\n", ret);
+
+	clear_bit(HCLGE_STATE_FEC_STATS_UPDATING, &hdev->state);
+}
+
+static void hclge_get_fec_stats_total(struct hclge_dev *hdev,
+				      struct ethtool_fec_stats *fec_stats)
+{
+	fec_stats->corrected_blocks.total = hdev->fec_stats.rs_corr_blocks;
+	fec_stats->uncorrectable_blocks.total =
+		hdev->fec_stats.rs_uncorr_blocks;
+}
+
+static void hclge_get_fec_stats_lanes(struct hclge_dev *hdev,
+				      struct ethtool_fec_stats *fec_stats)
+{
+	u32 i;
+
+	if (hdev->fec_stats.base_r_lane_num == 0 ||
+	    hdev->fec_stats.base_r_lane_num > HCLGE_FEC_STATS_MAX_LANES) {
+		dev_err(&hdev->pdev->dev,
+			"fec stats lane number(%llu) is invalid\n",
+			hdev->fec_stats.base_r_lane_num);
+		return;
+	}
+
+	for (i = 0; i < hdev->fec_stats.base_r_lane_num; i++) {
+		fec_stats->corrected_blocks.lanes[i] =
+			hdev->fec_stats.base_r_corr_per_lanes[i];
+		fec_stats->uncorrectable_blocks.lanes[i] =
+			hdev->fec_stats.base_r_uncorr_per_lanes[i];
+	}
+}
+
+static void hclge_comm_get_fec_stats(struct hclge_dev *hdev,
+				     struct ethtool_fec_stats *fec_stats)
+{
+	u32 fec_mode = hdev->hw.mac.fec_mode;
+
+	switch (fec_mode) {
+	case BIT(HNAE3_FEC_RS):
+	case BIT(HNAE3_FEC_LLRS):
+		hclge_get_fec_stats_total(hdev, fec_stats);
+		break;
+	case BIT(HNAE3_FEC_BASER):
+		hclge_get_fec_stats_lanes(hdev, fec_stats);
+		break;
+	default:
+		dev_err(&hdev->pdev->dev,
+			"fec stats is not supported by current fec mode(0x%x)\n",
+			fec_mode);
+		break;
+	}
+}
+
+static void hclge_get_fec_stats(struct hnae3_handle *handle,
+				struct ethtool_fec_stats *fec_stats)
+{
+	struct hclge_vport *vport = hclge_get_vport(handle);
+	struct hclge_dev *hdev = vport->back;
+	u32 fec_mode = hdev->hw.mac.fec_mode;
+
+	if (fec_mode == BIT(HNAE3_FEC_NONE) ||
+	    fec_mode == BIT(HNAE3_FEC_AUTO) ||
+	    fec_mode == BIT(HNAE3_FEC_USER_DEF))
+		return;
+
+	hclge_update_fec_stats(hdev);
+
+	hclge_comm_get_fec_stats(hdev, fec_stats);
+}
+
 static int hclge_set_fec_hw(struct hclge_dev *hdev, u32 fec_mode)
 {
 	struct hclge_config_fec_cmd *req;
@@ -2609,6 +3063,9 @@ static int hclge_set_fec_hw(struct hclge_dev *hdev, u32 fec_mode)
 	if (fec_mode & BIT(HNAE3_FEC_RS))
 		hnae3_set_field(req->fec_mode, HCLGE_MAC_CFG_FEC_MODE_M,
 				HCLGE_MAC_CFG_FEC_MODE_S, HCLGE_MAC_FEC_RS);
+	if (fec_mode & BIT(HNAE3_FEC_LLRS))
+		hnae3_set_field(req->fec_mode, HCLGE_MAC_CFG_FEC_MODE_M,
+				HCLGE_MAC_CFG_FEC_MODE_S, HCLGE_MAC_FEC_LLRS);
 	if (fec_mode & BIT(HNAE3_FEC_BASER))
 		hnae3_set_field(req->fec_mode, HCLGE_MAC_CFG_FEC_MODE_M,
 				HCLGE_MAC_CFG_FEC_MODE_S, HCLGE_MAC_FEC_BASER);
@@ -2652,16 +3109,18 @@ static void hclge_get_fec(struct hnae3_handle *handle, u8 *fec_ability,
 	if (fec_mode)
 		*fec_mode = mac->fec_mode;
 }
-
 static int hclge_mac_init(struct hclge_dev *hdev)
 {
 	struct hclge_mac *mac = &hdev->hw.mac;
 	int ret;
 
+	hclge_mac_type_init(hdev);
+
 	hdev->support_sfp_query = true;
 	hdev->hw.mac.duplex = HCLGE_MAC_FULL;
 	ret = hclge_cfg_mac_speed_dup_hw(hdev, hdev->hw.mac.speed,
-					 hdev->hw.mac.duplex);
+					 hdev->hw.mac.duplex,
+					 hdev->hw.mac.lane_num);
 	if (ret)
 		return ret;
 
@@ -2700,16 +3159,28 @@ static int hclge_mac_init(struct hclge_dev *hdev)
 static void hclge_mbx_task_schedule(struct hclge_dev *hdev)
 {
 	if (!test_bit(HCLGE_STATE_REMOVING, &hdev->state) &&
-	    !test_and_set_bit(HCLGE_STATE_MBX_SERVICE_SCHED, &hdev->state))
+	    !test_and_set_bit(HCLGE_STATE_MBX_SERVICE_SCHED, &hdev->state)) {
+		hdev->last_mbx_scheduled = jiffies;
 		mod_delayed_work(hclge_wq, &hdev->service_task, 0);
+	}
 }
 
-static void hclge_reset_task_schedule(struct hclge_dev *hdev)
+void hclge_reset_task_schedule(struct hclge_dev *hdev)
 {
 	if (!test_bit(HCLGE_STATE_REMOVING, &hdev->state) &&
 	    test_bit(HCLGE_STATE_SERVICE_INITED, &hdev->state) &&
-	    !test_and_set_bit(HCLGE_STATE_RST_SERVICE_SCHED, &hdev->state))
+	    !test_and_set_bit(HCLGE_STATE_RST_SERVICE_SCHED, &hdev->state)) {
+		hdev->last_rst_scheduled = jiffies;
 		mod_delayed_work(hclge_wq, &hdev->service_task, 0);
+	}
+}
+
+static void hclge_errhand_task_schedule(struct hclge_dev *hdev)
+{
+	if (!test_bit(HCLGE_STATE_REMOVING, &hdev->state) &&
+	    !test_and_set_bit(HCLGE_STATE_ERR_SERVICE_SCHED, &hdev->state))
+		mod_delayed_work_on(cpumask_first(&hdev->affinity_mask),
+				    hclge_wq, &hdev->service_task, 0);
 }
 
 void hclge_task_schedule(struct hclge_dev *hdev, unsigned long delay_time)
@@ -2779,13 +3250,12 @@ static void hclge_push_link_status(struct hclge_dev *hdev)
 
 static void hclge_update_link_status(struct hclge_dev *hdev)
 {
+	struct hnae3_handle *rhandle = &hdev->vport[0].roce;
+	struct hnae3_handle *handle = &hdev->vport[0].nic;
 	struct hnae3_client *rclient = hdev->roce_client;
 	struct hnae3_client *client = hdev->nic_client;
-	struct hnae3_handle *rhandle;
-	struct hnae3_handle *handle;
 	int state;
 	int ret;
-	int i;
 
 	if (!client)
 		return;
@@ -2801,15 +3271,10 @@ static void hclge_update_link_status(struct hclge_dev *hdev)
 
 	if (state != hdev->hw.mac.link) {
 		hdev->hw.mac.link = state;
-		for (i = 0; i < hdev->num_vmdq_vport + 1; i++) {
-			handle = &hdev->vport[i].nic;
-			client->ops->link_status_change(handle, state);
-			hclge_config_mac_tnl_int(hdev, state);
-			rhandle = &hdev->vport[i].roce;
-			if (rclient && rclient->ops->link_status_change)
-				rclient->ops->link_status_change(rhandle,
-								 state);
-		}
+		client->ops->link_status_change(handle, state);
+		hclge_config_mac_tnl_int(hdev, state);
+		if (rclient && rclient->ops->link_status_change)
+			rclient->ops->link_status_change(rhandle, state);
 
 		hclge_push_link_status(hdev);
 	}
@@ -2817,12 +3282,93 @@ static void hclge_update_link_status(struct hclge_dev *hdev)
 	clear_bit(HCLGE_STATE_LINK_UPDATING, &hdev->state);
 }
 
-static void hclge_update_port_capability(struct hclge_mac *mac)
+static void hclge_update_speed_advertising(struct hclge_mac *mac)
 {
-#ifdef HAVE_ETHTOOL_CONVERT_U32_AND_LINK_MODE
-	/* update fec ability by speed */
-	hclge_convert_setting_fec(mac);
-#endif
+	u32 speed_ability;
+
+	if (hclge_get_speed_bit(mac->speed, &speed_ability))
+		return;
+
+	switch (mac->module_type) {
+	case HNAE3_MODULE_TYPE_FIBRE_LR:
+		hclge_convert_setting_lr(speed_ability, mac->advertising);
+		break;
+	case HNAE3_MODULE_TYPE_FIBRE_SR:
+	case HNAE3_MODULE_TYPE_AOC:
+		hclge_convert_setting_sr(speed_ability, mac->advertising);
+		break;
+	case HNAE3_MODULE_TYPE_CR:
+		hclge_convert_setting_cr(speed_ability, mac->advertising);
+		break;
+	case HNAE3_MODULE_TYPE_KR:
+		hclge_convert_setting_kr(speed_ability, mac->advertising);
+		break;
+	default:
+		break;
+	}
+}
+
+static void hclge_update_fec_advertising(struct hclge_mac *mac)
+{
+	if (mac->fec_mode & BIT(HNAE3_FEC_RS))
+		linkmode_set_bit(ETHTOOL_LINK_MODE_FEC_RS_BIT,
+				 mac->advertising);
+	else if (mac->fec_mode & BIT(HNAE3_FEC_LLRS))
+		linkmode_set_bit(ETHTOOL_LINK_MODE_FEC_LLRS_BIT,
+				 mac->advertising);
+	else if (mac->fec_mode & BIT(HNAE3_FEC_BASER))
+		linkmode_set_bit(ETHTOOL_LINK_MODE_FEC_BASER_BIT,
+				 mac->advertising);
+	else
+		linkmode_set_bit(ETHTOOL_LINK_MODE_FEC_NONE_BIT,
+				 mac->advertising);
+}
+
+static void hclge_update_pause_advertising(struct hclge_dev *hdev)
+{
+	struct hclge_mac *mac = &hdev->hw.mac;
+	bool rx_en, tx_en;
+
+	switch (hdev->fc_mode_last_time) {
+	case HCLGE_FC_RX_PAUSE:
+		rx_en = true;
+		tx_en = false;
+		break;
+	case HCLGE_FC_TX_PAUSE:
+		rx_en = false;
+		tx_en = true;
+		break;
+	case HCLGE_FC_FULL:
+		rx_en = true;
+		tx_en = true;
+		break;
+	default:
+		rx_en = false;
+		tx_en = false;
+		break;
+	}
+
+	linkmode_mod_bit(ETHTOOL_LINK_MODE_Pause_BIT, mac->advertising, rx_en);
+	linkmode_mod_bit(ETHTOOL_LINK_MODE_Asym_Pause_BIT, mac->advertising,
+			 rx_en ^ tx_en);
+}
+
+static void hclge_update_advertising(struct hclge_dev *hdev)
+{
+	struct hclge_mac *mac = &hdev->hw.mac;
+
+	linkmode_zero(mac->advertising);
+	hclge_update_speed_advertising(mac);
+	hclge_update_fec_advertising(mac);
+	hclge_update_pause_advertising(hdev);
+}
+
+static void hclge_update_port_capability(struct hclge_dev *hdev,
+					 struct hclge_mac *mac)
+{
+	if (hnae3_dev_fec_supported(hdev))
+		hclge_convert_setting_fec(mac);
+
 	/* firmware can not identify back plane type, the media type
 	 * read from configuration can help deal it
 	 */
@@ -2838,7 +3384,7 @@ static void hclge_update_port_capability(struct hclge_mac *mac)
 	} else {
 		linkmode_clear_bit(ETHTOOL_LINK_MODE_Autoneg_BIT,
 				   mac->supported);
-		linkmode_zero(mac->advertising);
+		hclge_update_advertising(hdev);
 	}
 }
 
@@ -2902,15 +3448,153 @@ static int hclge_get_sfp_info(struct hclge_dev *hdev, struct hclge_mac *mac)
 		mac->autoneg = resp->autoneg;
 		mac->support_autoneg = resp->autoneg_ability;
 		mac->speed_type = QUERY_ACTIVE_SPEED;
+		mac->lane_num = resp->lane_num;
 		if (!resp->active_fec)
 			mac->fec_mode = 0;
 		else
 			mac->fec_mode = BIT(resp->active_fec);
+		mac->fec_ability = resp->fec_ability;
 	} else {
 		mac->speed_type = QUERY_SFP_SPEED;
 	}
 
 	return 0;
+}
+
+static int hclge_get_phy_link_ksettings(struct hnae3_handle *handle,
+					struct ethtool_link_ksettings *cmd)
+{
+	struct hclge_desc desc[HCLGE_PHY_LINK_SETTING_BD_NUM];
+	struct hclge_vport *vport = hclge_get_vport(handle);
+	struct hclge_phy_link_ksetting_0_cmd *req0;
+	struct hclge_phy_link_ksetting_1_cmd *req1;
+	u32 supported, advertising, lp_advertising;
+	struct hclge_dev *hdev = vport->back;
+	int ret;
+
+	hclge_cmd_setup_basic_desc(&desc[0], HCLGE_OPC_PHY_LINK_KSETTING,
+				   true);
+	desc[0].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
+	hclge_cmd_setup_basic_desc(&desc[1], HCLGE_OPC_PHY_LINK_KSETTING,
+				   true);
+
+	ret = hclge_cmd_send(&hdev->hw, desc, HCLGE_PHY_LINK_SETTING_BD_NUM);
+	if (ret) {
+		dev_err(&hdev->pdev->dev,
+			"failed to get phy link ksetting, ret = %d.\n", ret);
+		return ret;
+	}
+
+	req0 = (struct hclge_phy_link_ksetting_0_cmd *)desc[0].data;
+	cmd->base.autoneg = req0->autoneg;
+	cmd->base.speed = le32_to_cpu(req0->speed);
+	cmd->base.duplex = req0->duplex;
+	cmd->base.port = req0->port;
+	cmd->base.transceiver = req0->transceiver;
+	cmd->base.phy_address = req0->phy_address;
+	cmd->base.eth_tp_mdix = req0->eth_tp_mdix;
+	cmd->base.eth_tp_mdix_ctrl = req0->eth_tp_mdix_ctrl;
+	supported = le32_to_cpu(req0->supported);
+	advertising = le32_to_cpu(req0->advertising);
+	lp_advertising = le32_to_cpu(req0->lp_advertising);
+	ethtool_convert_legacy_u32_to_link_mode(cmd->link_modes.supported,
+						supported);
+	ethtool_convert_legacy_u32_to_link_mode(cmd->link_modes.advertising,
+						advertising);
+	ethtool_convert_legacy_u32_to_link_mode(cmd->link_modes.lp_advertising,
+						lp_advertising);
+
+	req1 = (struct hclge_phy_link_ksetting_1_cmd *)desc[1].data;
+	cmd->base.master_slave_cfg = req1->master_slave_cfg;
+	cmd->base.master_slave_state = req1->master_slave_state;
+
+	return 0;
+}
+
+static int
+hclge_set_phy_link_ksettings(struct hnae3_handle *handle,
+			     const struct ethtool_link_ksettings *cmd)
+{
+	struct hclge_desc desc[HCLGE_PHY_LINK_SETTING_BD_NUM];
+	struct hclge_vport *vport = hclge_get_vport(handle);
+	struct hclge_phy_link_ksetting_0_cmd *req0;
+	struct hclge_phy_link_ksetting_1_cmd *req1;
+	struct hclge_dev *hdev = vport->back;
+	u32 advertising;
+	int ret;
+
+	if (cmd->base.autoneg == AUTONEG_DISABLE &&
+	    ((cmd->base.speed != SPEED_100 && cmd->base.speed != SPEED_10) ||
+	     (cmd->base.duplex != DUPLEX_HALF &&
+	      cmd->base.duplex != DUPLEX_FULL)))
+		return -EINVAL;
+
+	hclge_cmd_setup_basic_desc(&desc[0], HCLGE_OPC_PHY_LINK_KSETTING,
+				   false);
+	desc[0].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
+	hclge_cmd_setup_basic_desc(&desc[1], HCLGE_OPC_PHY_LINK_KSETTING,
+				   false);
+
+	req0 = (struct hclge_phy_link_ksetting_0_cmd *)desc[0].data;
+	req0->autoneg = cmd->base.autoneg;
+	req0->speed = cpu_to_le32(cmd->base.speed);
+	req0->duplex = cmd->base.duplex;
+	ethtool_convert_link_mode_to_legacy_u32(&advertising,
+						cmd->link_modes.advertising);
+	req0->advertising = cpu_to_le32(advertising);
+	req0->eth_tp_mdix_ctrl = cmd->base.eth_tp_mdix_ctrl;
+
+	req1 = (struct hclge_phy_link_ksetting_1_cmd *)desc[1].data;
+	req1->master_slave_cfg = cmd->base.master_slave_cfg;
+
+	ret = hclge_cmd_send(&hdev->hw, desc, HCLGE_PHY_LINK_SETTING_BD_NUM);
+	if (ret) {
+		dev_err(&hdev->pdev->dev,
+			"failed to set phy link ksettings, ret = %d.\n", ret);
+		return ret;
+	}
+
+	hdev->hw.mac.autoneg = cmd->base.autoneg;
+	hdev->hw.mac.speed = cmd->base.speed;
+	hdev->hw.mac.duplex = cmd->base.duplex;
+	linkmode_copy(hdev->hw.mac.advertising, cmd->link_modes.advertising);
+
+	return 0;
+}
+
+static int hclge_update_tp_port_info(struct hclge_dev *hdev)
+{
+	struct ethtool_link_ksettings cmd;
+	int ret;
+
+	if (!hnae3_dev_phy_imp_supported(hdev))
+		return 0;
+
+	ret = hclge_get_phy_link_ksettings(&hdev->vport->nic, &cmd);
+	if (ret)
+		return ret;
+
+	hdev->hw.mac.autoneg = cmd.base.autoneg;
+	hdev->hw.mac.speed = cmd.base.speed;
+	hdev->hw.mac.duplex = cmd.base.duplex;
+	linkmode_copy(hdev->hw.mac.advertising, cmd.link_modes.advertising);
+
+	return 0;
+}
+
+static int hclge_tp_port_init(struct hclge_dev *hdev)
+{
+	struct ethtool_link_ksettings cmd;
+
+	if (!hnae3_dev_phy_imp_supported(hdev))
+		return 0;
+
+	cmd.base.autoneg = hdev->hw.mac.autoneg;
+	cmd.base.speed = hdev->hw.mac.speed;
+	cmd.base.duplex = hdev->hw.mac.duplex;
+	linkmode_copy(cmd.link_modes.advertising, hdev->hw.mac.advertising);
+
+	return hclge_set_phy_link_ksettings(&hdev->vport->nic, &cmd);
 }
 
 static int hclge_update_port_info(struct hclge_dev *hdev)
@@ -2921,13 +3605,13 @@ static int hclge_update_port_info(struct hclge_dev *hdev)
 
 	/* get the port info from SFP cmd if not copper port */
 	if (mac->media_type == HNAE3_MEDIA_TYPE_COPPER)
-		return 0;
+		return hclge_update_tp_port_info(hdev);
 
 	/* if IMP does not support get SFP/qSFP info, return directly */
 	if (!hdev->support_sfp_query)
 		return 0;
 
-	if (hdev->pdev->revision >= 0x21)
+	if (hdev->ae_dev->dev_version >= HNAE3_DEVICE_VERSION_V2)
 		ret = hclge_get_sfp_info(hdev, mac);
 	else
 		ret = hclge_get_sfp_speed(hdev, &speed);
@@ -2939,9 +3623,9 @@ static int hclge_update_port_info(struct hclge_dev *hdev)
 		return ret;
 	}
 
-	if (hdev->pdev->revision >= 0x21) {
+	if (hdev->ae_dev->dev_version >= HNAE3_DEVICE_VERSION_V2) {
 		if (mac->speed_type == QUERY_ACTIVE_SPEED) {
-			hclge_update_port_capability(mac);
+			hclge_update_port_capability(hdev, mac);
 			return 0;
 		}
 		return hclge_cfg_mac_speed_dup(hdev, mac->speed,
@@ -2965,7 +3649,7 @@ static int hclge_get_status(struct hnae3_handle *handle)
 	return hdev->hw.mac.link;
 }
 
-static struct hclge_vport *hclge_get_vf_vport(struct hclge_dev *hdev, int vf)
+struct hclge_vport *hclge_get_vf_vport(struct hclge_dev *hdev, int vf)
 {
 	if (!pci_num_vf(hdev->pdev)) {
 		dev_err(&hdev->pdev->dev,
@@ -3039,13 +3723,13 @@ static int hclge_set_vf_link_state(struct hnae3_handle *handle, int vf,
 
 static u32 hclge_check_event_cause(struct hclge_dev *hdev, u32 *clearval)
 {
-	u32 rst_src_reg, cmdq_src_reg, msix_src_reg;
+	u32 cmdq_src_reg, msix_src_reg, hw_err_src_reg;
 
 	/* fetch the events from their corresponding regs */
-	rst_src_reg = hclge_read_dev(&hdev->hw, HCLGE_MISC_VECTOR_INT_STS);
 	cmdq_src_reg = hclge_read_dev(&hdev->hw, HCLGE_VECTOR0_CMDQ_SRC_REG);
-	msix_src_reg = hclge_read_dev(&hdev->hw,
-				      HCLGE_VECTOR0_PF_OTHER_INT_STS_REG);
+	msix_src_reg = hclge_read_dev(&hdev->hw, HCLGE_MISC_VECTOR_INT_STS);
+	hw_err_src_reg = hclge_read_dev(&hdev->hw,
+					HCLGE_RAS_PF_OTHER_INT_STS_REG);
 
 	/* Assumption: If by any chance reset and mailbox events are reported
 	 * together then we will only process reset event in this go and will
@@ -3055,28 +3739,33 @@ static u32 hclge_check_event_cause(struct hclge_dev *hdev, u32 *clearval)
 	 *
 	 * check for vector0 reset event sources
 	 */
-	if (BIT(HCLGE_VECTOR0_IMPRESET_INT_B) & rst_src_reg) {
+	if (BIT(HCLGE_VECTOR0_IMPRESET_INT_B) & msix_src_reg) {
 		dev_info(&hdev->pdev->dev, "IMP reset interrupt\n");
 		set_bit(HNAE3_IMP_RESET, &hdev->reset_pending);
-		set_bit(HCLGE_STATE_CMD_DISABLE, &hdev->state);
+		set_bit(HCLGE_COMM_STATE_CMD_DISABLE, &hdev->hw.hw.comm_state);
 		*clearval = BIT(HCLGE_VECTOR0_IMPRESET_INT_B);
 		hdev->rst_stats.imp_rst_cnt++;
 		return HCLGE_VECTOR0_EVENT_RST;
 	}
 
-	if (BIT(HCLGE_VECTOR0_GLOBALRESET_INT_B) & rst_src_reg) {
+	if (BIT(HCLGE_VECTOR0_GLOBALRESET_INT_B) & msix_src_reg) {
 		dev_info(&hdev->pdev->dev, "global reset interrupt\n");
-		set_bit(HCLGE_STATE_CMD_DISABLE, &hdev->state);
+		set_bit(HCLGE_COMM_STATE_CMD_DISABLE, &hdev->hw.hw.comm_state);
 		set_bit(HNAE3_GLOBAL_RESET, &hdev->reset_pending);
 		*clearval = BIT(HCLGE_VECTOR0_GLOBALRESET_INT_B);
 		hdev->rst_stats.global_rst_cnt++;
 		return HCLGE_VECTOR0_EVENT_RST;
 	}
 
-	/* check for vector0 msix event source */
-	if (msix_src_reg & HCLGE_VECTOR0_REG_MSIX_MASK) {
-		*clearval = msix_src_reg;
+	/* check for vector0 msix event and hardware error event source */
+	if (msix_src_reg & HCLGE_VECTOR0_REG_MSIX_MASK ||
+	    hw_err_src_reg & HCLGE_RAS_REG_ERR_MASK)
 		return HCLGE_VECTOR0_EVENT_ERR;
+
+	/* check for vector0 ptp event source */
+	if (BIT(HCLGE_VECTOR0_REG_PTP_INT_B) & msix_src_reg) {
+		*clearval = msix_src_reg;
+		return HCLGE_VECTOR0_EVENT_PTP;
 	}
 
 	/* check for vector0 mailbox(=CMDQ RX) event source */
@@ -3088,9 +3777,8 @@ static u32 hclge_check_event_cause(struct hclge_dev *hdev, u32 *clearval)
 
 	/* print other vector0 event source */
 	dev_info(&hdev->pdev->dev,
-		 "CMDQ INT status:0x%x, other INT status:0x%x\n",
-		 cmdq_src_reg, msix_src_reg);
-	*clearval = msix_src_reg;
+		 "INT status: CMDQ(%#x) HW errors(%#x) other(%#x)\n",
+		 cmdq_src_reg, hw_err_src_reg, msix_src_reg);
 
 	return HCLGE_VECTOR0_EVENT_OTHER;
 }
@@ -3099,6 +3787,7 @@ static void hclge_clear_event_cause(struct hclge_dev *hdev, u32 event_type,
 				    u32 regclr)
 {
 	switch (event_type) {
+	case HCLGE_VECTOR0_EVENT_PTP:
 	case HCLGE_VECTOR0_EVENT_RST:
 		hclge_write_dev(&hdev->hw, HCLGE_MISC_RESET_STS_REG, regclr);
 		break;
@@ -3127,29 +3816,25 @@ static void hclge_enable_vector(struct hclge_misc_vector *vector, bool enable)
 static irqreturn_t hclge_misc_irq_handle(int irq, void *data)
 {
 	struct hclge_dev *hdev = data;
+	unsigned long flags;
 	u32 clearval = 0;
 	u32 event_cause;
 
 	hclge_enable_vector(&hdev->misc_vector, false);
 	event_cause = hclge_check_event_cause(hdev, &clearval);
 
-	/* vector 0 interrupt is shared with reset and mailbox source events.*/
+	/* vector 0 interrupt is shared with reset and mailbox source events. */
 	switch (event_cause) {
 	case HCLGE_VECTOR0_EVENT_ERR:
-		/* we do not know what type of reset is required now. This could
-		 * only be decided after we fetch the type of errors which
-		 * caused this event. Therefore, we will do below for now:
-		 * 1. Assert HNAE3_UNKNOWN_RESET type of reset. This means we
-		 *    have defered type of reset to be used.
-		 * 2. Schedule the reset serivce task.
-		 * 3. When service task receives  HNAE3_UNKNOWN_RESET type it
-		 *    will fetch the correct type of reset.  This would be done
-		 *    by first decoding the types of errors.
-		 */
-		set_bit(HNAE3_UNKNOWN_RESET, &hdev->reset_request);
-		/* fall through */
+		hclge_errhand_task_schedule(hdev);
+		break;
 	case HCLGE_VECTOR0_EVENT_RST:
 		hclge_reset_task_schedule(hdev);
+		break;
+	case HCLGE_VECTOR0_EVENT_PTP:
+		spin_lock_irqsave(&hdev->ptp->lock, flags);
+		hclge_ptp_clean_tx_hwts(hdev);
+		spin_unlock_irqrestore(&hdev->ptp->lock, flags);
 		break;
 	case HCLGE_VECTOR0_EVENT_MBX:
 		/* If we are here then,
@@ -3171,15 +3856,11 @@ static irqreturn_t hclge_misc_irq_handle(int irq, void *data)
 
 	hclge_clear_event_cause(hdev, event_cause, clearval);
 
-	/* Enable interrupt if it is not cause by reset. And when
-	 * clearval equal to 0, it means interrupt status may be
-	 * cleared by hardware before driver reads status register.
-	 * For this case, vector0 interrupt also should be enabled.
-	 */
-	if (!clearval ||
-	    event_cause == HCLGE_VECTOR0_EVENT_MBX) {
+	/* Enable interrupt if it is not caused by reset event or error event */
+	if (event_cause == HCLGE_VECTOR0_EVENT_PTP ||
+	    event_cause == HCLGE_VECTOR0_EVENT_MBX ||
+	    event_cause == HCLGE_VECTOR0_EVENT_OTHER)
 		hclge_enable_vector(&hdev->misc_vector, true);
-	}
 
 	return IRQ_HANDLED;
 }
@@ -3203,7 +3884,7 @@ static void hclge_get_misc_vector(struct hclge_dev *hdev)
 
 	vector->vector_irq = pci_irq_vector(hdev->pdev, 0);
 
-	vector->addr = hdev->hw.io_base + HCLGE_MISC_VECTOR_REG_BASE;
+	vector->addr = hdev->hw.hw.io_base + HCLGE_MISC_VECTOR_REG_BASE;
 	hdev->vector_status[0] = 0;
 
 	hdev->num_msi_left -= 1;
@@ -3250,8 +3931,9 @@ static void hclge_misc_irq_uninit(struct hclge_dev *hdev)
 int hclge_notify_client(struct hclge_dev *hdev,
 			enum hnae3_reset_notify_type type)
 {
+	struct hnae3_handle *handle = &hdev->vport[0].nic;
 	struct hnae3_client *client = hdev->nic_client;
-	u16 i;
+	int ret;
 
 	if (!test_bit(HCLGE_STATE_NIC_REGISTERED, &hdev->state) || !client)
 		return 0;
@@ -3259,27 +3941,20 @@ int hclge_notify_client(struct hclge_dev *hdev,
 	if (!client->ops->reset_notify)
 		return -EOPNOTSUPP;
 
-	for (i = 0; i < hdev->num_vmdq_vport + 1; i++) {
-		struct hnae3_handle *handle = &hdev->vport[i].nic;
-		int ret;
+	ret = client->ops->reset_notify(handle, type);
+	if (ret)
+		dev_err(&hdev->pdev->dev, "notify nic client failed %d(%d)\n",
+			type, ret);
 
-		ret = client->ops->reset_notify(handle, type);
-		if (ret) {
-			dev_err(&hdev->pdev->dev,
-				"notify nic client failed %d(%d)\n", type, ret);
-			return ret;
-		}
-	}
-
-	return 0;
+	return ret;
 }
 
 static int hclge_notify_roce_client(struct hclge_dev *hdev,
 				    enum hnae3_reset_notify_type type)
 {
+	struct hnae3_handle *handle = &hdev->vport[0].roce;
 	struct hnae3_client *client = hdev->roce_client;
-	int ret = 0;
-	u16 i;
+	int ret;
 
 	if (!test_bit(HCLGE_STATE_ROCE_REGISTERED, &hdev->state) || !client)
 		return 0;
@@ -3287,17 +3962,10 @@ static int hclge_notify_roce_client(struct hclge_dev *hdev,
 	if (!client->ops->reset_notify)
 		return -EOPNOTSUPP;
 
-	for (i = 0; i < hdev->num_vmdq_vport + 1; i++) {
-		struct hnae3_handle *handle = &hdev->vport[i].roce;
-
-		ret = client->ops->reset_notify(handle, type);
-		if (ret) {
-			dev_err(&hdev->pdev->dev,
-				"notify roce client failed %d(%d)",
-				type, ret);
-			return ret;
-		}
-	}
+	ret = client->ops->reset_notify(handle, type);
+	if (ret)
+		dev_err(&hdev->pdev->dev, "notify roce client failed %d(%d)",
+			type, ret);
 
 	return ret;
 }
@@ -3361,11 +4029,11 @@ static int hclge_set_vf_rst(struct hclge_dev *hdev, int func_id, bool reset)
 	return hclge_cmd_send(&hdev->hw, &desc, 1);
 }
 
-int hclge_set_all_vf_rst(struct hclge_dev *hdev, bool reset)
+static int hclge_set_all_vf_rst(struct hclge_dev *hdev, bool reset)
 {
 	int i;
 
-	for (i = hdev->num_vmdq_vport + 1; i < hdev->num_alloc_vport; i++) {
+	for (i = HCLGE_VF_VPORT_START_NUM; i < hdev->num_alloc_vport; i++) {
 		struct hclge_vport *vport = &hdev->vport[i];
 		int ret;
 
@@ -3379,8 +4047,16 @@ int hclge_set_all_vf_rst(struct hclge_dev *hdev, bool reset)
 			return ret;
 		}
 
-		if (!reset || !test_bit(HCLGE_VPORT_STATE_ALIVE, &vport->state))
+		if (!reset ||
+		    !test_bit(HCLGE_VPORT_STATE_INITED, &vport->state))
 			continue;
+
+		if (!test_bit(HCLGE_VPORT_STATE_ALIVE, &vport->state) &&
+		    hdev->reset_type == HNAE3_FUNC_RESET) {
+			set_bit(HCLGE_VPORT_NEED_NOTIFY_RESET,
+				&vport->need_notify);
+			continue;
+		}
 
 		/* Inform VF to process the reset.
 		 * hclge_inform_reset_assert_to_vf may fail if VF
@@ -3400,9 +4076,16 @@ int hclge_set_all_vf_rst(struct hclge_dev *hdev, bool reset)
 static void hclge_mailbox_service_task(struct hclge_dev *hdev)
 {
 	if (!test_and_clear_bit(HCLGE_STATE_MBX_SERVICE_SCHED, &hdev->state) ||
-	    test_bit(HCLGE_STATE_CMD_DISABLE, &hdev->state) ||
+	    test_bit(HCLGE_COMM_STATE_CMD_DISABLE, &hdev->hw.hw.comm_state) ||
 	    test_and_set_bit(HCLGE_STATE_MBX_HANDLING, &hdev->state))
 		return;
+
+	if (time_is_before_jiffies(hdev->last_mbx_scheduled +
+				   HCLGE_MBX_SCHED_TIMEOUT))
+		dev_warn(&hdev->pdev->dev,
+			 "mbx service task is scheduled after %ums on cpu%u!\n",
+			 jiffies_to_msecs(jiffies - hdev->last_mbx_scheduled),
+			 smp_processor_id());
 
 	hclge_mbx_handler(hdev);
 
@@ -3438,7 +4121,7 @@ static void hclge_func_reset_sync_vf(struct hclge_dev *hdev)
 			return;
 		}
 		msleep(HCLGE_PF_RESET_SYNC_TIME);
-		hclge_cmd_reuse_desc(&desc, true);
+		hclge_comm_cmd_reuse_desc(&desc, true);
 	} while (cnt++ < HCLGE_PF_RESET_SYNC_CNT);
 
 	dev_warn(&hdev->pdev->dev, "sync with VF timeout!\n");
@@ -3448,14 +4131,12 @@ void hclge_report_hw_error(struct hclge_dev *hdev,
 			   enum hnae3_hw_error_type type)
 {
 	struct hnae3_client *client = hdev->nic_client;
-	u16 i;
 
 	if (!client || !client->ops->process_hw_error ||
 	    !test_bit(HCLGE_STATE_NIC_REGISTERED, &hdev->state))
 		return;
 
-	for (i = 0; i < hdev->num_vmdq_vport + 1; i++)
-		client->ops->process_hw_error(&hdev->vport[i].nic, type);
+	client->ops->process_hw_error(&hdev->vport[0].nic, type);
 }
 
 static void hclge_handle_imp_error(struct hclge_dev *hdev)
@@ -3509,6 +4190,12 @@ static void hclge_do_reset(struct hclge_dev *hdev)
 	}
 
 	switch (hdev->reset_type) {
+	case HNAE3_IMP_RESET:
+		dev_info(&pdev->dev, "IMP reset requested\n");
+		val = hclge_read_dev(&hdev->hw, HCLGE_PF_OTHER_INT_REG);
+		hnae3_set_bit(val, HCLGE_TRIGGER_IMP_RESET_B, 1);
+		hclge_write_dev(&hdev->hw, HCLGE_PF_OTHER_INT_REG, val);
+		break;
 	case HNAE3_GLOBAL_RESET:
 		dev_info(&pdev->dev, "global reset requested\n");
 		val = hclge_read_dev(&hdev->hw, HCLGE_GLOBAL_RESET_REG);
@@ -3580,7 +4267,7 @@ static void hclge_clear_reset_cause(struct hclge_dev *hdev)
 	/* For revision 0x20, the reset interrupt source
 	 * can only be cleared after hardware reset done
 	 */
-	if (hdev->pdev->revision == 0x20)
+	if (hdev->ae_dev->dev_version < HNAE3_DEVICE_VERSION_V2)
 		hclge_write_dev(&hdev->hw, HCLGE_MISC_RESET_STS_REG,
 				clearval);
 
@@ -3591,13 +4278,13 @@ static void hclge_reset_handshake(struct hclge_dev *hdev, bool enable)
 {
 	u32 reg_val;
 
-	reg_val = hclge_read_dev(&hdev->hw, HCLGE_NIC_CSQ_DEPTH_REG);
+	reg_val = hclge_read_dev(&hdev->hw, HCLGE_COMM_NIC_CSQ_DEPTH_REG);
 	if (enable)
-		reg_val |= HCLGE_NIC_SW_RST_RDY;
+		reg_val |= HCLGE_COMM_NIC_SW_RST_RDY;
 	else
-		reg_val &= ~HCLGE_NIC_SW_RST_RDY;
+		reg_val &= ~HCLGE_COMM_NIC_SW_RST_RDY;
 
-	hclge_write_dev(&hdev->hw, HCLGE_NIC_CSQ_DEPTH_REG, reg_val);
+	hclge_write_dev(&hdev->hw, HCLGE_COMM_NIC_CSQ_DEPTH_REG, reg_val);
 }
 
 static int hclge_func_reset_notify_vf(struct hclge_dev *hdev)
@@ -3634,9 +4321,9 @@ static int hclge_reset_prepare_wait(struct hclge_dev *hdev)
 		/* After performaning pf reset, it is not necessary to do the
 		 * mailbox handling or send any command to firmware, because
 		 * any mailbox handling or command to firmware is only valid
-		 * after hclge_cmd_init is called.
+		 * after hclge_comm_cmd_init is called.
 		 */
-		set_bit(HCLGE_STATE_CMD_DISABLE, &hdev->state);
+		set_bit(HCLGE_COMM_STATE_CMD_DISABLE, &hdev->hw.hw.comm_state);
 		hdev->rst_stats.pf_rst_cnt++;
 		break;
 	case HNAE3_FLR_RESET:
@@ -3705,14 +4392,34 @@ static bool hclge_reset_err_handle(struct hclge_dev *hdev)
 	/* recover the handshake status when reset fail */
 	hclge_reset_handshake(hdev, true);
 
-	if (handle && handle->ae_algo->ops->reset_end)
-		handle->ae_algo->ops->reset_end(handle, false);
+	hclge_reset_end(handle, false);
 
 	hclge_show_rst_info(hdev);
 
 	set_bit(HCLGE_STATE_RST_FAIL, &hdev->state);
 
 	return false;
+}
+
+static void hclge_update_reset_level(struct hclge_dev *hdev)
+{
+	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(hdev->pdev);
+	enum hnae3_reset_type reset_level;
+
+	/* reset request will not be set during reset, so clear
+	 * pending reset request to avoid unnecessary reset
+	 * caused by the same reason.
+	 */
+	hclge_get_reset_level(ae_dev, &hdev->reset_request);
+
+	/* if default_reset_request has a higher level reset request,
+	 * it should be handled as soon as possible. since some errors
+	 * need this kind of reset to fix.
+	 */
+	reset_level = hclge_get_reset_level(ae_dev,
+					    &hdev->default_reset_request);
+	if (reset_level != HNAE3_NONE_RESET)
+		set_bit(reset_level, &hdev->reset_request);
 }
 
 static int hclge_set_rst_done(struct hclge_dev *hdev)
@@ -3804,9 +4511,7 @@ static int hclge_reset_prepare(struct hclge_dev *hdev)
 
 static int hclge_reset_rebuild(struct hclge_dev *hdev)
 {
-	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(hdev->pdev);
 	struct hnae3_handle *handle = &hdev->vport[0].nic;
-	enum hnae3_reset_type reset_level;
 	int ret;
 
 	hdev->rst_stats.hw_reset_done_cnt++;
@@ -3850,17 +4555,9 @@ static int hclge_reset_rebuild(struct hclge_dev *hdev)
 	hdev->rst_stats.reset_done_cnt++;
 	clear_bit(HCLGE_STATE_RST_FAIL, &hdev->state);
 
-	/* if default_reset_request has a higher level reset request,
-	 * it should be handled as soon as possible. since some errors
-	 * need this kind of reset to fix.
-	 */
-	reset_level = hclge_get_reset_level(ae_dev,
-					    &hdev->default_reset_request);
-	if (reset_level != HNAE3_NONE_RESET)
-		set_bit(reset_level, &hdev->reset_request);
+	hclge_update_reset_level(hdev);
 
-	if (handle && handle->ae_algo->ops->reset_end)
-		handle->ae_algo->ops->reset_end(handle, true);
+	hclge_reset_end(handle, true);
 
 	return 0;
 }
@@ -3883,10 +4580,11 @@ err_reset:
 		hclge_reset_task_schedule(hdev);
 }
 
-static void hclge_reset_event(struct pci_dev *pdev, struct hnae3_handle *handle)
+void hclge_reset_event(struct pci_dev *pdev, struct hnae3_handle *handle)
 {
 	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(pdev);
 	struct hclge_dev *hdev = ae_dev->priv;
+	int ret;
 
 	/* We might end up getting called broadly because of 2 below cases:
 	 * 1. Recoverable error was conveyed through APEI and only way to bring
@@ -3921,9 +4619,12 @@ static void hclge_reset_event(struct pci_dev *pdev, struct hnae3_handle *handle)
 	dev_info(&hdev->pdev->dev, "received reset event, reset type is %d\n",
 		 hdev->reset_level);
 
-	/* request reset & schedule reset task */
-	set_bit(hdev->reset_level, &hdev->reset_request);
-	hclge_reset_task_schedule(hdev);
+	ret = hclge_ext_call_event(hdev, hdev->reset_level);
+	if (ret) {
+		/* request reset & schedule reset task */
+		set_bit(hdev->reset_level, &hdev->reset_request);
+		hclge_reset_task_schedule(hdev);
+	}
 
 	if (hdev->reset_level < HNAE3_GLOBAL_RESET)
 		hdev->reset_level++;
@@ -3940,7 +4641,6 @@ static void hclge_set_def_reset_request(struct hnae3_ae_dev *ae_dev,
 static void hclge_reset_timer(struct timer_list *t)
 {
 	struct hclge_dev *hdev = from_timer(hdev, t, reset_timer);
-	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(hdev->pdev);
 
 	/* if default_reset_request has no value, it means that this reset
 	 * request has already be handled, so just return here
@@ -3950,20 +4650,15 @@ static void hclge_reset_timer(struct timer_list *t)
 
 	dev_info(&hdev->pdev->dev,
 		 "triggering reset in reset timer\n");
-
-	if (ae_dev->ops->reset_event)
-		ae_dev->ops->reset_event(hdev->pdev, NULL);
+	hclge_reset_event(hdev->pdev, &hdev->vport[0].nic);
 }
 
-static bool hclge_reset_end(struct hnae3_handle *handle, bool done)
+static void hclge_reset_end(struct hnae3_handle *handle, bool done)
 {
 	struct hclge_vport *vport = hclge_get_vport(handle);
 	struct hclge_dev *hdev = vport->back;
 
-	if (hdev->rst_stats.reset_fail_cnt >= HCLGE_RESET_MAX_FAIL_CNT)
-		dev_err(&hdev->pdev->dev, "Reset fail!\n");
-
-	return done;
+	hclge_ext_reset_end(hdev, done);
 }
 
 static void hclge_reset_subtask(struct hclge_dev *hdev)
@@ -3992,27 +4687,66 @@ static void hclge_reset_subtask(struct hclge_dev *hdev)
 	hdev->reset_type = HNAE3_NONE_RESET;
 }
 
+static void hclge_handle_err_reset_request(struct hclge_dev *hdev)
+{
+	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(hdev->pdev);
+	enum hnae3_reset_type reset_type;
+
+	if (ae_dev->hw_err_reset_req) {
+		reset_type = hclge_get_reset_level(ae_dev,
+						   &ae_dev->hw_err_reset_req);
+		hclge_set_def_reset_request(ae_dev, reset_type);
+	}
+
+	if (hdev->default_reset_request)
+		hclge_reset_event(hdev->pdev, &hdev->vport[0].nic);
+
+	/* enable interrupt after error handling complete */
+	hclge_enable_vector(&hdev->misc_vector, true);
+}
+
+static void hclge_handle_err_recovery(struct hclge_dev *hdev)
+{
+	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(hdev->pdev);
+
+	ae_dev->hw_err_reset_req = 0;
+
+	if (hclge_find_error_source(hdev)) {
+		hclge_handle_error_info_log(ae_dev);
+		hclge_handle_mac_tnl(hdev);
+	}
+
+	hclge_handle_err_reset_request(hdev);
+}
+
 static void hclge_misc_err_recovery(struct hclge_dev *hdev)
 {
 	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(hdev->pdev);
 	struct device *dev = &hdev->pdev->dev;
 	u32 msix_sts_reg;
 
-	msix_sts_reg = hclge_read_dev(&hdev->hw,
-				      HCLGE_VECTOR0_PF_OTHER_INT_STS_REG);
-
+	msix_sts_reg = hclge_read_dev(&hdev->hw, HCLGE_MISC_VECTOR_INT_STS);
 	if (msix_sts_reg & HCLGE_VECTOR0_REG_MSIX_MASK) {
-		if (hclge_handle_hw_msix_error(hdev,
-					       &hdev->default_reset_request))
+		if (hclge_handle_hw_msix_error
+				(hdev, &hdev->default_reset_request))
 			dev_info(dev, "received msix interrupt 0x%x\n",
 				 msix_sts_reg);
-
-		if (hdev->default_reset_request)
-			if (ae_dev->ops->reset_event)
-				ae_dev->ops->reset_event(hdev->pdev, NULL);
 	}
 
-	hclge_enable_vector(&hdev->misc_vector, true);
+	hclge_handle_hw_ras_error(ae_dev);
+
+	hclge_handle_err_reset_request(hdev);
+}
+
+static void hclge_errhand_service_task(struct hclge_dev *hdev)
+{
+	if (!test_and_clear_bit(HCLGE_STATE_ERR_SERVICE_SCHED, &hdev->state))
+		return;
+
+	if (hnae3_dev_ras_imp_supported(hdev))
+		hclge_handle_err_recovery(hdev);
+	else
+		hclge_misc_err_recovery(hdev);
 }
 
 static void hclge_reset_service_task(struct hclge_dev *hdev)
@@ -4020,10 +4754,12 @@ static void hclge_reset_service_task(struct hclge_dev *hdev)
 	if (!test_and_clear_bit(HCLGE_STATE_RST_SERVICE_SCHED, &hdev->state))
 		return;
 
-	if (test_and_clear_bit(HNAE3_UNKNOWN_RESET, &hdev->reset_request)) {
-		hclge_misc_err_recovery(hdev);
-		return;
-	}
+	if (time_is_before_jiffies(hdev->last_rst_scheduled +
+				   HCLGE_RESET_SCHED_TIMEOUT))
+		dev_warn(&hdev->pdev->dev,
+			 "reset service task is scheduled after %ums on cpu%u!\n",
+			 jiffies_to_msecs(jiffies - hdev->last_rst_scheduled),
+			 smp_processor_id());
 
 	down(&hdev->reset_sem);
 	set_bit(HCLGE_STATE_RST_HANDLING, &hdev->state);
@@ -4042,20 +4778,160 @@ static void hclge_update_vport_alive(struct hclge_dev *hdev)
 	for (i = 1; i < hdev->num_alloc_vport; i++) {
 		struct hclge_vport *vport = &hdev->vport[i];
 
-		/* vf keeps sending alive msg to pf per 2s, if pf doesn't
-		 * receive a vf's alive msg for 8s, regards the vf is offline
-		 */
-		if (time_after(jiffies, vport->last_active_jiffies + 8 * HZ))
-			if (test_and_clear_bit(HCLGE_VPORT_STATE_ALIVE,
-					       &vport->state))
-				dev_info(&hdev->pdev->dev,
-					 "VF %u keep alive lost!",
-					 vport->vport_id -
-					 HCLGE_VF_VPORT_START_NUM);
+		if (!test_bit(HCLGE_VPORT_STATE_INITED, &vport->state) ||
+		    !test_bit(HCLGE_VPORT_STATE_ALIVE, &vport->state))
+			continue;
+		if (time_after(jiffies, vport->last_active_jiffies + 8 * HZ)) {
+			clear_bit(HCLGE_VPORT_STATE_ALIVE, &vport->state);
+			dev_warn(&hdev->pdev->dev,
+				 "vf %u heartbeat timeout\n",
+				 i - HCLGE_VF_VPORT_START_NUM);
+		}
+	}
+}
 
-		/* If vf is not alive, set to default value */
-		if (!test_bit(HCLGE_VPORT_STATE_ALIVE, &vport->state))
-			vport->mps = HCLGE_MAC_DEFAULT_FRAME;
+static int hclge_set_fd_qb_counter(struct hclge_dev *hdev, u8 vf_id)
+{
+	struct hclge_fd_qb_ad_cmd *req;
+	struct hclge_desc desc;
+	int ret;
+
+	hclge_cmd_setup_basic_desc(&desc, HCLGE_OPC_FD_QB_AD_OP, false);
+	req = (struct hclge_fd_qb_ad_cmd *)desc.data;
+	req->vf_id = vf_id;
+	hnae3_set_bit(req->ad_sel, HCLGE_FD_QB_AD_COUNTER_VLD_B, 1);
+	req->counter_id = vf_id % hdev->fd_cfg.cnt_num[HCLGE_FD_STAGE_1];
+	ret = hclge_cmd_send(&hdev->hw, &desc, 1);
+	if (ret)
+		dev_warn(&hdev->pdev->dev,
+			 "failed to set qb counter for vport %u, ret = %d.\n",
+			 vf_id, ret);
+	return ret;
+}
+
+static void hclge_init_fd_qb_counter(struct hclge_dev *hdev)
+{
+	int ret;
+	u16 i;
+
+	if (!test_bit(HNAE3_DEV_SUPPORT_QB_B, hdev->ae_dev->caps))
+		return;
+
+	for (i = 0; i < hdev->num_alloc_vport; i++) {
+		ret = hclge_set_fd_qb_counter(hdev, i);
+		if (ret)
+			return;
+	}
+}
+
+static int hclge_set_fd_qb(struct hclge_dev *hdev, u8 vf_id, bool enable)
+{
+	struct hclge_fd_qb_cfg_cmd *req;
+	struct hclge_desc desc;
+	int ret;
+
+	hclge_cmd_setup_basic_desc(&desc, HCLGE_OPC_FD_QB_CTRL, false);
+	req = (struct hclge_fd_qb_cfg_cmd *)desc.data;
+	req->en = enable;
+	req->vf_id = vf_id;
+
+	ret = hclge_cmd_send(&hdev->hw, &desc, 1);
+	if (ret)
+		dev_err(&hdev->pdev->dev,
+			"failed to %s qb config for vport %u, ret = %d.\n",
+			enable ? "enable" : "disable", vf_id, ret);
+	return ret;
+}
+
+static int hclge_sync_pf_qb_mode(struct hclge_dev *hdev)
+{
+	struct hclge_vport *vport = &hdev->vport[0];
+	struct hnae3_handle *handle = &vport->nic;
+	bool request_enable = true;
+	int ret;
+	u16 i;
+
+	if (!test_and_clear_bit(HCLGE_VPORT_STATE_QB_CHANGE, &vport->state))
+		return 0;
+
+	spin_lock_bh(&hdev->fd_rule_lock);
+	if (hdev->fd_active_type == HCLGE_FD_EP_ACTIVE ||
+	    hdev->fd_active_type == HCLGE_FD_TC_FLOWER_ACTIVE ||
+	    !test_bit(HNAE3_PFLAG_FD_QB_ENABLE, &handle->priv_flags))
+		request_enable = false;
+
+	if (request_enable ==
+		test_bit(HCLGE_STATE_HW_QB_ENABLE, &hdev->state)) {
+		spin_unlock_bh(&hdev->fd_rule_lock);
+		return 0;
+	}
+
+	if (request_enable)
+		hclge_clear_arfs_rules(handle);
+
+	ret = hclge_set_fd_qb(hdev, vport->vport_id, request_enable);
+	if (!ret) {
+		if (request_enable) {
+			set_bit(HCLGE_STATE_HW_QB_ENABLE, &hdev->state);
+			hdev->fd_active_type = HCLGE_FD_QB_ACTIVE;
+		} else {
+			clear_bit(HCLGE_STATE_HW_QB_ENABLE, &hdev->state);
+			hdev->fd_active_type = HCLGE_FD_RULE_NONE;
+		}
+
+		for (i = 1; i < hdev->num_alloc_vport; i++) {
+			vport = &hdev->vport[i];
+			set_bit(HCLGE_VPORT_STATE_QB_CHANGE, &vport->state);
+		}
+	} else {
+		set_bit(HCLGE_VPORT_STATE_QB_CHANGE, &vport->state);
+	}
+	spin_unlock_bh(&hdev->fd_rule_lock);
+
+	return ret;
+}
+
+static int hclge_sync_vf_qb_mode(struct hclge_vport *vport)
+{
+	struct hclge_dev *hdev = vport->back;
+	bool request_enable = false;
+	int ret;
+
+	if (!test_and_clear_bit(HCLGE_VPORT_STATE_QB_CHANGE, &vport->state))
+		return 0;
+
+	if (vport->vf_info.trusted && vport->vf_info.request_qb_en &&
+	    test_bit(HCLGE_STATE_HW_QB_ENABLE, &hdev->state))
+		request_enable = true;
+
+	ret = hclge_set_fd_qb(hdev, vport->vport_id, request_enable);
+	if (ret)
+		set_bit(HCLGE_VPORT_STATE_QB_CHANGE, &vport->state);
+	vport->vf_info.qb_en = request_enable ? 1 : 0;
+
+	return ret;
+}
+
+static void hclge_sync_fd_qb_mode(struct hclge_dev *hdev)
+{
+	struct hnae3_ae_dev *ae_dev = hdev->ae_dev;
+	struct hclge_vport *vport;
+	int ret;
+	u16 i;
+
+	if (!test_bit(HNAE3_DEV_SUPPORT_QB_B, ae_dev->caps))
+		return;
+
+	ret = hclge_sync_pf_qb_mode(hdev);
+	if (ret)
+		return;
+
+	for (i = 1; i < hdev->num_alloc_vport; i++) {
+		vport = &hdev->vport[i];
+
+		ret = hclge_sync_vf_qb_mode(vport);
+		if (ret)
+			return;
 	}
 }
 
@@ -4072,6 +4948,7 @@ static void hclge_periodic_service_task(struct hclge_dev *hdev)
 	hclge_update_link_status(hdev);
 	hclge_sync_mac_table(hdev);
 	hclge_sync_promisc_mode(hdev);
+	hclge_sync_fd_qb_mode(hdev);
 
 	if (time_is_after_jiffies(hdev->last_serv_processed + HZ)) {
 		delta = jiffies - hdev->last_serv_processed;
@@ -4105,19 +4982,43 @@ out:
 	hclge_task_schedule(hdev, delta);
 }
 
+static void hclge_ptp_service_task(struct hclge_dev *hdev)
+{
+	unsigned long flags;
+
+	if (!test_bit(HCLGE_STATE_PTP_EN, &hdev->state) ||
+	    !test_bit(HCLGE_STATE_PTP_TX_HANDLING, &hdev->state) ||
+	    !time_is_before_jiffies(hdev->ptp->tx_start + HZ))
+		return;
+
+	/* to prevent concurrence with the irq handler */
+	spin_lock_irqsave(&hdev->ptp->lock, flags);
+
+	/* check HCLGE_STATE_PTP_TX_HANDLING here again, since the irq
+	 * handler may handle it just before spin_lock_irqsave().
+	 */
+	if (test_bit(HCLGE_STATE_PTP_TX_HANDLING, &hdev->state))
+		hclge_ptp_clean_tx_hwts(hdev);
+
+	spin_unlock_irqrestore(&hdev->ptp->lock, flags);
+}
+
 static void hclge_service_task(struct work_struct *work)
 {
 	struct hclge_dev *hdev =
 		container_of(work, struct hclge_dev, service_task.work);
 
+	hclge_errhand_service_task(hdev);
 	hclge_reset_service_task(hdev);
+	hclge_ptp_service_task(hdev);
 	hclge_mailbox_service_task(hdev);
 	hclge_periodic_service_task(hdev);
 
-	/* Handle reset and mbx again in case periodical task delays the
-	 * handling by calling hclge_task_schedule() in
+	/* Handle error recovery, reset and mbx again in case periodical task
+	 * delays the handling by calling hclge_task_schedule() in
 	 * hclge_periodic_service_task().
 	 */
+	hclge_errhand_service_task(hdev);
 	hclge_reset_service_task(hdev);
 	hclge_mailbox_service_task(hdev);
 }
@@ -4129,8 +5030,34 @@ struct hclge_vport *hclge_get_vport(struct hnae3_handle *handle)
 		return container_of(handle, struct hclge_vport, nic);
 	else if (handle->client->type == HNAE3_CLIENT_ROCE)
 		return container_of(handle, struct hclge_vport, roce);
+	else if (handle->client->type == HNAE3_CLIENT_ROH)
+		return container_of(handle, struct hclge_vport, roh);
 	else
 		return container_of(handle, struct hclge_vport, nic);
+}
+
+static void hclge_get_vector_info(struct hclge_dev *hdev, u16 idx,
+				  struct hnae3_vector_info *vector_info)
+{
+#define HCLGE_PF_MAX_VECTOR_NUM_DEV_V2	64
+
+	vector_info->vector = pci_irq_vector(hdev->pdev, idx);
+
+	/* need an extend offset to config vector >= 64 */
+	if (idx - 1 < HCLGE_PF_MAX_VECTOR_NUM_DEV_V2)
+		vector_info->io_addr = hdev->hw.hw.io_base +
+				HCLGE_VECTOR_REG_BASE +
+				(idx - 1) * HCLGE_VECTOR_REG_OFFSET;
+	else
+		vector_info->io_addr = hdev->hw.hw.io_base +
+				HCLGE_VECTOR_EXT_REG_BASE +
+				(idx - 1) / HCLGE_PF_MAX_VECTOR_NUM_DEV_V2 *
+				HCLGE_VECTOR_REG_OFFSET_H +
+				(idx - 1) % HCLGE_PF_MAX_VECTOR_NUM_DEV_V2 *
+				HCLGE_VECTOR_REG_OFFSET;
+
+	hdev->vector_status[idx] = hdev->vport[0].vport_id;
+	hdev->vector_irq[idx] = vector_info->vector;
 }
 
 static int hclge_get_vector(struct hnae3_handle *handle, u16 vector_num,
@@ -4140,23 +5067,16 @@ static int hclge_get_vector(struct hnae3_handle *handle, u16 vector_num,
 	struct hnae3_vector_info *vector = vector_info;
 	struct hclge_dev *hdev = vport->back;
 	int alloc = 0;
-	int i, j;
+	u16 i = 0;
+	u16 j;
 
 	vector_num = min_t(u16, hdev->num_nic_msi - 1, vector_num);
 	vector_num = min(hdev->num_msi_left, vector_num);
 
 	for (j = 0; j < vector_num; j++) {
-		for (i = 1; i < hdev->num_msi; i++) {
+		while (++i < hdev->num_nic_msi) {
 			if (hdev->vector_status[i] == HCLGE_INVALID_VPORT) {
-				vector->vector = pci_irq_vector(hdev->pdev, i);
-				vector->io_addr = hdev->hw.io_base +
-					HCLGE_VECTOR_REG_BASE +
-					(i - 1) * HCLGE_VECTOR_REG_OFFSET +
-					vport->vport_id *
-					HCLGE_VECTOR_VF_OFFSET;
-				hdev->vector_status[i] = vport->vport_id;
-				hdev->vector_irq[i] = vector->vector;
-
+				hclge_get_vector_info(hdev, i, vector);
 				vector++;
 				alloc++;
 
@@ -4246,7 +5166,7 @@ static int hclge_set_rss_algo_key(struct hclge_dev *hdev,
 	return 0;
 }
 
-static int hclge_set_rss_indir_table(struct hclge_dev *hdev, const u8 *indir)
+static int hclge_set_rss_indir_table(struct hclge_dev *hdev, const u16 *indir)
 {
 	struct hclge_rss_indirection_table_cmd *req;
 	struct hclge_desc desc;
@@ -4545,52 +5465,69 @@ static int hclge_set_rss_tuple(struct hnae3_handle *handle,
 	return 0;
 }
 
-static int hclge_get_rss_tuple(struct hnae3_handle *handle,
-			       struct ethtool_rxnfc *nfc)
+static int hclge_get_vport_rss_tuple(struct hclge_vport *vport, int flow_type,
+				     u8 *tuple_sets)
 {
-	struct hclge_vport *vport = hclge_get_vport(handle);
-	u8 tuple_sets;
-
-	nfc->data = 0;
-
-	switch (nfc->flow_type) {
+	switch (flow_type) {
 	case TCP_V4_FLOW:
-		tuple_sets = vport->rss_tuple_sets.ipv4_tcp_en;
+		*tuple_sets = vport->rss_tuple_sets.ipv4_tcp_en;
 		break;
 	case UDP_V4_FLOW:
-		tuple_sets = vport->rss_tuple_sets.ipv4_udp_en;
+		*tuple_sets = vport->rss_tuple_sets.ipv4_udp_en;
 		break;
 	case TCP_V6_FLOW:
-		tuple_sets = vport->rss_tuple_sets.ipv6_tcp_en;
+		*tuple_sets = vport->rss_tuple_sets.ipv6_tcp_en;
 		break;
 	case UDP_V6_FLOW:
-		tuple_sets = vport->rss_tuple_sets.ipv6_udp_en;
+		*tuple_sets = vport->rss_tuple_sets.ipv6_udp_en;
 		break;
 	case SCTP_V4_FLOW:
-		tuple_sets = vport->rss_tuple_sets.ipv4_sctp_en;
+		*tuple_sets = vport->rss_tuple_sets.ipv4_sctp_en;
 		break;
 	case SCTP_V6_FLOW:
-		tuple_sets = vport->rss_tuple_sets.ipv6_sctp_en;
+		*tuple_sets = vport->rss_tuple_sets.ipv6_sctp_en;
 		break;
 	case IPV4_FLOW:
 	case IPV6_FLOW:
-		tuple_sets = HCLGE_S_IP_BIT | HCLGE_D_IP_BIT;
+		*tuple_sets = HCLGE_S_IP_BIT | HCLGE_D_IP_BIT;
 		break;
 	default:
 		return -EINVAL;
 	}
 
-	if (!tuple_sets)
-		return 0;
+	return 0;
+}
+
+static u64 hclge_convert_rss_tuple(u8 tuple_sets)
+{
+	u64 tuple_data = 0;
 
 	if (tuple_sets & HCLGE_D_PORT_BIT)
-		nfc->data |= RXH_L4_B_2_3;
+		tuple_data |= RXH_L4_B_2_3;
 	if (tuple_sets & HCLGE_S_PORT_BIT)
-		nfc->data |= RXH_L4_B_0_1;
+		tuple_data |= RXH_L4_B_0_1;
 	if (tuple_sets & HCLGE_D_IP_BIT)
-		nfc->data |= RXH_IP_DST;
+		tuple_data |= RXH_IP_DST;
 	if (tuple_sets & HCLGE_S_IP_BIT)
-		nfc->data |= RXH_IP_SRC;
+		tuple_data |= RXH_IP_SRC;
+
+	return tuple_data;
+}
+
+static int hclge_get_rss_tuple(struct hnae3_handle *handle,
+			       struct ethtool_rxnfc *nfc)
+{
+	struct hclge_vport *vport = hclge_get_vport(handle);
+	u8 tuple_sets;
+	int ret;
+
+	nfc->data = 0;
+
+	ret = hclge_get_vport_rss_tuple(vport, nfc->flow_type, &tuple_sets);
+	if (ret || !tuple_sets)
+		return ret;
+
+	nfc->data = hclge_convert_rss_tuple(tuple_sets);
 
 	return 0;
 }
@@ -4648,7 +5585,7 @@ static int hclge_init_rss_tc_mode(struct hclge_dev *hdev)
 int hclge_rss_init_hw(struct hclge_dev *hdev)
 {
 	struct hclge_vport *vport = hdev->vport;
-	u8 *rss_indir = vport[0].rss_indirection_tbl;
+	u16 *rss_indir = vport[0].rss_indirection_tbl;
 	u8 *key = vport[0].rss_hash_key;
 	u8 hfunc = vport[0].rss_algo;
 	int ret;
@@ -4670,49 +5607,48 @@ int hclge_rss_init_hw(struct hclge_dev *hdev)
 
 void hclge_rss_indir_init_cfg(struct hclge_dev *hdev)
 {
-	struct hclge_vport *vport = hdev->vport;
-	int i, j;
+	struct hclge_vport *vport = &hdev->vport[0];
+	int i;
 
-	for (j = 0; j < hdev->num_vmdq_vport + 1; j++) {
-		for (i = 0; i < HCLGE_RSS_IND_TBL_SIZE; i++)
-			vport[j].rss_indirection_tbl[i] =
-				i % vport[j].alloc_rss_size;
-	}
+	for (i = 0; i < hdev->ae_dev->dev_specs.rss_ind_tbl_size; i++)
+		vport->rss_indirection_tbl[i] = i % vport->alloc_rss_size;
 }
 
-static void hclge_rss_init_cfg(struct hclge_dev *hdev)
+static int hclge_rss_init_cfg(struct hclge_dev *hdev)
 {
-	int i, rss_algo = HCLGE_RSS_HASH_ALGO_TOEPLITZ;
-	struct hclge_vport *vport = hdev->vport;
+	u16 rss_ind_tbl_size = hdev->ae_dev->dev_specs.rss_ind_tbl_size;
+	int rss_algo = HCLGE_RSS_HASH_ALGO_TOEPLITZ;
+	struct hclge_vport *vport = &hdev->vport[0];
+	u16 *rss_ind_tbl;
 
-	if (hdev->pdev->revision >= 0x21)
+	if (hdev->ae_dev->dev_version >= HNAE3_DEVICE_VERSION_V2)
 		rss_algo = HCLGE_RSS_HASH_ALGO_SIMPLE;
 
-	for (i = 0; i < hdev->num_vmdq_vport + 1; i++) {
-		vport[i].rss_tuple_sets.ipv4_tcp_en =
-			HCLGE_RSS_INPUT_TUPLE_OTHER;
-		vport[i].rss_tuple_sets.ipv4_udp_en =
-			HCLGE_RSS_INPUT_TUPLE_OTHER;
-		vport[i].rss_tuple_sets.ipv4_sctp_en =
-			HCLGE_RSS_INPUT_TUPLE_SCTP4;
-		vport[i].rss_tuple_sets.ipv4_fragment_en =
-			HCLGE_RSS_INPUT_TUPLE_OTHER;
-		vport[i].rss_tuple_sets.ipv6_tcp_en =
-			HCLGE_RSS_INPUT_TUPLE_OTHER;
-		vport[i].rss_tuple_sets.ipv6_udp_en =
-			HCLGE_RSS_INPUT_TUPLE_OTHER;
-		vport[i].rss_tuple_sets.ipv6_sctp_en =
-			HCLGE_RSS_INPUT_TUPLE_SCTP6;
-		vport[i].rss_tuple_sets.ipv6_fragment_en =
-			HCLGE_RSS_INPUT_TUPLE_OTHER;
+	vport->rss_tuple_sets.ipv4_tcp_en = HCLGE_RSS_INPUT_TUPLE_OTHER;
+	vport->rss_tuple_sets.ipv4_udp_en = HCLGE_RSS_INPUT_TUPLE_OTHER;
+	vport->rss_tuple_sets.ipv4_sctp_en = HCLGE_RSS_INPUT_TUPLE_SCTP4;
+	vport->rss_tuple_sets.ipv4_fragment_en = HCLGE_RSS_INPUT_TUPLE_OTHER;
+	vport->rss_tuple_sets.ipv6_tcp_en = HCLGE_RSS_INPUT_TUPLE_OTHER;
+	vport->rss_tuple_sets.ipv6_udp_en = HCLGE_RSS_INPUT_TUPLE_OTHER;
+	vport->rss_tuple_sets.ipv6_sctp_en =
+		hdev->ae_dev->dev_version <= HNAE3_DEVICE_VERSION_V2 ?
+		HCLGE_RSS_INPUT_TUPLE_SCTP6 :
+		HCLGE_RSS_INPUT_TUPLE_SCTP4;
+	vport->rss_tuple_sets.ipv6_fragment_en = HCLGE_RSS_INPUT_TUPLE_OTHER;
 
-		vport[i].rss_algo = rss_algo;
+	vport->rss_algo = rss_algo;
 
-		memcpy(vport[i].rss_hash_key, hclge_hash_key,
-		       HCLGE_RSS_KEY_SIZE);
-	}
+	rss_ind_tbl = devm_kcalloc(&hdev->pdev->dev, rss_ind_tbl_size,
+				   sizeof(*rss_ind_tbl), GFP_KERNEL);
+	if (!rss_ind_tbl)
+		return -ENOMEM;
+
+	vport->rss_indirection_tbl = rss_ind_tbl;
+	memcpy(vport->rss_hash_key, hclge_hash_key, HCLGE_RSS_KEY_SIZE);
 
 	hclge_rss_indir_init_cfg(hdev);
+
+	return 0;
 }
 
 int hclge_bind_ring_with_vector(struct hclge_vport *vport,
@@ -4724,14 +5660,19 @@ int hclge_bind_ring_with_vector(struct hclge_vport *vport,
 	struct hclge_desc desc;
 	struct hclge_ctrl_vector_chain_cmd *req =
 		(struct hclge_ctrl_vector_chain_cmd *)desc.data;
-	enum hclge_cmd_status status;
+	enum hclge_comm_cmd_status status;
 	enum hclge_opcode_type op;
 	u16 tqp_type_and_id;
 	int i;
 
 	op = en ? HCLGE_OPC_ADD_RING_TO_VECTOR : HCLGE_OPC_DEL_RING_TO_VECTOR;
 	hclge_cmd_setup_basic_desc(&desc, op, false);
-	req->int_vector_id = vector_id;
+	req->int_vector_id_l = hnae3_get_field(vector_id,
+					       HCLGE_VECTOR_ID_L_M,
+					       HCLGE_VECTOR_ID_L_S);
+	req->int_vector_id_h = hnae3_get_field(vector_id,
+					       HCLGE_VECTOR_ID_H_M,
+					       HCLGE_VECTOR_ID_H_S);
 
 	i = 0;
 	for (node = ring_chain; node; node = node->next) {
@@ -4763,7 +5704,14 @@ int hclge_bind_ring_with_vector(struct hclge_vport *vport,
 			hclge_cmd_setup_basic_desc(&desc,
 						   op,
 						   false);
-			req->int_vector_id = vector_id;
+			req->int_vector_id_l =
+				hnae3_get_field(vector_id,
+						HCLGE_VECTOR_ID_L_M,
+						HCLGE_VECTOR_ID_L_S);
+			req->int_vector_id_h =
+				hnae3_get_field(vector_id,
+						HCLGE_VECTOR_ID_H_M,
+						HCLGE_VECTOR_ID_H_S);
 		}
 	}
 
@@ -4791,7 +5739,7 @@ static int hclge_map_ring_to_vector(struct hnae3_handle *handle, int vector,
 	vector_id = hclge_get_vector_index(hdev, vector);
 	if (vector_id < 0) {
 		dev_err(&hdev->pdev->dev,
-			"Get vector index fail. vector_id =%d\n", vector_id);
+			"failed to get vector index. vector=%d\n", vector);
 		return vector_id;
 	}
 
@@ -4842,20 +5790,20 @@ static int hclge_cmd_set_promisc_mode(struct hclge_dev *hdev,
 	 * send command to fireware in revision(0x20).
 	 */
 	req->flag = (param->enable << HCLGE_PROMISC_EN_B) |
-		HCLGE_PROMISC_TX_EN_B | HCLGE_PROMISC_RX_EN_B;
+		    HCLGE_PROMISC_TX_EN_B | HCLGE_PROMISC_RX_EN_B;
 
 	ret = hclge_cmd_send(&hdev->hw, &desc, 1);
 	if (ret)
 		dev_err(&hdev->pdev->dev,
-			"Set vport %d promisc mode fail, ret = %d.\n",
-			param->vf_id, ret);
+		       "failed to set vport %d promisc mode, ret = %d.\n",
+		       param->vf_id, ret);
 
 	return ret;
 }
 
 static void hclge_promisc_param_init(struct hclge_promisc_param *param,
-				     bool en_uc, bool en_mc, bool en_bc,
-				     int vport_id)
+				    bool en_uc, bool en_mc, bool en_bc,
+				    int vport_id)
 {
 	if (!param)
 		return;
@@ -4885,13 +5833,14 @@ static int hclge_set_promisc_mode(struct hnae3_handle *handle, bool en_uc_pmc,
 				  bool en_mc_pmc)
 {
 	struct hclge_vport *vport = hclge_get_vport(handle);
+	struct hclge_dev *hdev = vport->back;
 	bool en_bc_pmc = true;
 
-	/* For revision 0x20, if broadcast promisc enabled, vlan filter is
-	 * always bypassed. So broadcast promisc should be disabled until
-	 * user enable promisc mode
+	/* For device whose version below V2, if broadcast promisc enabled,
+	 * vlan filter is always bypassed. So broadcast promisc should be
+	 * disabled until user enable promisc mode
 	 */
-	if (handle->pdev->revision == 0x20)
+	if (hdev->ae_dev->dev_version < HNAE3_DEVICE_VERSION_V2)
 		en_bc_pmc = handle->netdev_flags & HNAE3_BPE ? true : false;
 
 	return hclge_set_vport_promisc_mode(vport, en_uc_pmc, en_mc_pmc,
@@ -4901,9 +5850,23 @@ static int hclge_set_promisc_mode(struct hnae3_handle *handle, bool en_uc_pmc,
 static void hclge_request_update_promisc_mode(struct hnae3_handle *handle)
 {
 	struct hclge_vport *vport = hclge_get_vport(handle);
+
+	set_bit(HCLGE_VPORT_STATE_PROMISC_CHANGE, &vport->state);
+}
+
+static bool hclge_query_fd_qb_state(struct hnae3_handle *handle)
+{
+	struct hclge_vport *vport = hclge_get_vport(handle);
 	struct hclge_dev *hdev = vport->back;
 
-	set_bit(HCLGE_STATE_PROMISC_CHANGED, &hdev->state);
+	return test_bit(HCLGE_STATE_HW_QB_ENABLE, &hdev->state);
+}
+
+static void hclge_flush_qb_config(struct hnae3_handle *handle)
+{
+	struct hclge_vport *vport = hclge_get_vport(handle);
+
+	set_bit(HCLGE_VPORT_STATE_QB_CHANGE, &vport->state);
 }
 
 static int hclge_get_fd_mode(struct hclge_dev *hdev, u8 *fd_mode)
@@ -5025,8 +5988,9 @@ static int hclge_init_fd_config(struct hclge_dev *hdev)
 
 	/* If use max 400bit key, we can support tuples for ether type */
 	if (hdev->fd_cfg.fd_mode == HCLGE_FD_MODE_DEPTH_2K_WIDTH_400B_STAGE_1)
-		key_cfg->tuple_active |=
-				BIT(INNER_DST_MAC) | BIT(INNER_SRC_MAC);
+		key_cfg->tuple_active |= BIT(INNER_DST_MAC) |
+					 BIT(INNER_SRC_MAC) |
+					 BIT(OUTER_TUN_VNI);
 
 	/* roce_type is used to filter roce frames
 	 * dst_vport is used to specify the rule
@@ -5041,6 +6005,11 @@ static int hclge_init_fd_config(struct hclge_dev *hdev)
 	if (ret)
 		return ret;
 
+	if (!hdev->fd_cfg.cnt_num[HCLGE_FD_STAGE_1])
+		hdev->fd_cfg.cnt_num[HCLGE_FD_STAGE_1] = 1;
+
+	hclge_init_fd_qb_counter(hdev);
+
 	return hclge_set_fd_key_config(hdev, HCLGE_FD_STAGE_1);
 }
 
@@ -5054,9 +6023,9 @@ static int hclge_fd_tcam_config(struct hclge_dev *hdev, u8 stage, bool sel_x,
 	int ret;
 
 	hclge_cmd_setup_basic_desc(&desc[0], HCLGE_OPC_FD_TCAM_OP, false);
-	desc[0].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+	desc[0].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 	hclge_cmd_setup_basic_desc(&desc[1], HCLGE_OPC_FD_TCAM_OP, false);
-	desc[1].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+	desc[1].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 	hclge_cmd_setup_basic_desc(&desc[2], HCLGE_OPC_FD_TCAM_OP, false);
 
 	req1 = (struct hclge_fd_tcam_config_1_cmd *)desc[0].data;
@@ -5128,97 +6097,70 @@ static int hclge_fd_ad_config(struct hclge_dev *hdev, u8 stage, int loc,
 static bool hclge_fd_convert_tuple(u32 tuple_bit, u8 *key_x, u8 *key_y,
 				   struct hclge_fd_rule *rule)
 {
+#define HCLGE_VNI_LENGTH	3
+
+	int offset, moffset, ip_offset;
+	enum HCLGE_FD_KEY_OPT key_opt;
 	u16 tmp_x_s, tmp_y_s;
 	u32 tmp_x_l, tmp_y_l;
+	u8 *p = (u8 *)rule;
 	int i;
 
-	if (rule->unused_tuple & tuple_bit)
+	if (rule->unused_tuple & BIT(tuple_bit))
 		return true;
 
-	switch (tuple_bit) {
-	case BIT(INNER_DST_MAC):
-		for (i = 0; i < ETH_ALEN; i++) {
-			calc_x(key_x[ETH_ALEN - 1 - i], rule->tuples.dst_mac[i],
-			       rule->tuples_mask.dst_mac[i]);
-			calc_y(key_y[ETH_ALEN - 1 - i], rule->tuples.dst_mac[i],
-			       rule->tuples_mask.dst_mac[i]);
-		}
+	key_opt = tuple_key_info[tuple_bit].key_opt;
+	offset = tuple_key_info[tuple_bit].offset;
+	moffset = tuple_key_info[tuple_bit].moffset;
+
+	switch (key_opt) {
+	case KEY_OPT_U8:
+		calc_x(*key_x, p[offset], p[moffset]);
+		calc_y(*key_y, p[offset], p[moffset]);
 
 		return true;
-	case BIT(INNER_SRC_MAC):
-		for (i = 0; i < ETH_ALEN; i++) {
-			calc_x(key_x[ETH_ALEN - 1 - i], rule->tuples.src_mac[i],
-			       rule->tuples_mask.src_mac[i]);
-			calc_y(key_y[ETH_ALEN - 1 - i], rule->tuples.src_mac[i],
-			       rule->tuples_mask.src_mac[i]);
-		}
-
-		return true;
-	case BIT(INNER_VLAN_TAG_FST):
-		calc_x(tmp_x_s, rule->tuples.vlan_tag1,
-		       rule->tuples_mask.vlan_tag1);
-		calc_y(tmp_y_s, rule->tuples.vlan_tag1,
-		       rule->tuples_mask.vlan_tag1);
+	case KEY_OPT_LE16:
+		calc_x(tmp_x_s, *(u16 *)(&p[offset]), *(u16 *)(&p[moffset]));
+		calc_y(tmp_y_s, *(u16 *)(&p[offset]), *(u16 *)(&p[moffset]));
 		*(__le16 *)key_x = cpu_to_le16(tmp_x_s);
 		*(__le16 *)key_y = cpu_to_le16(tmp_y_s);
 
 		return true;
-	case BIT(INNER_ETH_TYPE):
-		calc_x(tmp_x_s, rule->tuples.ether_proto,
-		       rule->tuples_mask.ether_proto);
-		calc_y(tmp_y_s, rule->tuples.ether_proto,
-		       rule->tuples_mask.ether_proto);
-		*(__le16 *)key_x = cpu_to_le16(tmp_x_s);
-		*(__le16 *)key_y = cpu_to_le16(tmp_y_s);
-
-		return true;
-	case BIT(INNER_IP_TOS):
-		calc_x(*key_x, rule->tuples.ip_tos, rule->tuples_mask.ip_tos);
-		calc_y(*key_y, rule->tuples.ip_tos, rule->tuples_mask.ip_tos);
-
-		return true;
-	case BIT(INNER_IP_PROTO):
-		calc_x(*key_x, rule->tuples.ip_proto,
-		       rule->tuples_mask.ip_proto);
-		calc_y(*key_y, rule->tuples.ip_proto,
-		       rule->tuples_mask.ip_proto);
-
-		return true;
-	case BIT(INNER_SRC_IP):
-		calc_x(tmp_x_l, rule->tuples.src_ip[IPV4_INDEX],
-		       rule->tuples_mask.src_ip[IPV4_INDEX]);
-		calc_y(tmp_y_l, rule->tuples.src_ip[IPV4_INDEX],
-		       rule->tuples_mask.src_ip[IPV4_INDEX]);
+	case KEY_OPT_LE32:
+		calc_x(tmp_x_l, *(u32 *)(&p[offset]), *(u32 *)(&p[moffset]));
+		calc_y(tmp_y_l, *(u32 *)(&p[offset]), *(u32 *)(&p[moffset]));
 		*(__le32 *)key_x = cpu_to_le32(tmp_x_l);
 		*(__le32 *)key_y = cpu_to_le32(tmp_y_l);
 
 		return true;
-	case BIT(INNER_DST_IP):
-		calc_x(tmp_x_l, rule->tuples.dst_ip[IPV4_INDEX],
-		       rule->tuples_mask.dst_ip[IPV4_INDEX]);
-		calc_y(tmp_y_l, rule->tuples.dst_ip[IPV4_INDEX],
-		       rule->tuples_mask.dst_ip[IPV4_INDEX]);
+	case KEY_OPT_MAC:
+		for (i = 0; i < ETH_ALEN; i++) {
+			calc_x(key_x[ETH_ALEN - 1 - i], p[offset + i],
+			       p[moffset + i]);
+			calc_y(key_y[ETH_ALEN - 1 - i], p[offset + i],
+			       p[moffset + i]);
+		}
+
+		return true;
+	case KEY_OPT_IP:
+		ip_offset = IPV4_INDEX * sizeof(u32);
+		calc_x(tmp_x_l, *(u32 *)(&p[offset + ip_offset]),
+		       *(u32 *)(&p[moffset + ip_offset]));
+		calc_y(tmp_y_l, *(u32 *)(&p[offset + ip_offset]),
+		       *(u32 *)(&p[moffset + ip_offset]));
 		*(__le32 *)key_x = cpu_to_le32(tmp_x_l);
 		*(__le32 *)key_y = cpu_to_le32(tmp_y_l);
 
 		return true;
-	case BIT(INNER_SRC_PORT):
-		calc_x(tmp_x_s, rule->tuples.src_port,
-		       rule->tuples_mask.src_port);
-		calc_y(tmp_y_s, rule->tuples.src_port,
-		       rule->tuples_mask.src_port);
-		*(__le16 *)key_x = cpu_to_le16(tmp_x_s);
-		*(__le16 *)key_y = cpu_to_le16(tmp_y_s);
-
-		return true;
-	case BIT(INNER_DST_PORT):
-		calc_x(tmp_x_s, rule->tuples.dst_port,
-		       rule->tuples_mask.dst_port);
-		calc_y(tmp_y_s, rule->tuples.dst_port,
-		       rule->tuples_mask.dst_port);
-		*(__le16 *)key_x = cpu_to_le16(tmp_x_s);
-		*(__le16 *)key_y = cpu_to_le16(tmp_y_s);
-
+	case KEY_OPT_VNI:
+		calc_x(tmp_x_l, *(u32 *)(&p[offset]), *(u32 *)(&p[moffset]));
+		calc_y(tmp_y_l, *(u32 *)(&p[offset]), *(u32 *)(&p[moffset]));
+		for (i = 0; i < HCLGE_VNI_LENGTH; i++) {
+			key_x[i] = (cpu_to_le32(tmp_x_l) >>
+				   (i * BITS_PER_BYTE)) & 0xFF;
+			key_y[i] = (cpu_to_le32(tmp_y_l) >>
+				   (i * BITS_PER_BYTE)) & 0xFF;
+		}
 		return true;
 	default:
 		return false;
@@ -5303,14 +6245,14 @@ static int hclge_config_key(struct hclge_dev *hdev, u8 stage,
 	cur_key_x = key_x;
 	cur_key_y = key_y;
 
-	for (i = 0 ; i < MAX_TUPLE; i++) {
+	for (i = 0; i < MAX_TUPLE; i++) {
 		bool tuple_valid;
-		u32 check_tuple;
 
 		tuple_size = tuple_key_info[i].key_length / 8;
-		check_tuple = key_cfg->tuple_active & BIT(i);
+		if (!(key_cfg->tuple_active & BIT(i)))
+			continue;
 
-		tuple_valid = hclge_fd_convert_tuple(check_tuple, cur_key_x,
+		tuple_valid = hclge_fd_convert_tuple(i, cur_key_x,
 						     cur_key_y, rule);
 		if (tuple_valid) {
 			cur_key_x += tuple_size;
@@ -5361,8 +6303,14 @@ static int hclge_config_action(struct hclge_dev *hdev, u8 stage,
 		ad_data.queue_id = rule->queue_id;
 	}
 
-	ad_data.use_counter = false;
-	ad_data.counter_id = 0;
+	if (hdev->fd_cfg.cnt_num[HCLGE_FD_STAGE_1]) {
+		ad_data.use_counter = true;
+		ad_data.counter_id = rule->vf_id %
+				     hdev->fd_cfg.cnt_num[HCLGE_FD_STAGE_1];
+	} else {
+		ad_data.use_counter = false;
+		ad_data.counter_id = 0;
+	}
 
 	ad_data.use_next_stage = false;
 	ad_data.next_input_key = 0;
@@ -5429,6 +6377,45 @@ static int hclge_fd_check_ip4_tuple(struct ethtool_usrip4_spec *spec,
 	return 0;
 }
 
+static int hclge_fd_check_vxlan4_tuple(struct ethtool_rx_flow_spec *fs,
+				       u32 *unused_tuple)
+{
+	struct ethtool_vxlan4_spec *spec = &fs->h_u.vxlan_ip4_spec;
+	struct ethtool_vxlan4_spec *mask = &fs->m_u.vxlan_ip4_spec;
+
+	/* Vni is only 24 bits and must be greater than 0, and it can not be
+	 * masked.
+	 */
+	if (!spec->vni || be32_to_cpu(spec->vni) >= VXLAN_N_VID ||
+	    mask->vni != HCLGE_FD_VXLAN_VNI_UNMASK || !unused_tuple)
+		return -EINVAL;
+
+	*unused_tuple |= BIT(INNER_SRC_PORT) | BIT(INNER_DST_PORT);
+
+	if (is_zero_ether_addr(spec->src))
+		*unused_tuple |= BIT(INNER_SRC_MAC);
+
+	if (is_zero_ether_addr(spec->dst))
+		*unused_tuple |= BIT(INNER_DST_MAC);
+
+	if (!spec->eth_type)
+		*unused_tuple |= BIT(INNER_ETH_TYPE);
+
+	if (!spec->ip4src)
+		*unused_tuple |= BIT(INNER_SRC_IP);
+
+	if (!spec->ip4dst)
+		*unused_tuple |= BIT(INNER_DST_IP);
+
+	if (!spec->tos)
+		*unused_tuple |= BIT(INNER_IP_TOS);
+
+	if (!spec->l4_proto)
+		*unused_tuple |= BIT(INNER_IP_PROTO);
+
+	return 0;
+}
+
 static int hclge_fd_check_tcpip6_tuple(struct ethtool_tcpip6_spec *spec,
 				       u32 *unused_tuple)
 {
@@ -5439,12 +6426,10 @@ static int hclge_fd_check_tcpip6_tuple(struct ethtool_tcpip6_spec *spec,
 		BIT(INNER_IP_TOS);
 
 	/* check whether src/dst ip address used */
-	if (!spec->ip6src[0] && !spec->ip6src[1] &&
-	    !spec->ip6src[2] && !spec->ip6src[3])
+	if (ipv6_addr_any((struct in6_addr *)spec->ip6src))
 		*unused_tuple |= BIT(INNER_SRC_IP);
 
-	if (!spec->ip6dst[0] && !spec->ip6dst[1] &&
-	    !spec->ip6dst[2] && !spec->ip6dst[3])
+	if (ipv6_addr_any((struct in6_addr *)spec->ip6dst))
 		*unused_tuple |= BIT(INNER_DST_IP);
 
 	if (!spec->psrc)
@@ -5469,12 +6454,10 @@ static int hclge_fd_check_ip6_tuple(struct ethtool_usrip6_spec *spec,
 		BIT(INNER_IP_TOS) | BIT(INNER_SRC_PORT) | BIT(INNER_DST_PORT);
 
 	/* check whether src/dst ip address used */
-	if (!spec->ip6src[0] && !spec->ip6src[1] &&
-	    !spec->ip6src[2] && !spec->ip6src[3])
+	if (ipv6_addr_any((struct in6_addr *)spec->ip6src))
 		*unused_tuple |= BIT(INNER_SRC_IP);
 
-	if (!spec->ip6dst[0] && !spec->ip6dst[1] &&
-	    !spec->ip6dst[2] && !spec->ip6dst[3])
+	if (ipv6_addr_any((struct in6_addr *)spec->ip6dst))
 		*unused_tuple |= BIT(INNER_DST_IP);
 
 	if (!spec->l4_proto)
@@ -5485,6 +6468,45 @@ static int hclge_fd_check_ip6_tuple(struct ethtool_usrip6_spec *spec,
 
 	if (spec->l4_4_bytes)
 		return -EOPNOTSUPP;
+
+	return 0;
+}
+
+static int hclge_fd_check_vxlan6_tuple(struct ethtool_rx_flow_spec *fs,
+				       u32 *unused_tuple)
+{
+	struct ethtool_vxlan6_spec *spec = &fs->h_u.vxlan_ip6_spec;
+	struct ethtool_vxlan6_spec *mask = &fs->m_u.vxlan_ip6_spec;
+
+	/* Vni is only 24 bits and must be greater than 0, and it can not be
+	 * masked.
+	 */
+	if (!spec->vni || be32_to_cpu(spec->vni) >= VXLAN_N_VID ||
+	    mask->vni != HCLGE_FD_VXLAN_VNI_UNMASK || !unused_tuple)
+		return -EINVAL;
+
+	*unused_tuple |= BIT(INNER_SRC_PORT) | BIT(INNER_DST_PORT);
+
+	if (is_zero_ether_addr(spec->src))
+		*unused_tuple |= BIT(INNER_SRC_MAC);
+
+	if (is_zero_ether_addr(spec->dst))
+		*unused_tuple |= BIT(INNER_DST_MAC);
+
+	if (!spec->eth_type)
+		*unused_tuple |= BIT(INNER_ETH_TYPE);
+
+	if (ipv6_addr_any((struct in6_addr *)spec->ip6src))
+		*unused_tuple |= BIT(INNER_SRC_IP);
+
+	if (ipv6_addr_any((struct in6_addr *)spec->ip6dst))
+		*unused_tuple |= BIT(INNER_DST_IP);
+
+	if (!spec->tclass)
+		*unused_tuple |= BIT(INNER_IP_TOS);
+
+	if (!spec->l4_proto)
+		*unused_tuple |= BIT(INNER_IP_PROTO);
 
 	return 0;
 }
@@ -5582,6 +6604,9 @@ static int hclge_fd_check_spec(struct hclge_dev *hdev,
 		ret = hclge_fd_check_ip4_tuple(&fs->h_u.usr_ip4_spec,
 					       unused_tuple);
 		break;
+	case VXLAN_V4_FLOW:
+		ret = hclge_fd_check_vxlan4_tuple(fs, unused_tuple);
+		break;
 	case SCTP_V6_FLOW:
 	case TCP_V6_FLOW:
 	case UDP_V6_FLOW:
@@ -5591,6 +6616,9 @@ static int hclge_fd_check_spec(struct hclge_dev *hdev,
 	case IPV6_USER_FLOW:
 		ret = hclge_fd_check_ip6_tuple(&fs->h_u.usr_ip6_spec,
 					       unused_tuple);
+		break;
+	case VXLAN_V6_FLOW:
+		ret = hclge_fd_check_vxlan6_tuple(fs, unused_tuple);
 		break;
 	case ETHER_FLOW:
 		if (hdev->fd_cfg.fd_mode !=
@@ -5686,6 +6714,68 @@ static int hclge_fd_update_rule_list(struct hclge_dev *hdev,
 	return 0;
 }
 
+static void hclge_fd_get_vxlan4_tuple(struct ethtool_rx_flow_spec *fs,
+				      struct hclge_fd_rule *rule)
+{
+	struct ethtool_vxlan4_spec *h = &fs->h_u.vxlan_ip4_spec;
+	struct ethtool_vxlan4_spec *m = &fs->m_u.vxlan_ip4_spec;
+
+	rule->tuples.outer_tun_vni = be32_to_cpu(h->vni);
+	rule->tuples_mask.outer_tun_vni = be32_to_cpu(m->vni);
+
+	ether_addr_copy(rule->tuples.src_mac, h->src);
+	ether_addr_copy(rule->tuples_mask.src_mac, m->src);
+
+	ether_addr_copy(rule->tuples.dst_mac, h->dst);
+	ether_addr_copy(rule->tuples_mask.dst_mac, m->dst);
+
+	rule->tuples.ether_proto = be16_to_cpu(h->eth_type);
+	rule->tuples_mask.ether_proto = be16_to_cpu(m->eth_type);
+
+	rule->tuples.ip_tos = h->tos;
+	rule->tuples_mask.ip_tos = m->tos;
+
+	rule->tuples.ip_proto = h->l4_proto;
+	rule->tuples_mask.ip_proto = m->l4_proto;
+
+	rule->tuples.src_ip[IPV4_INDEX] = be32_to_cpu(h->ip4src);
+	rule->tuples_mask.src_ip[IPV4_INDEX] = be32_to_cpu(m->ip4src);
+
+	rule->tuples.dst_ip[IPV4_INDEX] = be32_to_cpu(h->ip4dst);
+	rule->tuples_mask.dst_ip[IPV4_INDEX] = be32_to_cpu(m->ip4dst);
+}
+
+static void hclge_fd_get_vxlan6_tuple(struct ethtool_rx_flow_spec *fs,
+				      struct hclge_fd_rule *rule)
+{
+	struct ethtool_vxlan6_spec *h = &fs->h_u.vxlan_ip6_spec;
+	struct ethtool_vxlan6_spec *m = &fs->m_u.vxlan_ip6_spec;
+
+	rule->tuples.outer_tun_vni = be32_to_cpu(h->vni);
+	rule->tuples_mask.outer_tun_vni = be32_to_cpu(m->vni);
+
+	ether_addr_copy(rule->tuples.src_mac, h->src);
+	ether_addr_copy(rule->tuples_mask.src_mac, m->src);
+
+	ether_addr_copy(rule->tuples.dst_mac, h->dst);
+	ether_addr_copy(rule->tuples_mask.dst_mac, m->dst);
+
+	rule->tuples.ether_proto = be16_to_cpu(h->eth_type);
+	rule->tuples_mask.ether_proto = be16_to_cpu(m->eth_type);
+
+	rule->tuples.ip_tos = h->tclass;
+	rule->tuples_mask.ip_tos = m->tclass;
+
+	rule->tuples.ip_proto = h->l4_proto;
+	rule->tuples_mask.ip_proto = m->l4_proto;
+
+	be32_to_cpu_array(rule->tuples.src_ip, h->ip6src, IPV6_SIZE);
+	be32_to_cpu_array(rule->tuples_mask.src_ip, m->ip6src, IPV6_SIZE);
+
+	be32_to_cpu_array(rule->tuples.dst_ip, h->ip6dst, IPV6_SIZE);
+	be32_to_cpu_array(rule->tuples_mask.dst_ip, m->ip6dst, IPV6_SIZE);
+}
+
 static int hclge_fd_get_tuple(struct hclge_dev *hdev,
 			      struct ethtool_rx_flow_spec *fs,
 			      struct hclge_fd_rule *rule)
@@ -5719,7 +6809,6 @@ static int hclge_fd_get_tuple(struct hclge_dev *hdev,
 
 		rule->tuples.ether_proto = ETH_P_IP;
 		rule->tuples_mask.ether_proto = 0xFFFF;
-
 		break;
 	case IP_USER_FLOW:
 		rule->tuples.src_ip[IPV4_INDEX] =
@@ -5740,7 +6829,9 @@ static int hclge_fd_get_tuple(struct hclge_dev *hdev,
 
 		rule->tuples.ether_proto = ETH_P_IP;
 		rule->tuples_mask.ether_proto = 0xFFFF;
-
+		break;
+	case VXLAN_V4_FLOW:
+		hclge_fd_get_vxlan4_tuple(fs, rule);
 		break;
 	case SCTP_V6_FLOW:
 	case TCP_V6_FLOW:
@@ -5765,7 +6856,6 @@ static int hclge_fd_get_tuple(struct hclge_dev *hdev,
 
 		rule->tuples.ether_proto = ETH_P_IPV6;
 		rule->tuples_mask.ether_proto = 0xFFFF;
-
 		break;
 	case IPV6_USER_FLOW:
 		be32_to_cpu_array(rule->tuples.src_ip,
@@ -5783,7 +6873,9 @@ static int hclge_fd_get_tuple(struct hclge_dev *hdev,
 
 		rule->tuples.ether_proto = ETH_P_IPV6;
 		rule->tuples_mask.ether_proto = 0xFFFF;
-
+		break;
+	case VXLAN_V6_FLOW:
+		hclge_fd_get_vxlan6_tuple(fs, rule);
 		break;
 	case ETHER_FLOW:
 		ether_addr_copy(rule->tuples.src_mac,
@@ -5800,7 +6892,6 @@ static int hclge_fd_get_tuple(struct hclge_dev *hdev,
 				be16_to_cpu(fs->h_u.ether_spec.h_proto);
 		rule->tuples_mask.ether_proto =
 				be16_to_cpu(fs->m_u.ether_spec.h_proto);
-
 		break;
 	default:
 		return -EOPNOTSUPP;
@@ -6131,6 +7222,48 @@ static void hclge_fd_get_ip4_info(struct hclge_fd_rule *rule,
 	spec->ip_ver = ETH_RX_NFC_IP4;
 }
 
+static void hclge_fd_get_vxlan4_info(struct hclge_fd_rule *rule,
+				     struct ethtool_vxlan4_spec *spec,
+				     struct ethtool_vxlan4_spec *spec_mask)
+{
+	spec->vni = cpu_to_be32(rule->tuples.outer_tun_vni);
+	spec_mask->vni = rule->unused_tuple & BIT(OUTER_TUN_VNI) ? 0 :
+			 cpu_to_be32(rule->tuples_mask.outer_tun_vni);
+
+	ether_addr_copy(spec->src, rule->tuples.src_mac);
+	ether_addr_copy(spec->dst, rule->tuples.dst_mac);
+
+	if (rule->unused_tuple & BIT(INNER_SRC_MAC))
+		eth_zero_addr(spec_mask->src);
+	else
+		ether_addr_copy(spec_mask->src, rule->tuples_mask.src_mac);
+
+	if (rule->unused_tuple & BIT(INNER_DST_MAC))
+		eth_zero_addr(spec_mask->dst);
+	else
+		ether_addr_copy(spec_mask->dst, rule->tuples_mask.dst_mac);
+
+	spec->eth_type = cpu_to_be16(rule->tuples.ether_proto);
+	spec_mask->eth_type = rule->unused_tuple & BIT(INNER_ETH_TYPE) ? 0 :
+			     cpu_to_be16(rule->tuples_mask.ether_proto);
+
+	spec->tos = rule->tuples.ip_tos;
+	spec_mask->tos = rule->unused_tuple & BIT(INNER_IP_TOS) ? 0 :
+			 rule->tuples_mask.ip_tos;
+
+	spec->l4_proto = rule->tuples.ip_proto;
+	spec_mask->l4_proto = rule->unused_tuple & BIT(INNER_IP_PROTO) ? 0 :
+			     rule->tuples_mask.ip_proto;
+
+	spec->ip4src = cpu_to_be32(rule->tuples.src_ip[IPV4_INDEX]);
+	spec_mask->ip4src = rule->unused_tuple & BIT(INNER_SRC_IP) ? 0 :
+			    cpu_to_be32(rule->tuples_mask.src_ip[IPV4_INDEX]);
+
+	spec->ip4dst = cpu_to_be32(rule->tuples.dst_ip[IPV4_INDEX]);
+	spec_mask->ip4dst = rule->unused_tuple & BIT(INNER_DST_IP) ? 0 :
+			    cpu_to_be32(rule->tuples_mask.dst_ip[IPV4_INDEX]);
+}
+
 static void hclge_fd_get_tcpip6_info(struct hclge_fd_rule *rule,
 				     struct ethtool_tcpip6_spec *spec,
 				     struct ethtool_tcpip6_spec *spec_mask)
@@ -6181,6 +7314,56 @@ static void hclge_fd_get_ip6_info(struct hclge_fd_rule *rule,
 	spec->l4_proto = rule->tuples.ip_proto;
 	spec_mask->l4_proto = rule->unused_tuple & BIT(INNER_IP_PROTO) ?
 			0 : rule->tuples_mask.ip_proto;
+}
+
+static void hclge_fd_get_vxlan6_info(struct hclge_fd_rule *rule,
+				     struct ethtool_vxlan6_spec *spec,
+				     struct ethtool_vxlan6_spec *spec_mask)
+{
+	spec->vni = cpu_to_be32(rule->tuples.outer_tun_vni);
+	spec_mask->vni = rule->unused_tuple & BIT(OUTER_TUN_VNI) ? 0 :
+			 cpu_to_be32(rule->tuples_mask.outer_tun_vni);
+
+	ether_addr_copy(spec->src, rule->tuples.src_mac);
+	ether_addr_copy(spec->dst, rule->tuples.dst_mac);
+
+	if (rule->unused_tuple & BIT(INNER_SRC_MAC))
+		eth_zero_addr(spec_mask->src);
+	else
+		ether_addr_copy(spec_mask->src, rule->tuples_mask.src_mac);
+
+	if (rule->unused_tuple & BIT(INNER_DST_MAC))
+		eth_zero_addr(spec_mask->dst);
+	else
+		ether_addr_copy(spec_mask->dst, rule->tuples_mask.dst_mac);
+
+	spec->eth_type = cpu_to_be16(rule->tuples.ether_proto);
+	spec_mask->eth_type = rule->unused_tuple & BIT(INNER_ETH_TYPE) ? 0 :
+			     cpu_to_be16(rule->tuples_mask.ether_proto);
+
+	spec->tclass = rule->tuples.ip_tos;
+	spec_mask->tclass = rule->unused_tuple & BIT(INNER_IP_TOS) ? 0 :
+			    rule->tuples_mask.ip_tos;
+
+	spec->l4_proto = rule->tuples.ip_proto;
+	spec_mask->l4_proto = rule->unused_tuple & BIT(INNER_IP_PROTO) ? 0 :
+			     rule->tuples_mask.ip_proto;
+
+	cpu_to_be32_array(spec->ip6src,
+			  rule->tuples.src_ip, IPV6_SIZE);
+	cpu_to_be32_array(spec->ip6dst,
+			  rule->tuples.dst_ip, IPV6_SIZE);
+	if (rule->unused_tuple & BIT(INNER_SRC_IP))
+		memset(spec_mask->ip6src, 0, sizeof(spec_mask->ip6src));
+	else
+		cpu_to_be32_array(spec_mask->ip6src, rule->tuples_mask.src_ip,
+				  IPV6_SIZE);
+
+	if (rule->unused_tuple & BIT(INNER_DST_IP))
+		memset(spec_mask->ip6dst, 0, sizeof(spec_mask->ip6dst));
+	else
+		cpu_to_be32_array(spec_mask->ip6dst, rule->tuples_mask.dst_ip,
+				  IPV6_SIZE);
 }
 
 static void hclge_fd_get_ether_info(struct hclge_fd_rule *rule,
@@ -6264,6 +7447,10 @@ static int hclge_get_fd_rule_info(struct hnae3_handle *handle,
 		hclge_fd_get_ip4_info(rule, &fs->h_u.usr_ip4_spec,
 				      &fs->m_u.usr_ip4_spec);
 		break;
+	case VXLAN_V4_FLOW:
+		hclge_fd_get_vxlan4_info(rule, &fs->h_u.vxlan_ip4_spec,
+					 &fs->m_u.vxlan_ip4_spec);
+		break;
 	case SCTP_V6_FLOW:
 	case TCP_V6_FLOW:
 	case UDP_V6_FLOW:
@@ -6273,6 +7460,10 @@ static int hclge_get_fd_rule_info(struct hnae3_handle *handle,
 	case IPV6_USER_FLOW:
 		hclge_fd_get_ip6_info(rule, &fs->h_u.usr_ip6_spec,
 				      &fs->m_u.usr_ip6_spec);
+		break;
+	case VXLAN_V6_FLOW:
+		hclge_fd_get_vxlan6_info(rule, &fs->h_u.vxlan_ip6_spec,
+					 &fs->m_u.vxlan_ip6_spec);
 		break;
 	/* The flow type of fd rule has been checked before adding in to rule
 	 * list. As other flow types have been handled, it must be ETHER_FLOW
@@ -6401,7 +7592,6 @@ static void hclge_fd_build_arfs_rule(const struct hclge_fd_rule_tuples *tuples,
 static int hclge_add_fd_entry_by_arfs(struct hnae3_handle *handle, u16 queue_id,
 				      u16 flow_id, struct flow_keys *fkeys)
 {
-#ifdef CONFIG_RFS_ACCEL
 	struct hclge_vport *vport = hclge_get_vport(handle);
 	struct hclge_fd_rule_tuples new_tuples;
 	struct hclge_dev *hdev = vport->back;
@@ -6473,7 +7663,6 @@ static int hclge_add_fd_entry_by_arfs(struct hnae3_handle *handle, u16 queue_id,
 	}
 
 	return rule->location;
-#endif
 }
 
 static void hclge_rfs_filter_expire(struct hclge_dev *hdev)
@@ -6534,7 +7723,7 @@ static bool hclge_get_cmdq_stat(struct hnae3_handle *handle)
 	struct hclge_vport *vport = hclge_get_vport(handle);
 	struct hclge_dev *hdev = vport->back;
 
-	return test_bit(HCLGE_STATE_CMD_DISABLE, &hdev->state);
+	return test_bit(HCLGE_COMM_STATE_CMD_DISABLE, &hdev->hw.hw.comm_state);
 }
 
 static bool hclge_ae_dev_resetting(struct hnae3_handle *handle)
@@ -6571,8 +7760,10 @@ static void hclge_enable_fd(struct hnae3_handle *handle, bool enable)
 	}
 }
 
-static void hclge_cfg_mac_mode(struct hclge_dev *hdev, bool enable)
+int hclge_cfg_mac_mode(struct hclge_dev *hdev, bool enable)
 {
+#define HCLGE_LINK_STATUS_WAIT_CNT  3
+
 	struct hclge_desc desc;
 	struct hclge_config_mac_mode_cmd *req =
 		(struct hclge_config_mac_mode_cmd *)desc.data;
@@ -6597,9 +7788,17 @@ static void hclge_cfg_mac_mode(struct hclge_dev *hdev, bool enable)
 	req->txrx_pad_fcs_loop_en = cpu_to_le32(loop_en);
 
 	ret = hclge_cmd_send(&hdev->hw, &desc, 1);
-	if (ret)
-		dev_err(&hdev->pdev->dev,
-			"mac enable fail, ret =%d.\n", ret);
+	if (ret) {
+		dev_err(&hdev->pdev->dev, "failed to %s mac, ret = %d.\n",
+			enable ? "enable" : "disable", ret);
+		return ret;
+	}
+
+	if (!enable)
+		hclge_mac_link_status_wait(hdev, HCLGE_LINK_STATUS_DOWN,
+					   HCLGE_LINK_STATUS_WAIT_CNT);
+
+	return 0;
 }
 
 static int hclge_config_switch_param(struct hclge_dev *hdev, int vfid,
@@ -6627,7 +7826,7 @@ static int hclge_config_switch_param(struct hclge_dev *hdev, int vfid,
 	}
 
 	/* modify and write new config parameter */
-	hclge_cmd_reuse_desc(&desc, false);
+	hclge_comm_cmd_reuse_desc(&desc, false);
 	req->switch_param = (req->switch_param & param_mask) | switch_param;
 	req->param_mask = param_mask;
 
@@ -6662,10 +7861,9 @@ static void hclge_phy_link_status_wait(struct hclge_dev *hdev,
 	} while (++i < HCLGE_PHY_LINK_STATUS_NUM);
 }
 
-static int hclge_mac_link_status_wait(struct hclge_dev *hdev, int link_ret)
+static int hclge_mac_link_status_wait(struct hclge_dev *hdev, int link_ret,
+				      int wait_cnt)
 {
-#define HCLGE_MAC_LINK_STATUS_NUM  100
-
 	int link_status;
 	int i = 0;
 	int ret;
@@ -6678,13 +7876,15 @@ static int hclge_mac_link_status_wait(struct hclge_dev *hdev, int link_ret)
 			return 0;
 
 		msleep(HCLGE_LINK_STATUS_MS);
-	} while (++i < HCLGE_MAC_LINK_STATUS_NUM);
+	} while (++i < wait_cnt);
 	return -EBUSY;
 }
 
 static int hclge_mac_phy_link_status_wait(struct hclge_dev *hdev, bool en,
 					  bool is_phy)
 {
+#define HCLGE_MAC_LINK_STATUS_NUM  100
+
 	int link_ret;
 
 	link_ret = en ? HCLGE_LINK_STATUS_UP : HCLGE_LINK_STATUS_DOWN;
@@ -6692,7 +7892,8 @@ static int hclge_mac_phy_link_status_wait(struct hclge_dev *hdev, bool en,
 	if (is_phy)
 		hclge_phy_link_status_wait(hdev, link_ret);
 
-	return hclge_mac_link_status_wait(hdev, link_ret);
+	return hclge_mac_link_status_wait(hdev, link_ret,
+					  HCLGE_MAC_LINK_STATUS_NUM);
 }
 
 static int hclge_set_app_loopback(struct hclge_dev *hdev, bool en)
@@ -6721,7 +7922,7 @@ static int hclge_set_app_loopback(struct hclge_dev *hdev, bool en)
 	/* 3 Config mac work mode with loopback flag
 	 * and its original configure parameters
 	 */
-	hclge_cmd_reuse_desc(&desc, false);
+	hclge_comm_cmd_reuse_desc(&desc, false);
 	ret = hclge_cmd_send(&hdev->hw, &desc, 1);
 	if (ret)
 		dev_err(&hdev->pdev->dev,
@@ -6729,19 +7930,19 @@ static int hclge_set_app_loopback(struct hclge_dev *hdev, bool en)
 	return ret;
 }
 
-static int hclge_cfg_serdes_loopback(struct hclge_dev *hdev, bool en,
+static int hclge_cfg_common_loopback(struct hclge_dev *hdev, bool en,
 				     enum hnae3_loop loop_mode)
 {
-#define HCLGE_SERDES_RETRY_MS	10
-#define HCLGE_SERDES_RETRY_NUM	100
+#define HCLGE_COMMON_LB_RETRY_MS	10
+#define HCLGE_COMMON_LB_RETRY_NUM	100
 
-	struct hclge_serdes_lb_cmd *req;
+	struct hclge_common_lb_cmd *req;
 	struct hclge_desc desc;
 	int ret, i = 0;
 	u8 loop_mode_b;
 
-	req = (struct hclge_serdes_lb_cmd *)desc.data;
-	hclge_cmd_setup_basic_desc(&desc, HCLGE_OPC_SERDES_LOOPBACK, false);
+	req = (struct hclge_common_lb_cmd *)desc.data;
+	hclge_cmd_setup_basic_desc(&desc, HCLGE_OPC_COMMON_LOOPBACK, false);
 
 	switch (loop_mode) {
 	case HNAE3_LOOP_SERIAL_SERDES:
@@ -6750,9 +7951,12 @@ static int hclge_cfg_serdes_loopback(struct hclge_dev *hdev, bool en,
 	case HNAE3_LOOP_PARALLEL_SERDES:
 		loop_mode_b = HCLGE_CMD_SERDES_PARALLEL_INNER_LOOP_B;
 		break;
+	case HNAE3_LOOP_PHY:
+		loop_mode_b = HCLGE_CMD_GE_PHY_INNER_LOOP_B;
+		break;
 	default:
 		dev_err(&hdev->pdev->dev,
-			"unsupported serdes loopback mode %d\n", loop_mode);
+			"unsupported common loopback mode %d\n", loop_mode);
 		return -ENOTSUPP;
 	}
 
@@ -6766,45 +7970,39 @@ static int hclge_cfg_serdes_loopback(struct hclge_dev *hdev, bool en,
 	ret = hclge_cmd_send(&hdev->hw, &desc, 1);
 	if (ret) {
 		dev_err(&hdev->pdev->dev,
-			"serdes loopback set fail, ret = %d\n", ret);
+			"common loopback set fail, ret = %d\n", ret);
 		return ret;
 	}
 
 	do {
-		msleep(HCLGE_SERDES_RETRY_MS);
-		hclge_cmd_setup_basic_desc(&desc, HCLGE_OPC_SERDES_LOOPBACK,
+		msleep(HCLGE_COMMON_LB_RETRY_MS);
+		hclge_cmd_setup_basic_desc(&desc, HCLGE_OPC_COMMON_LOOPBACK,
 					   true);
 		ret = hclge_cmd_send(&hdev->hw, &desc, 1);
 		if (ret) {
 			dev_err(&hdev->pdev->dev,
-				"serdes loopback get, ret = %d\n", ret);
+				"common loopback get, ret = %d\n", ret);
 			return ret;
 		}
-	} while (++i < HCLGE_SERDES_RETRY_NUM &&
-		 !(req->result & HCLGE_CMD_SERDES_DONE_B));
+	} while (++i < HCLGE_COMMON_LB_RETRY_NUM &&
+		 !(req->result & HCLGE_CMD_COMMON_LB_DONE_B));
 
-	if (!(req->result & HCLGE_CMD_SERDES_DONE_B)) {
-		dev_err(&hdev->pdev->dev, "serdes loopback set timeout\n");
+	if (!(req->result & HCLGE_CMD_COMMON_LB_DONE_B)) {
+		dev_err(&hdev->pdev->dev, "common loopback set timeout\n");
 		return -EBUSY;
-	} else if (!(req->result & HCLGE_CMD_SERDES_SUCCESS_B)) {
-		dev_err(&hdev->pdev->dev, "serdes loopback set failed in fw\n");
+	} else if (!(req->result & HCLGE_CMD_COMMON_LB_SUCCESS_B)) {
+		dev_err(&hdev->pdev->dev, "common loopback set failed in fw\n");
 		return -EIO;
 	}
 	return ret;
 }
 
-static int hclge_set_serdes_loopback(struct hclge_dev *hdev, bool en,
+static int hclge_set_common_loopback(struct hclge_dev *hdev, bool en,
 				     enum hnae3_loop loop_mode)
 {
-	u8 duplex;
 	int ret;
 
-	duplex = en ? DUPLEX_FULL : hdev->hw.mac.duplex;
-	ret = hclge_cfg_mac_speed_dup_hw(hdev, hdev->hw.mac.speed, duplex);
-	if (ret)
-		return ret;
-
-	ret = hclge_cfg_serdes_loopback(hdev, en, loop_mode);
+	ret = hclge_cfg_common_loopback(hdev, en, loop_mode);
 	if (ret)
 		return ret;
 
@@ -6866,11 +8064,15 @@ static int hclge_set_phy_loopback(struct hclge_dev *hdev, bool en)
 	u8 duplex;
 	int ret;
 
-	if (!phydev)
+	if (!phydev) {
+		if (hnae3_dev_phy_imp_supported(hdev))
+			return hclge_set_common_loopback(hdev, en,
+							 HNAE3_LOOP_PHY);
 		return -ENOTSUPP;
+	}
 
 	duplex = en ? DUPLEX_FULL : hdev->hw.mac.duplex;
-	ret = hclge_cfg_mac_speed_dup_hw(hdev, hdev->hw.mac.speed, duplex);
+	ret = hclge_cfg_mac_speed_dup_hw(hdev, hdev->hw.mac.speed, duplex, hdev->hw.mac.lane_num);
 	if (ret)
 		return ret;
 
@@ -6930,14 +8132,14 @@ static int hclge_set_loopback(struct hnae3_handle *handle,
 {
 	struct hclge_vport *vport = hclge_get_vport(handle);
 	struct hclge_dev *hdev = vport->back;
-	int ret;
+	int ret = 0;
 
 	/* Loopback can be enabled in three places: SSU, MAC, and serdes. By
 	 * default, SSU loopback is enabled, so if the SMAC and the DMAC are
 	 * the same, the packets are looped back in the SSU. If SSU loopback
 	 * is disabled, packets can reach MAC even if SMAC is the same as DMAC.
 	 */
-	if (hdev->pdev->revision >= 0x21) {
+	if (hdev->ae_dev->dev_version >= HNAE3_DEVICE_VERSION_V2) {
 		u8 switch_param = en ? 0 : BIT(HCLGE_SWITCH_ALW_LPBK_B);
 
 		ret = hclge_config_switch_param(hdev, PF_VPORT_ID, switch_param,
@@ -6952,10 +8154,12 @@ static int hclge_set_loopback(struct hnae3_handle *handle,
 		break;
 	case HNAE3_LOOP_SERIAL_SERDES:
 	case HNAE3_LOOP_PARALLEL_SERDES:
-		ret = hclge_set_serdes_loopback(hdev, en, loop_mode);
+		ret = hclge_set_common_loopback(hdev, en, loop_mode);
 		break;
 	case HNAE3_LOOP_PHY:
 		ret = hclge_set_phy_loopback(hdev, en);
+		break;
+	case HNAE3_LOOP_EXTERNAL:
 		break;
 	default:
 		ret = -ENOTSUPP;
@@ -6983,11 +8187,11 @@ static int hclge_set_default_loopback(struct hclge_dev *hdev)
 	if (ret)
 		return ret;
 
-	ret = hclge_cfg_serdes_loopback(hdev, false, HNAE3_LOOP_SERIAL_SERDES);
+	ret = hclge_cfg_common_loopback(hdev, false, HNAE3_LOOP_SERIAL_SERDES);
 	if (ret)
 		return ret;
 
-	return hclge_cfg_serdes_loopback(hdev, false,
+	return hclge_cfg_common_loopback(hdev, false,
 					 HNAE3_LOOP_PARALLEL_SERDES);
 }
 
@@ -7068,12 +8272,15 @@ static void hclge_ae_stop(struct hnae3_handle *handle)
 	/* If it is not PF reset or FLR, the firmware will disable the MAC,
 	 * so it only need to stop phy here.
 	 */
-	if (test_bit(HCLGE_STATE_RST_HANDLING, &hdev->state) &&
-	    hdev->reset_type != HNAE3_FUNC_RESET &&
-	    hdev->reset_type != HNAE3_FLR_RESET) {
-		hclge_mac_stop_phy(hdev);
-		hclge_update_link_status(hdev);
-		return;
+	if (test_bit(HCLGE_STATE_RST_HANDLING, &hdev->state)) {
+		hclge_pfc_pause_en_cfg(hdev, HCLGE_PFC_TX_RX_DISABLE,
+				       HCLGE_PFC_DISABLE);
+		if (hdev->reset_type != HNAE3_FUNC_RESET &&
+		    hdev->reset_type != HNAE3_FLR_RESET) {
+			hclge_mac_stop_phy(hdev);
+			hclge_update_link_status(hdev);
+			return;
+		}
 	}
 
 	hclge_reset_tqp(handle);
@@ -7095,9 +8302,12 @@ int hclge_vport_start(struct hclge_vport *vport)
 {
 	struct hclge_dev *hdev = vport->back;
 
-	vport->last_active_jiffies = jiffies;
-	set_bit(HCLGE_VPORT_STATE_START, &vport->state);
+	set_bit(HCLGE_VPORT_STATE_INITED, &vport->state);
 	set_bit(HCLGE_VPORT_STATE_ALIVE, &vport->state);
+	set_bit(HCLGE_VPORT_STATE_QB_CHANGE, &vport->state);
+	set_bit(HCLGE_VPORT_STATE_PROMISC_CHANGE, &vport->state);
+	vport->last_active_jiffies = jiffies;
+	vport->need_notify = 0;
 
 	if (test_bit(vport->vport_id, hdev->vport_config_block)) {
 		if (vport->vport_id) {
@@ -7114,8 +8324,9 @@ int hclge_vport_start(struct hclge_vport *vport)
 
 void hclge_vport_stop(struct hclge_vport *vport)
 {
-	clear_bit(HCLGE_VPORT_STATE_START, &vport->state);
+	clear_bit(HCLGE_VPORT_STATE_INITED, &vport->state);
 	clear_bit(HCLGE_VPORT_STATE_ALIVE, &vport->state);
+	vport->need_notify = 0;
 }
 
 static int hclge_client_start(struct hnae3_handle *handle)
@@ -7204,16 +8415,16 @@ static int hclge_update_desc_vfid(struct hclge_desc *desc, int vfid, bool clr)
 		word_num = vfid / 32;
 		bit_num  = vfid % 32;
 		if (clr)
-			desc[1].data[word_num] &= cpu_to_le32(~(1 << bit_num));
+			desc[0].data[word_num] &= cpu_to_le32(~(1 << bit_num));
 		else
-			desc[1].data[word_num] |= cpu_to_le32(1 << bit_num);
+			desc[0].data[word_num] |= cpu_to_le32(1 << bit_num);
 	} else {
 		word_num = (vfid - HCLGE_VF_NUM_IN_FIRST_DESC) / 32;
 		bit_num  = vfid % 32;
 		if (clr)
-			desc[2].data[word_num] &= cpu_to_le32(~(1 << bit_num));
+			desc[1].data[word_num] &= cpu_to_le32(~(1 << bit_num));
 		else
-			desc[2].data[word_num] |= cpu_to_le32(1 << bit_num);
+			desc[1].data[word_num] |= cpu_to_le32(1 << bit_num);
 	}
 
 	return 0;
@@ -7289,10 +8500,10 @@ hclge_lookup_mc_mac_vlan_tbl(struct hclge_vport *vport,
 	int ret;
 
 	hclge_cmd_setup_basic_desc(&desc[0], HCLGE_OPC_MAC_VLAN_ADD, true);
-	desc[0].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+	desc[0].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 	memcpy(desc[0].data, req, sizeof(struct hclge_mac_vlan_tbl_entry_cmd));
 	hclge_cmd_setup_basic_desc(&desc[1], HCLGE_OPC_MAC_VLAN_ADD, true);
-	desc[1].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+	desc[1].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 	hclge_cmd_setup_basic_desc(&desc[2], HCLGE_OPC_MAC_VLAN_ADD, true);
 
 	ret = hclge_cmd_send(&hdev->hw, desc, 3);
@@ -7336,12 +8547,12 @@ static int hclge_add_mac_vlan_tbl(struct hclge_vport *vport,
 							   resp_code,
 							   HCLGE_MAC_VLAN_ADD);
 	} else {
-		hclge_cmd_reuse_desc(&mc_desc[0], false);
-		mc_desc[0].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
-		hclge_cmd_reuse_desc(&mc_desc[1], false);
-		mc_desc[1].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
-		hclge_cmd_reuse_desc(&mc_desc[2], false);
-		mc_desc[2].flag &= cpu_to_le16(~HCLGE_CMD_FLAG_NEXT);
+		hclge_comm_cmd_reuse_desc(&mc_desc[0], false);
+		mc_desc[0].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
+		hclge_comm_cmd_reuse_desc(&mc_desc[1], false);
+		mc_desc[1].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
+		hclge_comm_cmd_reuse_desc(&mc_desc[2], false);
+		mc_desc[2].flag &= cpu_to_le16(~HCLGE_COMM_CMD_FLAG_NEXT);
 		memcpy(mc_desc[0].data, req,
 		       sizeof(struct hclge_mac_vlan_tbl_entry_cmd));
 		ret = hclge_cmd_send(&hdev->hw, mc_desc, 3);
@@ -7565,7 +8776,7 @@ int hclge_add_uc_addr_common(struct hclge_vport *vport,
 	struct hclge_dev *hdev = vport->back;
 	struct hclge_mac_vlan_tbl_entry_cmd req;
 	u16 egress_port = 0;
-	int ret;
+	int ret = 0;
 
 	/* mac addr check */
 	if (is_zero_ether_addr(addr) ||
@@ -7603,6 +8814,10 @@ int hclge_add_uc_addr_common(struct hclge_vport *vport,
 	if (!(vport->overflow_promisc_flags & HNAE3_OVERFLOW_UPE))
 		dev_err(&hdev->pdev->dev, "UC MAC table full(%u)\n",
 			hdev->priv_umv_size);
+
+	/* check if we just hit the duplicate */
+	if (!ret)
+		return -EEXIST;
 
 	return -ENOSPC;
 }
@@ -7683,11 +8898,10 @@ int hclge_add_mc_addr_common(struct hclge_vport *vport,
 		memset(desc[1].data, 0, sizeof(desc[0].data));
 		memset(desc[2].data, 0, sizeof(desc[0].data));
 	}
-	status = hclge_update_desc_vfid(desc, vport->vport_id, false);
+	status = hclge_update_desc_vfid(&desc[1], vport->vport_id, false);
 	if (status)
 		return status;
 	status = hclge_add_mac_vlan_tbl(vport, &req, desc);
-
 	/* if already overflow, not to print each time */
 	if (status == -ENOSPC &&
 	    !(vport->overflow_promisc_flags & HNAE3_OVERFLOW_MPE)) {
@@ -7712,7 +8926,7 @@ int hclge_rm_mc_addr_common(struct hclge_vport *vport,
 	char format_mac_addr[HNAE3_FORMAT_MAC_ADDR_LEN];
 	struct hclge_dev *hdev = vport->back;
 	struct hclge_mac_vlan_tbl_entry_cmd req;
-	enum hclge_cmd_status status;
+	enum hclge_comm_cmd_status status;
 	struct hclge_desc desc[3];
 
 	/* mac addr check */
@@ -7729,7 +8943,8 @@ int hclge_rm_mc_addr_common(struct hclge_vport *vport,
 	status = hclge_lookup_mc_mac_vlan_tbl(vport, &req, desc);
 	if (!status) {
 		/* This mac addr exist, remove this handle's VFID for it */
-		status = hclge_update_desc_vfid(desc, vport->vport_id, true);
+		status = hclge_update_desc_vfid(&desc[1], vport->vport_id,
+						true);
 		if (status)
 			return status;
 
@@ -7739,7 +8954,6 @@ int hclge_rm_mc_addr_common(struct hclge_vport *vport,
 		else
 			/* Not all the vfid is zero, update the vfid */
 			status = hclge_add_mac_vlan_tbl(vport, &req, desc);
-
 	} else if (status == -ENOENT) {
 		status = 0;
 	}
@@ -7762,7 +8976,13 @@ static void hclge_sync_mac_list(struct hclge_vport *vport,
 		} else {
 			set_bit(HCLGE_VPORT_STATE_MAC_TBL_CHANGE,
 				&vport->state);
-			break;
+
+			/* If one unicast mac address is existing in hardware,
+			 * we need to try whether other unicast mac addresses
+			 * are new addresses that can be added.
+			 */
+			if (ret != -EEXIST)
+				break;
 		}
 	}
 }
@@ -8163,7 +9383,8 @@ static int hclge_set_vf_mac(struct hnae3_handle *handle, int vf,
 		return 0;
 	}
 
-	dev_info(&hdev->pdev->dev, "MAC of VF %d has been set to %s\n",
+	dev_info(&hdev->pdev->dev,
+		 "MAC of VF %d has been set to %s, will be active after vf reset\n",
 		 vf, format_mac_addr);
 	return 0;
 }
@@ -8315,14 +9536,45 @@ static int hclge_set_mac_addr(struct hnae3_handle *handle, void *p,
 	return 0;
 }
 
+static int hclge_mii_ioctl(struct hclge_dev *hdev, struct ifreq *ifr, int cmd)
+{
+	struct mii_ioctl_data *data = if_mii(ifr);
+
+	if (!hnae3_dev_phy_imp_supported(hdev))
+		return -EOPNOTSUPP;
+
+	switch (cmd) {
+	case SIOCGMIIPHY:
+		data->phy_id = hdev->hw.mac.phy_addr;
+		data->val_out = hclge_read_phy_reg(hdev, data->reg_num);
+		return 0;
+		/* this command reads phy id and register at the same time */
+	case SIOCGMIIREG:
+		data->val_out = hclge_read_phy_reg(hdev, data->reg_num);
+		return 0;
+
+	case SIOCSMIIREG:
+		return hclge_write_phy_reg(hdev, data->reg_num, data->val_in);
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
 static int hclge_do_ioctl(struct hnae3_handle *handle, struct ifreq *ifr,
 			  int cmd)
 {
 	struct hclge_vport *vport = hclge_get_vport(handle);
 	struct hclge_dev *hdev = vport->back;
 
-	if (!hdev->hw.mac.phydev)
-		return -EOPNOTSUPP;
+	switch (cmd) {
+	case SIOCGHWTSTAMP:
+		return hclge_ptp_get_cfg(hdev, ifr);
+	case SIOCSHWTSTAMP:
+		return hclge_ptp_set_cfg(hdev, ifr);
+	default:
+		if (!hdev->hw.mac.phydev)
+			return hclge_mii_ioctl(hdev, ifr, cmd);
+	}
 
 	return phy_mii_ioctl(hdev->hw.mac.phydev, ifr, cmd);
 }
@@ -8349,7 +9601,7 @@ static int hclge_set_vlan_filter_ctrl(struct hclge_dev *hdev, u8 vlan_type,
 	}
 
 	/* modify and write new config parameter */
-	hclge_cmd_reuse_desc(&desc, false);
+	hclge_comm_cmd_reuse_desc(&desc, false);
 	req->vlan_fe = filter_en ?
 			(req->vlan_fe | fe_type) : (req->vlan_fe & ~fe_type);
 
@@ -8457,37 +9709,22 @@ static int hclge_enable_vlan_filter(struct hnae3_handle *handle, bool enable)
 	return hclge_enable_vport_vlan_filter(vport, enable);
 }
 
-static int hclge_set_vf_vlan_common(struct hclge_dev *hdev, u16 vfid,
-				    bool is_kill, u16 vlan)
+static int hclge_set_vf_vlan_filter_cmd(struct hclge_dev *hdev, u16 vfid,
+					bool is_kill, u16 vlan,
+					struct hclge_desc *desc)
 {
-	struct hclge_vport *vport = &hdev->vport[vfid];
 	struct hclge_vlan_filter_vf_cfg_cmd *req0;
 	struct hclge_vlan_filter_vf_cfg_cmd *req1;
-	struct hclge_desc desc[2];
 	u8 vf_byte_val;
 	u8 vf_byte_off;
 	int ret;
-
-	/* if vf vlan table is full, firmware will close vf vlan filter, it
-	 * is unable and unnecessary to add new vlan id to vf vlan filter.
-	 * If spoof check is enable, and vf vlan is full, it shouldn't add
-	 * new vlan, because tx packets with these vlan id will be dropped.
-	 */
-	if (test_bit(vfid, hdev->vf_vlan_full) && !is_kill) {
-		if (vport->vf_info.spoofchk && vlan) {
-			dev_err(&hdev->pdev->dev,
-				"Can't add vlan due to spoof check is on and vf vlan table is full\n");
-			return -EPERM;
-		}
-		return 0;
-	}
 
 	hclge_cmd_setup_basic_desc(&desc[0],
 				   HCLGE_OPC_VLAN_FILTER_VF_CFG, false);
 	hclge_cmd_setup_basic_desc(&desc[1],
 				   HCLGE_OPC_VLAN_FILTER_VF_CFG, false);
 
-	desc[0].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+	desc[0].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 
 	vf_byte_off = vfid / 8;
 	vf_byte_val = 1 << (vfid % 8);
@@ -8511,12 +9748,22 @@ static int hclge_set_vf_vlan_common(struct hclge_dev *hdev, u16 vfid,
 		return ret;
 	}
 
+	return 0;
+}
+
+static int hclge_check_vf_vlan_cmd_status(struct hclge_dev *hdev, u16 vfid,
+					  bool is_kill, struct hclge_desc *desc)
+{
+	struct hclge_vlan_filter_vf_cfg_cmd *req;
+
+	req = (struct hclge_vlan_filter_vf_cfg_cmd *)desc[0].data;
+
 	if (!is_kill) {
 #define HCLGE_VF_VLAN_NO_ENTRY	2
-		if (!req0->resp_code || req0->resp_code == 1)
+		if (!req->resp_code || req->resp_code == 1)
 			return 0;
 
-		if (req0->resp_code == HCLGE_VF_VLAN_NO_ENTRY) {
+		if (req->resp_code == HCLGE_VF_VLAN_NO_ENTRY) {
 			set_bit(vfid, hdev->vf_vlan_full);
 			dev_warn(&hdev->pdev->dev,
 				 "vf vlan table is full, vf vlan filter is disabled\n");
@@ -8525,10 +9772,10 @@ static int hclge_set_vf_vlan_common(struct hclge_dev *hdev, u16 vfid,
 
 		dev_err(&hdev->pdev->dev,
 			"Add vf vlan filter fail, ret =%u.\n",
-			req0->resp_code);
+			req->resp_code);
 	} else {
 #define HCLGE_VF_VLAN_DEL_NO_FOUND	1
-		if (!req0->resp_code)
+		if (!req->resp_code)
 			return 0;
 
 		/* vf vlan filter is disabled when vf vlan table is full,
@@ -8536,15 +9783,43 @@ static int hclge_set_vf_vlan_common(struct hclge_dev *hdev, u16 vfid,
 		 * Just return 0 without warning, avoid massive verbose
 		 * print logs when unload.
 		 */
-		if (req0->resp_code == HCLGE_VF_VLAN_DEL_NO_FOUND)
+		if (req->resp_code == HCLGE_VF_VLAN_DEL_NO_FOUND)
 			return 0;
 
 		dev_err(&hdev->pdev->dev,
 			"Kill vf vlan filter fail, ret =%u.\n",
-			req0->resp_code);
+			req->resp_code);
 	}
 
 	return -EIO;
+}
+
+static int hclge_set_vf_vlan_common(struct hclge_dev *hdev, u16 vfid,
+				    bool is_kill, u16 vlan)
+{
+	struct hclge_vport *vport = &hdev->vport[vfid];
+	struct hclge_desc desc[2];
+	int ret;
+
+	/* if vf vlan table is full, firmware will close vf vlan filter, it
+	 * is unable and unnecessary to add new vlan id to vf vlan filter.
+	 * If spoof check is enable, and vf vlan is full, it shouldn't add
+	 * new vlan, because tx packets with these vlan id will be dropped.
+	 */
+	if (test_bit(vfid, hdev->vf_vlan_full) && !is_kill) {
+		if (vport->vf_info.spoofchk && vlan) {
+			dev_err(&hdev->pdev->dev,
+				"Can't add vlan due to spoof check is on and vf vlan table is full\n");
+			return -EPERM;
+		}
+		return 0;
+	}
+
+	ret = hclge_set_vf_vlan_filter_cmd(hdev, vfid, is_kill, vlan, desc);
+	if (ret)
+		return ret;
+
+	return hclge_check_vf_vlan_cmd_status(hdev, vfid, is_kill, desc);
 }
 
 static int hclge_set_port_vlan_filter(struct hclge_dev *hdev, __be16 proto,
@@ -8803,7 +10078,7 @@ static int hclge_init_vlan_config(struct hclge_dev *hdev)
 	int ret;
 	int i;
 
-	if (hdev->pdev->revision >= HNAE3_REVISION_ID_21) {
+	if (hdev->ae_dev->dev_version >= HNAE3_DEVICE_VERSION_V2) {
 		/* for revision 0x21, vf vlan filter is per function */
 		for (i = 0; i < hdev->num_alloc_vport; i++) {
 			vport = &hdev->vport[i];
@@ -9081,8 +10356,8 @@ static void hclge_restore_hw_table(struct hclge_dev *hdev)
 	hclge_restore_mac_table_common(vport);
 	hclge_restore_vport_port_base_vlan_config(hdev);
 	hclge_restore_vport_vlan_table(vport);
-	set_bit(HCLGE_STATE_PROMISC_CHANGED, &hdev->state);
-
+	set_bit(HCLGE_STATE_FD_USER_DEF_CHANGED, &hdev->state);
+	clear_bit(HCLGE_STATE_HW_QB_ENABLE, &hdev->state);
 	hclge_restore_fd_entries(handle);
 }
 
@@ -9253,13 +10528,14 @@ static u16 hclge_get_port_base_vlan_state(struct hclge_vport *vport,
 static int hclge_set_vf_vlan_filter(struct hnae3_handle *handle, int vfid,
 				    u16 vlan, u8 qos, __be16 proto)
 {
+	struct hnae3_ae_dev *ae_dev = pci_get_drvdata(handle->pdev);
 	struct hclge_vport *vport = hclge_get_vport(handle);
 	struct hclge_dev *hdev = vport->back;
 	struct hclge_vlan_info vlan_info;
 	u16 state;
 	int ret;
 
-	if (hdev->pdev->revision == 0x20)
+	if (hdev->ae_dev->dev_version < HNAE3_DEVICE_VERSION_V2)
 		return -EOPNOTSUPP;
 
 	vport = hclge_get_vf_vport(hdev, vfid);
@@ -9294,11 +10570,39 @@ static int hclge_set_vf_vlan_filter(struct hnae3_handle *handle, int vfid,
 	 * cause send mailbox fail, but it doesn't matter, VF will
 	 * query it when reinit.
 	 */
-	if (test_bit(HCLGE_VPORT_STATE_ALIVE, &vport->state))
-		(void)hclge_push_vf_port_base_vlan_info(&hdev->vport[0],
-							vport->vport_id,
-							state, &vlan_info);
+	if (ae_dev->dev_version < HNAE3_DEVICE_VERSION_V3) {
+		if (test_bit(HCLGE_VPORT_STATE_ALIVE, &vport->state))
+			(void)hclge_push_vf_port_base_vlan_info(&hdev->vport[0],
+								vport->vport_id,
+								state,
+								&vlan_info);
+		else
+			set_bit(HCLGE_VPORT_NEED_NOTIFY_VF_VLAN,
+				&vport->need_notify);
+	}
 	return 0;
+}
+
+static void hclge_clear_vf_vlan(struct hclge_dev *hdev)
+{
+	struct hclge_vlan_info *vlan_info;
+	struct hclge_vport *vport;
+	int ret;
+	int vf;
+
+	/* clear port base vlan for all vf */
+	for (vf = HCLGE_VF_VPORT_START_NUM; vf < hdev->num_alloc_vport; vf++) {
+		vport = &hdev->vport[vf];
+		vlan_info = &vport->port_base_vlan_cfg.vlan_info;
+
+		ret = hclge_set_vlan_filter_hw(hdev, htons(ETH_P_8021Q),
+					       vport->vport_id,
+					       vlan_info->vlan_tag, true);
+		if (ret)
+			dev_err(&hdev->pdev->dev,
+				"failed to clear vf vlan for vf%d, ret = %d\n",
+				vf - HCLGE_VF_VPORT_START_NUM, ret);
+	}
 }
 
 int hclge_set_vlan_filter(struct hnae3_handle *handle, __be16 proto,
@@ -9332,11 +10636,11 @@ int hclge_set_vlan_filter(struct hnae3_handle *handle, __be16 proto,
 	}
 
 	if (!ret) {
-		if (is_kill && vlan_id != 0)
-			hclge_rm_vport_vlan_table(vport, vlan_id, false);
-		else
+		if (!is_kill)
 			hclge_add_vport_vlan_table(vport, vlan_id,
 						   writen_to_tbl);
+		else if (is_kill && vlan_id != 0)
+			hclge_rm_vport_vlan_table(vport, vlan_id, false);
 	} else if (is_kill) {
 		/* when remove hw vlan filter failed, record the vlan id,
 		 * and try to remove it from hw later, to be consistence
@@ -9712,8 +11016,12 @@ int hclge_cfg_flowctrl(struct hclge_dev *hdev)
 	u32 rx_pause, tx_pause;
 	u8 flowctl;
 
-	if (!phydev->link || !phydev->autoneg)
+	if (!phydev->link)
 		return 0;
+
+	if (!phydev->autoneg)
+		return hclge_mac_pause_setup_hw(hdev);
+
 #ifdef HAS_LINK_MODE_OPS
 	local_advertising = linkmode_adv_to_lcl_adv_t(phydev->advertising);
 #else
@@ -9748,9 +11056,10 @@ static void hclge_get_pauseparam(struct hnae3_handle *handle, u32 *auto_neg,
 {
 	struct hclge_vport *vport = hclge_get_vport(handle);
 	struct hclge_dev *hdev = vport->back;
-	struct phy_device *phydev = hdev->hw.mac.phydev;
+	u8 media_type = hdev->hw.mac.media_type;
 
-	*auto_neg = phydev ? hclge_get_autoneg(handle) : 0;
+	*auto_neg = (media_type == HNAE3_MEDIA_TYPE_COPPER) ?
+		    hclge_get_autoneg(handle) : 0;
 
 	if (hdev->tm_info.fc_mode == HCLGE_FC_PFC) {
 		*rx_en = 0;
@@ -9796,7 +11105,7 @@ static int hclge_set_pauseparam(struct hnae3_handle *handle, u32 auto_neg,
 	struct phy_device *phydev = hdev->hw.mac.phydev;
 	u32 fc_autoneg;
 
-	if (phydev) {
+	if (phydev || hnae3_dev_phy_imp_supported(hdev)) {
 		fc_autoneg = hclge_get_autoneg(handle);
 		if (auto_neg != fc_autoneg) {
 			dev_info(&hdev->pdev->dev,
@@ -9815,7 +11124,7 @@ static int hclge_set_pauseparam(struct hnae3_handle *handle, u32 auto_neg,
 
 	hclge_record_user_pauseparam(hdev, rx_en, tx_en);
 
-	if (!auto_neg)
+	if (!auto_neg || hnae3_dev_phy_imp_supported(hdev))
 		return hclge_cfg_pauseparam(hdev, rx_en, tx_en);
 
 	if (phydev)
@@ -9825,7 +11134,8 @@ static int hclge_set_pauseparam(struct hnae3_handle *handle, u32 auto_neg,
 }
 
 static void hclge_get_ksettings_an_result(struct hnae3_handle *handle,
-					  u8 *auto_neg, u32 *speed, u8 *duplex)
+					  u8 *auto_neg, u32 *speed,
+					  u8 *duplex)
 {
 	struct hclge_vport *vport = hclge_get_vport(handle);
 	struct hclge_dev *hdev = vport->back;
@@ -9838,8 +11148,8 @@ static void hclge_get_ksettings_an_result(struct hnae3_handle *handle,
 		*auto_neg = hdev->hw.mac.autoneg;
 }
 
-static void hclge_get_media_type(struct hnae3_handle *handle, u8 *media_type,
-				 u8 *module_type)
+void hclge_get_media_type(struct hnae3_handle *handle, u8 *media_type,
+			  u8 *module_type)
 {
 	struct hclge_vport *vport = hclge_get_vport(handle);
 	struct hclge_dev *hdev = vport->back;
@@ -9917,7 +11227,6 @@ static void hclge_info_show(struct hclge_dev *hdev)
 	dev_info(dev, "Desc num per TX queue: %u\n", hdev->num_tx_desc);
 	dev_info(dev, "Desc num per RX queue: %u\n", hdev->num_rx_desc);
 	dev_info(dev, "Numbers of vports: %u\n", hdev->num_alloc_vport);
-	dev_info(dev, "Numbers of vmdp vports: %u\n", hdev->num_vmdq_vport);
 	dev_info(dev, "Numbers of VF for this PF: %u\n", hdev->num_req_vfs);
 	dev_info(dev, "HW tc map: %u\n", hdev->hw_tc_map);
 	dev_info(dev, "Total buffer size for TX/RX: %u\n", hdev->pkt_buf_size);
@@ -9929,6 +11238,8 @@ static void hclge_info_show(struct hclge_dev *hdev)
 		 hdev->flag & HCLGE_FLAG_DCB_ENABLE ? "enable" : "disable");
 	dev_info(dev, "MQPRIO %s\n",
 		 hdev->flag & HCLGE_FLAG_MQPRIO_ENABLE ? "enable" : "disable");
+	dev_info(dev, "Default tx spare buffer size: %u\n",
+		 hdev->tx_spare_buf_size);
 
 	dev_info(dev, "PF info end.\n");
 }
@@ -10033,43 +11344,97 @@ init_roce_err:
 	return ret;
 }
 
+static int hclge_init_roh_client_instance(struct hnae3_ae_dev *ae_dev,
+					  struct hclge_vport *vport)
+{
+	struct hclge_dev *hdev = ae_dev->priv;
+	struct hnae3_client *client;
+	int rst_cnt;
+	int ret;
+
+	if (!hdev->roh_client || !hdev->nic_client)
+		return 0;
+
+	client = hdev->roh_client;
+	ret = hclge_init_roh_base_info(vport);
+	if (ret)
+		return ret;
+
+	rst_cnt = hdev->rst_stats.reset_cnt;
+	ret = client->ops->init_instance(&vport->roh);
+	if (ret)
+		return ret;
+
+	if (test_bit(HCLGE_STATE_RST_HANDLING, &hdev->state) ||
+	    rst_cnt != hdev->rst_stats.reset_cnt) {
+		ret = -EBUSY;
+		goto init_roh_err;
+	}
+
+	set_bit(HCLGE_STATE_ROH_REGISTERED, &hdev->state);
+	hnae3_set_client_init_flag(client, ae_dev, 1);
+
+	return 0;
+
+init_roh_err:
+	while (test_bit(HCLGE_STATE_RST_HANDLING, &hdev->state))
+		msleep(HCLGE_WAIT_RESET_DONE);
+
+	hdev->roh_client->ops->uninit_instance(&vport->roh, 0);
+
+	return ret;
+}
+
 static int hclge_init_client_instance(struct hnae3_client *client,
 				      struct hnae3_ae_dev *ae_dev)
 {
 	struct hclge_dev *hdev = ae_dev->priv;
-	struct hclge_vport *vport;
-	int i, ret;
+	struct hclge_vport *vport = &hdev->vport[0];
+	int ret;
 
-	for (i = 0; i <  hdev->num_vmdq_vport + 1; i++) {
-		vport = &hdev->vport[i];
+	switch (client->type) {
+	case HNAE3_CLIENT_KNIC:
+		hdev->nic_client = client;
+		vport->nic.client = client;
+		ret = hclge_init_nic_client_instance(ae_dev, vport);
+		if (ret)
+			goto clear_nic;
 
-		switch (client->type) {
-		case HNAE3_CLIENT_KNIC:
-			hdev->nic_client = client;
-			vport->nic.client = client;
-			ret = hclge_init_nic_client_instance(ae_dev, vport);
-			if (ret)
-				goto clear_nic;
-
-			ret = hclge_init_roce_client_instance(ae_dev, vport);
-			if (ret)
-				goto clear_roce;
-
-			break;
-		case HNAE3_CLIENT_ROCE:
-			if (hnae3_dev_roce_supported(hdev)) {
-				hdev->roce_client = client;
-				vport->roce.client = client;
-			}
-
-			ret = hclge_init_roce_client_instance(ae_dev, vport);
-			if (ret)
-				goto clear_roce;
-
-			break;
-		default:
-			return -EINVAL;
+		ret = hclge_init_roh_client_instance(ae_dev, vport);
+		if (ret) {
+			dev_err(&hdev->pdev->dev,
+				"failed to init roh client, ret = %d\n", ret);
+			hdev->roh_client = NULL;
+			vport->roh.client = NULL;
 		}
+
+		ret = hclge_init_roce_client_instance(ae_dev, vport);
+		if (ret)
+			goto clear_roce;
+
+		break;
+	case HNAE3_CLIENT_ROCE:
+		if (hnae3_dev_roce_supported(hdev)) {
+			hdev->roce_client = client;
+			vport->roce.client = client;
+		}
+
+		ret = hclge_init_roce_client_instance(ae_dev, vport);
+		if (ret)
+			goto clear_roce;
+
+		break;
+	case HNAE3_CLIENT_ROH:
+		hdev->roh_client = client;
+		vport->roh.client = client;
+
+		ret = hclge_init_roh_client_instance(ae_dev, vport);
+		if (ret)
+			goto clear_roh;
+
+		break;
+	default:
+		return -EINVAL;
 	}
 
 	return 0;
@@ -10082,46 +11447,74 @@ clear_roce:
 	hdev->roce_client = NULL;
 	vport->roce.client = NULL;
 	return ret;
+clear_roh:
+	hdev->roh_client = NULL;
+	vport->roh.client = NULL;
+	return ret;
 }
 
 static void hclge_uninit_client_instance(struct hnae3_client *client,
 					 struct hnae3_ae_dev *ae_dev)
 {
 	struct hclge_dev *hdev = ae_dev->priv;
-	struct hclge_vport *vport;
-	int i;
+	struct hclge_vport *vport = &hdev->vport[0];
 
-#ifdef CONFIG_HNS3_TEST
-	if (ae_dev->ops->ext_uninit) {
-		vport = &hdev->vport[0];
-		ae_dev->ops->ext_uninit(&vport->nic);
+	if (hdev->roh_client && (client->type == HNAE3_CLIENT_ROH ||
+				 client->type == HNAE3_CLIENT_KNIC)) {
+		clear_bit(HCLGE_STATE_ROH_REGISTERED, &hdev->state);
+		while (test_bit(HCLGE_STATE_RST_HANDLING, &hdev->state))
+			msleep(HCLGE_WAIT_RESET_DONE);
+
+		hdev->roh_client->ops->uninit_instance(&vport->roh, 0);
+		hdev->roh_client = NULL;
+		vport->roh.client = NULL;
 	}
-#endif
+	if (client->type == HNAE3_CLIENT_ROH)
+		return;
 
-	for (i = 0; i < hdev->num_vmdq_vport + 1; i++) {
-		vport = &hdev->vport[i];
-		if (hdev->roce_client) {
-			clear_bit(HCLGE_STATE_ROCE_REGISTERED, &hdev->state);
-			while (test_bit(HCLGE_STATE_RST_HANDLING, &hdev->state))
-				msleep(HCLGE_WAIT_RESET_DONE);
+	if (hdev->roce_client) {
+		clear_bit(HCLGE_STATE_ROCE_REGISTERED, &hdev->state);
+		while (test_bit(HCLGE_STATE_RST_HANDLING, &hdev->state))
+			msleep(HCLGE_WAIT_RESET_DONE);
 
-			hdev->roce_client->ops->uninit_instance(&vport->roce,
-								0);
-			hdev->roce_client = NULL;
-			vport->roce.client = NULL;
-		}
-		if (client->type == HNAE3_CLIENT_ROCE)
-			return;
-		if (hdev->nic_client && client->ops->uninit_instance) {
-			clear_bit(HCLGE_STATE_NIC_REGISTERED, &hdev->state);
-			while (test_bit(HCLGE_STATE_RST_HANDLING, &hdev->state))
-				msleep(HCLGE_WAIT_RESET_DONE);
-
-			client->ops->uninit_instance(&vport->nic, 0);
-			hdev->nic_client = NULL;
-			vport->nic.client = NULL;
-		}
+		hdev->roce_client->ops->uninit_instance(&vport->roce, 0);
+		hdev->roce_client = NULL;
+		vport->roce.client = NULL;
 	}
+	if (client->type == HNAE3_CLIENT_ROCE)
+		return;
+	if (hdev->nic_client && client->ops->uninit_instance) {
+		clear_bit(HCLGE_STATE_NIC_REGISTERED, &hdev->state);
+		while (test_bit(HCLGE_STATE_RST_HANDLING, &hdev->state))
+			msleep(HCLGE_WAIT_RESET_DONE);
+
+		client->ops->uninit_instance(&vport->nic, 0);
+		hdev->nic_client = NULL;
+		vport->nic.client = NULL;
+	}
+}
+
+static int hclge_dev_mem_map(struct hclge_dev *hdev)
+{
+#define HCLGE_MEM_BAR          4
+
+	struct pci_dev *pdev = hdev->pdev;
+	struct hclge_hw *hw = &hdev->hw;
+
+	/* for device does not have device memory, return directly */
+	if (!(pci_select_bars(pdev, IORESOURCE_MEM) & BIT(HCLGE_MEM_BAR)))
+		return 0;
+
+	hw->hw.mem_base =
+		devm_ioremap_wc(&pdev->dev,
+				pci_resource_start(pdev, HCLGE_MEM_BAR),
+				pci_resource_len(pdev, HCLGE_MEM_BAR));
+	if (!hw->hw.mem_base) {
+		dev_err(&pdev->dev, "failed to map device memory\n");
+		return -EFAULT;
+	}
+
+	return 0;
 }
 
 static int hclge_pci_init(struct hclge_dev *hdev)
@@ -10155,16 +11548,23 @@ static int hclge_pci_init(struct hclge_dev *hdev)
 
 	pci_set_master(pdev);
 	hw = &hdev->hw;
-	hw->io_base = pcim_iomap(pdev, 2, 0);
-	if (!hw->io_base) {
+	hw->hw.io_base = pcim_iomap(pdev, 2, 0);
+	if (!hw->hw.io_base) {
 		dev_err(&pdev->dev, "Can't map configuration register space\n");
 		ret = -ENOMEM;
 		goto err_clr_master;
 	}
 
+	ret = hclge_dev_mem_map(hdev);
+	if (ret)
+		goto err_unmap_io_base;
+
 	hdev->num_req_vfs = pci_sriov_get_totalvfs(pdev);
 
 	return 0;
+
+err_unmap_io_base:
+	pcim_iounmap(pdev, hdev->hw.hw.io_base);
 err_clr_master:
 	pci_clear_master(pdev);
 	pci_release_regions(pdev);
@@ -10178,7 +11578,10 @@ static void hclge_pci_uninit(struct hclge_dev *hdev)
 {
 	struct pci_dev *pdev = hdev->pdev;
 
-	pcim_iounmap(pdev, hdev->hw.io_base);
+	if (hdev->hw.hw.mem_base)
+		devm_iounmap(&pdev->dev, hdev->hw.hw.mem_base);
+
+	pcim_iounmap(pdev, hdev->hw.hw.io_base);
 	pci_free_irq_vectors(pdev);
 	pci_clear_master(pdev);
 	pci_release_mem_regions(pdev);
@@ -10239,7 +11642,7 @@ retry:
 
 	/* disable misc vector before reset done */
 	hclge_enable_vector(&hdev->misc_vector, false);
-	set_bit(HCLGE_STATE_CMD_DISABLE, &hdev->state);
+	set_bit(HCLGE_COMM_STATE_CMD_DISABLE, &hdev->hw.hw.comm_state);
 
 	if (hdev->reset_type == HNAE3_FLR_RESET)
 		hdev->rst_stats.flr_rst_cnt++;
@@ -10294,6 +11697,144 @@ static void hclge_clear_hw_resource(struct hclge_dev *hdev)
 			 "clear hw resource incomplete, ret = %d\n", ret);
 }
 
+static struct hclge_wol_info *hclge_get_wol_info(struct hnae3_handle *handle)
+{
+	struct hclge_vport *vport = hclge_get_vport(handle);
+
+	return &vport->back->hw.mac.wol;
+}
+
+int hclge_get_wol_supported_mode(struct hclge_dev *hdev,
+				 u32 *wol_supported)
+{
+	struct hclge_query_wol_supported_cmd *wol_supported_cmd;
+	struct hclge_desc desc;
+	int ret;
+
+	hclge_cmd_setup_basic_desc(&desc, HCLGE_OPC_WOL_GET_SUPPORTED_MODE,
+				   true);
+	wol_supported_cmd = (struct hclge_query_wol_supported_cmd *)desc.data;
+
+	ret = hclge_cmd_send(&hdev->hw, &desc, 1);
+	if (ret) {
+		dev_err(&hdev->pdev->dev,
+			"failed to query wol supported, ret = %d\n", ret);
+		return ret;
+	}
+
+	*wol_supported = le32_to_cpu(wol_supported_cmd->supported_wake_mode);
+
+	return 0;
+}
+
+int hclge_get_wol_cfg(struct hclge_dev *hdev, u32 *mode)
+{
+	struct hclge_wol_cfg_cmd *wol_cfg_cmd;
+	struct hclge_desc desc;
+	int ret;
+
+	hclge_cmd_setup_basic_desc(&desc, HCLGE_OPC_WOL_CFG, true);
+	ret = hclge_cmd_send(&hdev->hw, &desc, 1);
+	if (ret) {
+		dev_err(&hdev->pdev->dev,
+			"failed to get wol config, ret = %d\n", ret);
+		return ret;
+	}
+
+	wol_cfg_cmd = (struct hclge_wol_cfg_cmd *)desc.data;
+	*mode = le32_to_cpu(wol_cfg_cmd->wake_on_lan_mode);
+
+	return 0;
+}
+
+static int hclge_set_wol_cfg(struct hclge_dev *hdev,
+			     struct hclge_wol_info *wol_info)
+{
+	struct hclge_wol_cfg_cmd *wol_cfg_cmd;
+	struct hclge_desc desc;
+	int ret;
+
+	hclge_cmd_setup_basic_desc(&desc, HCLGE_OPC_WOL_CFG, false);
+	wol_cfg_cmd = (struct hclge_wol_cfg_cmd *)desc.data;
+	wol_cfg_cmd->wake_on_lan_mode = cpu_to_le32(wol_info->wol_current_mode);
+	wol_cfg_cmd->sopass_size = wol_info->wol_sopass_size;
+	memcpy(&wol_cfg_cmd->sopass, wol_info->wol_sopass, SOPASS_MAX);
+
+	ret = hclge_cmd_send(&hdev->hw, &desc, 1);
+	if (ret)
+		dev_err(&hdev->pdev->dev,
+			"failed to set wol config, ret = %d\n", ret);
+
+	return ret;
+}
+
+static int hclge_update_wol(struct hclge_dev *hdev)
+{
+	struct hclge_wol_info *wol_info = &hdev->hw.mac.wol;
+
+	if (!hnae3_ae_dev_wol_supported(hdev->ae_dev))
+		return 0;
+
+	return hclge_set_wol_cfg(hdev, wol_info);
+}
+
+static int hclge_init_wol(struct hclge_dev *hdev)
+{
+	struct hclge_wol_info *wol_info = &hdev->hw.mac.wol;
+	int ret;
+
+	if (!hnae3_ae_dev_wol_supported(hdev->ae_dev))
+		return 0;
+
+	memset(wol_info, 0, sizeof(struct hclge_wol_info));
+	ret = hclge_get_wol_supported_mode(hdev,
+					   &wol_info->wol_support_mode);
+	if (ret) {
+		wol_info->wol_support_mode = 0;
+		return ret;
+	}
+
+	return hclge_update_wol(hdev);
+}
+
+static void hclge_get_wol(struct hnae3_handle *handle,
+			  struct ethtool_wolinfo *wol)
+{
+	struct hclge_wol_info *wol_info = hclge_get_wol_info(handle);
+
+	wol->supported = wol_info->wol_support_mode;
+	wol->wolopts = wol_info->wol_current_mode;
+	if (wol_info->wol_current_mode & WAKE_MAGICSECURE)
+		memcpy(wol->sopass, wol_info->wol_sopass, SOPASS_MAX);
+}
+
+static int hclge_set_wol(struct hnae3_handle *handle,
+			 struct ethtool_wolinfo *wol)
+{
+	struct hclge_wol_info *wol_info = hclge_get_wol_info(handle);
+	struct hclge_vport *vport = hclge_get_vport(handle);
+	u32 wol_mode;
+	int ret;
+
+	wol_mode = wol->wolopts;
+	if (wol_mode & ~wol_info->wol_support_mode)
+		return -EINVAL;
+
+	wol_info->wol_current_mode = wol_mode;
+	if (wol_mode & WAKE_MAGICSECURE) {
+		memcpy(wol_info->wol_sopass, wol->sopass, SOPASS_MAX);
+		wol_info->wol_sopass_size = SOPASS_MAX;
+	} else {
+		wol_info->wol_sopass_size = 0;
+	}
+
+	ret = hclge_set_wol_cfg(vport->back, wol_info);
+	if (ret)
+		wol_info->wol_current_mode = 0;
+
+	return ret;
+}
+
 static int hclge_init_ae_dev(struct hnae3_ae_dev *ae_dev)
 {
 	struct pci_dev *pdev = ae_dev->pdev;
@@ -10321,13 +11862,18 @@ static int hclge_init_ae_dev(struct hnae3_ae_dev *ae_dev)
 	if (ret)
 		goto out;
 
-	/* Firmware command queue initialize */
-	ret = hclge_cmd_queue_init(hdev);
+	ret = hclge_devlink_init(hdev);
 	if (ret)
 		goto err_pci_uninit;
 
+	/* Firmware command queue initialize */
+	ret = hclge_comm_cmd_queue_init(hdev->pdev, &hdev->hw.hw);
+	if (ret)
+		goto err_devlink_uninit;
+
 	/* Firmware command initialize */
-	ret = hclge_cmd_init(hdev);
+	ret = hclge_comm_cmd_init(hdev->ae_dev, &hdev->hw.hw, &hdev->fw_version,
+				  true, hdev->reset_pending);
 	if (ret)
 		goto err_cmd_uninit;
 
@@ -10336,6 +11882,13 @@ static int hclge_init_ae_dev(struct hnae3_ae_dev *ae_dev)
 	ret = hclge_get_cap(hdev);
 	if (ret)
 		goto err_cmd_uninit;
+
+	ret = hclge_query_dev_specs(hdev);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to query dev specifications, ret = %d.\n",
+			ret);
+		goto err_cmd_uninit;
+	}
 
 	ret = hclge_configure(hdev);
 	if (ret) {
@@ -10368,7 +11921,11 @@ static int hclge_init_ae_dev(struct hnae3_ae_dev *ae_dev)
 		goto err_msi_irq_uninit;
 
 	if (hdev->hw.mac.media_type == HNAE3_MEDIA_TYPE_COPPER) {
-		ret = hclge_mac_mdio_config(hdev);
+		if (hnae3_dev_phy_imp_supported(hdev))
+			ret = hclge_update_tp_port_info(hdev);
+		else
+			ret = hclge_mac_mdio_config(hdev);
+
 		if (ret)
 			goto err_msi_irq_uninit;
 	}
@@ -10389,7 +11946,7 @@ static int hclge_init_ae_dev(struct hnae3_ae_dev *ae_dev)
 		goto err_mdiobus_unreg;
 	}
 
-	ret = hclge_config_gro(hdev, true);
+	ret = hclge_config_gro(hdev);
 	if (ret)
 		goto err_mdiobus_unreg;
 
@@ -10425,6 +11982,20 @@ static int hclge_init_ae_dev(struct hnae3_ae_dev *ae_dev)
 		goto err_mdiobus_unreg;
 	}
 
+	ret = hclge_register_sysfs(hdev);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to register sysfs, ret = %d\n", ret);
+		goto err_mdiobus_unreg;
+	}
+
+	ret = hclge_ptp_init(hdev);
+	if (ret)
+		goto err_sysfs_unregister;
+
+	ret = hclge_update_port_info(hdev);
+	if (ret)
+		goto err_sysfs_unregister;
+
 	INIT_KFIFO(hdev->mac_tnl_log);
 
 	hclge_dcb_ops_set(hdev);
@@ -10441,7 +12012,10 @@ static int hclge_init_ae_dev(struct hnae3_ae_dev *ae_dev)
 	hclge_clear_resetting_state(hdev);
 
 	/* Log and clear the hw errors those already occurred */
-	hclge_handle_all_hns_hw_errors(ae_dev);
+	if (hnae3_dev_ras_imp_supported(hdev))
+		hclge_handle_occurred_error(hdev);
+	else
+		hclge_handle_all_hns_hw_errors(ae_dev);
 
 	/* request delayed reset for the error recovery because an immediate
 	 * global reset on a PF affecting pending initialization of other PFs
@@ -10458,6 +12032,11 @@ static int hclge_init_ae_dev(struct hnae3_ae_dev *ae_dev)
 	/* Enable MISC vector(vector0) */
 	hclge_enable_vector(&hdev->misc_vector, true);
 
+	ret = hclge_init_wol(hdev);
+	if (ret)
+		dev_warn(&pdev->dev,
+			 "failed to wake on lan init, ret = %d\n", ret);
+
 	hclge_state_init(hdev);
 	hdev->last_reset_time = jiffies;
 
@@ -10468,6 +12047,8 @@ static int hclge_init_ae_dev(struct hnae3_ae_dev *ae_dev)
 
 	return 0;
 
+err_sysfs_unregister:
+	hclge_unregister_sysfs(hdev);
 err_mdiobus_unreg:
 	if (hdev->hw.mac.phydev)
 		mdiobus_unregister(hdev->hw.mac.mdio_bus);
@@ -10476,9 +12057,11 @@ err_msi_irq_uninit:
 err_msi_uninit:
 	pci_free_irq_vectors(pdev);
 err_cmd_uninit:
-	hclge_cmd_uninit(hdev);
+	hclge_comm_cmd_uninit(hdev->ae_dev, true, &hdev->hw.hw);
+err_devlink_uninit:
+	hclge_devlink_uninit(hdev);
 err_pci_uninit:
-	pcim_iounmap(pdev, hdev->hw.io_base);
+	pcim_iounmap(pdev, hdev->hw.hw.io_base);
 	pci_clear_master(pdev);
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
@@ -10490,6 +12073,7 @@ out:
 static void hclge_stats_clear(struct hclge_dev *hdev)
 {
 	memset(&hdev->mac_stats, 0, sizeof(hdev->mac_stats));
+	memset(&hdev->fec_stats, 0, sizeof(hdev->fec_stats));
 }
 
 static int hclge_set_mac_spoofchk(struct hclge_dev *hdev, int vf, bool enable)
@@ -10534,7 +12118,7 @@ static int hclge_set_vf_spoofchk(struct hnae3_handle *handle, int vf,
 	u32 new_spoofchk = enable ? 1 : 0;
 	int ret;
 
-	if (hdev->pdev->revision == 0x20)
+	if (hdev->ae_dev->dev_version < HNAE3_DEVICE_VERSION_V2)
 		return -EOPNOTSUPP;
 
 	vport = hclge_get_vf_vport(hdev, vf);
@@ -10567,7 +12151,7 @@ static int hclge_reset_vport_spoofchk(struct hclge_dev *hdev)
 	int ret;
 	int i;
 
-	if (hdev->pdev->revision == 0x20)
+	if (hdev->ae_dev->dev_version < HNAE3_DEVICE_VERSION_V2)
 		return 0;
 
 	/* resume the vf spoof check state after reset */
@@ -10598,6 +12182,7 @@ static int hclge_set_vf_trust(struct hnae3_handle *handle, int vf, bool enable)
 
 	vport->vf_info.trusted = new_trusted;
 
+	set_bit(HCLGE_VPORT_STATE_QB_CHANGE, &vport->state);
 	set_bit(HCLGE_VPORT_STATE_PROMISC_CHANGE, &vport->state);
 	hclge_task_schedule(hdev, 0);
 
@@ -10701,7 +12286,7 @@ static void hclge_reset_vport_state(struct hclge_dev *hdev)
 	int i;
 
 	for (i = 0; i < hdev->num_alloc_vport; i++) {
-		hclge_vport_stop(vport);
+		clear_bit(HCLGE_VPORT_STATE_ALIVE, &vport->state);
 		vport++;
 	}
 }
@@ -10726,7 +12311,8 @@ static int hclge_reset_ae_dev(struct hnae3_ae_dev *ae_dev)
 		hclge_reset_umv_space(hdev);
 	}
 
-	ret = hclge_cmd_init(hdev);
+	ret = hclge_comm_cmd_init(hdev->ae_dev, &hdev->hw.hw, &hdev->fw_version,
+				  true, hdev->reset_pending);
 	if (ret) {
 		dev_err(&pdev->dev, "Cmd queue init failed\n");
 		return ret;
@@ -10744,13 +12330,20 @@ static int hclge_reset_ae_dev(struct hnae3_ae_dev *ae_dev)
 		return ret;
 	}
 
+	ret = hclge_tp_port_init(hdev);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to init tp port, ret = %d\n",
+			ret);
+		return ret;
+	}
+
 	ret = hclge_config_tso(hdev, HCLGE_TSO_MSS_MIN, HCLGE_TSO_MSS_MAX);
 	if (ret) {
 		dev_err(&pdev->dev, "Enable tso fail, ret =%d\n", ret);
 		return ret;
 	}
 
-	ret = hclge_config_gro(hdev, true);
+	ret = hclge_config_gro(hdev);
 	if (ret)
 		return ret;
 
@@ -10785,10 +12378,15 @@ static int hclge_reset_ae_dev(struct hnae3_ae_dev *ae_dev)
 		return ret;
 	}
 
-	set_bit(HCLGE_STATE_PROMISC_CHANGED, &hdev->state);
+	ret = hclge_ptp_init(hdev);
+	if (ret)
+		return ret;
 
 	/* Log and clear the hw errors those already occurred */
-	hclge_handle_all_hns_hw_errors(ae_dev);
+	if (hnae3_dev_ras_imp_supported(hdev))
+		hclge_handle_occurred_error(hdev);
+	else
+		hclge_handle_all_hns_hw_errors(ae_dev);
 
 	/* Re-enable the hw error interrupts because
 	 * the interrupts get disabled on global reset.
@@ -10825,6 +12423,8 @@ static int hclge_reset_ae_dev(struct hnae3_ae_dev *ae_dev)
 		ae_dev->ops->ext_reset_done(&hdev->vport->nic);
 #endif
 
+	(void)hclge_update_wol(hdev);
+
 	dev_info(&pdev->dev, "Reset done, %s driver initialization finished.\n",
 		 HCLGE_DRIVER_NAME);
 
@@ -10836,9 +12436,12 @@ static void hclge_uninit_ae_dev(struct hnae3_ae_dev *ae_dev)
 	struct hclge_dev *hdev = ae_dev->priv;
 	struct hclge_mac *mac = &hdev->hw.mac;
 
+	hclge_unregister_sysfs(hdev);
 	hclge_reset_vf_rate(hdev);
+	hclge_clear_vf_vlan(hdev);
 	hclge_misc_affinity_teardown(hdev);
 	hclge_state_uninit(hdev);
+	hclge_ptp_uninit(hdev);
 	hclge_uninit_vport_mac_table(hdev);
 
 	if (mac->phydev)
@@ -10853,8 +12456,9 @@ static void hclge_uninit_ae_dev(struct hnae3_ae_dev *ae_dev)
 	hclge_config_nic_hw_error(hdev, false);
 	hclge_config_rocee_ras_interrupt(hdev, false);
 
-	hclge_cmd_uninit(hdev);
+	hclge_comm_cmd_uninit(hdev->ae_dev, true, &hdev->hw.hw);
 	hclge_misc_irq_uninit(hdev);
+	hclge_devlink_uninit(hdev);
 	hclge_pci_uninit(hdev);
 	hclge_uninit_vport_vlan_table(hdev);
 	mutex_destroy(&hdev->vport_lock);
@@ -10929,7 +12533,7 @@ static int hclge_set_channels(struct hnae3_handle *handle, u32 new_tqps_num,
 	if (ret)
 		return ret;
 
-	/* RSS indirection table has been configuared by user */
+	/* RSS indirection table has been configured by user */
 	if (rxfh_configured)
 		goto out;
 
@@ -11100,16 +12704,19 @@ static int hclge_get_64_bit_regs(struct hclge_dev *hdev, u32 regs_num,
 
 int hclge_query_bd_num_cmd_send(struct hclge_dev *hdev, struct hclge_desc *desc)
 {
-	/*prepare 4 commands to query DFX BD number*/
-	hclge_cmd_setup_basic_desc(&desc[0], HCLGE_OPC_DFX_BD_NUM, true);
-	desc[0].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
-	hclge_cmd_setup_basic_desc(&desc[1], HCLGE_OPC_DFX_BD_NUM, true);
-	desc[1].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
-	hclge_cmd_setup_basic_desc(&desc[2], HCLGE_OPC_DFX_BD_NUM, true);
-	desc[2].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
-	hclge_cmd_setup_basic_desc(&desc[3], HCLGE_OPC_DFX_BD_NUM, true);
+	int i;
 
-	return hclge_cmd_send(&hdev->hw, desc, 4);
+	/* initialize command BD except the last one */
+	for (i = 0; i < HCLGE_GET_DFX_REG_TYPE_CNT - 1; i++) {
+		hclge_cmd_setup_basic_desc(&desc[i], HCLGE_OPC_DFX_BD_NUM,
+					   true);
+		desc[i].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
+	}
+
+	/* initialize the last command BD */
+	hclge_cmd_setup_basic_desc(&desc[i], HCLGE_OPC_DFX_BD_NUM, true);
+
+	return hclge_cmd_send(&hdev->hw, desc, HCLGE_GET_DFX_REG_TYPE_CNT);
 }
 
 static int hclge_get_dfx_reg_bd_num(struct hclge_dev *hdev,
@@ -11147,7 +12754,7 @@ static int hclge_dfx_reg_cmd_send(struct hclge_dev *hdev,
 
 	hclge_cmd_setup_basic_desc(desc, cmd, true);
 	for (i = 0; i < bd_num - 1; i++) {
-		desc->flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+		desc->flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 		desc++;
 		hclge_cmd_setup_basic_desc(desc, cmd, true);
 	}
@@ -11483,8 +13090,15 @@ static int hclge_gro_en(struct hnae3_handle *handle, bool enable)
 {
 	struct hclge_vport *vport = hclge_get_vport(handle);
 	struct hclge_dev *hdev = vport->back;
+	bool gro_en_old = hdev->gro_en;
+	int ret;
 
-	return hclge_config_gro(hdev, enable);
+	hdev->gro_en = enable;
+	ret = hclge_config_gro(hdev);
+	if (ret)
+		hdev->gro_en = gro_en_old;
+
+	return ret;
 }
 
 static void hclge_sync_promisc_mode(struct hclge_dev *hdev)
@@ -11496,18 +13110,19 @@ static void hclge_sync_promisc_mode(struct hclge_dev *hdev)
 	int i;
 
 	if (vport->last_promisc_flags != vport->overflow_promisc_flags) {
-		set_bit(HCLGE_STATE_PROMISC_CHANGED, &hdev->state);
+		set_bit(HCLGE_VPORT_STATE_PROMISC_CHANGE, &vport->state);
 		vport->last_promisc_flags = vport->overflow_promisc_flags;
 	}
 
-	if (test_bit(HCLGE_STATE_PROMISC_CHANGED, &hdev->state)) {
+	if (test_bit(HCLGE_VPORT_STATE_PROMISC_CHANGE, &vport->state)) {
 		tmp_flags = handle->netdev_flags | vport->last_promisc_flags;
 		ret = hclge_set_promisc_mode(handle, tmp_flags & HNAE3_UPE,
 					     tmp_flags & HNAE3_MPE);
 		if (!ret) {
-			clear_bit(HCLGE_STATE_PROMISC_CHANGED, &hdev->state);
-			set_bit(HCLGE_VPORT_STATE_VLAN_FLTR_CHANGE,
-				&vport->state);
+			clear_bit(HCLGE_VPORT_STATE_PROMISC_CHANGE,
+				  &vport->state);
+			hclge_enable_vlan_filter(handle,
+						 tmp_flags & HNAE3_VLAN_FLTR);
 		}
 	}
 
@@ -11523,8 +13138,12 @@ static void hclge_sync_promisc_mode(struct hclge_dev *hdev)
 			continue;
 
 		if (vport->vf_info.trusted) {
-			uc_en = vport->vf_info.request_uc_en > 0;
-			mc_en = vport->vf_info.request_mc_en > 0;
+			uc_en = vport->vf_info.request_uc_en > 0 ||
+				vport->overflow_promisc_flags &
+				HNAE3_OVERFLOW_UPE;
+			mc_en = vport->vf_info.request_mc_en > 0 ||
+				vport->overflow_promisc_flags &
+				HNAE3_OVERFLOW_MPE;
 		}
 		bc_en = vport->vf_info.request_bc_en > 0;
 
@@ -11577,7 +13196,7 @@ static u16 hclge_get_sfp_eeprom_info(struct hclge_dev *hdev, u32 offset,
 
 		/* bd0~bd4 need next flag */
 		if (i < HCLGE_SFP_INFO_CMD_NUM - 1)
-			desc[i].flag |= cpu_to_le16(HCLGE_CMD_FLAG_NEXT);
+			desc[i].flag |= cpu_to_le16(HCLGE_COMM_CMD_FLAG_NEXT);
 	}
 
 	/* setup bd0, this bd contains offset and read length. */
@@ -11639,6 +13258,48 @@ static int hclge_get_module_eeprom(struct hnae3_handle *handle, u32 offset,
 	return 0;
 }
 
+static int hclge_get_link_diagnosis_info(struct hnae3_handle *handle,
+					 u32 *status_code)
+{
+	struct hclge_vport *vport = hclge_get_vport(handle);
+	struct hclge_dev *hdev = vport->back;
+	struct hclge_desc desc;
+	int ret;
+
+	if (hdev->ae_dev->dev_version <= HNAE3_DEVICE_VERSION_V2)
+		return -EOPNOTSUPP;
+
+	hclge_cmd_setup_basic_desc(&desc, HCLGE_OPC_QUERY_LINK_DIAGNOSIS, true);
+	ret = hclge_cmd_send(&hdev->hw, &desc, 1);
+	if (ret) {
+		dev_err(&hdev->pdev->dev,
+			"failed to query link diagnosis info, ret = %d\n", ret);
+		return ret;
+	}
+
+	*status_code = le32_to_cpu(desc.data[0]);
+	return 0;
+}
+
+static int hclge_get_dscp_prio(struct hnae3_handle *h, u8 dscp, u8 *tc_mode,
+			       u8 *priority)
+{
+	struct hclge_vport *vport = hclge_get_vport(h);
+	struct hclge_dev *hdev = vport->back;
+
+	if (dscp >= HCLGE_MAX_DSCP)
+		return -EINVAL;
+
+	if (tc_mode)
+		*tc_mode = vport->nic.kinfo.tc_map_mode;
+	if (priority)
+		*priority = hdev->tm_info.dscp_prio[dscp] ==
+				HCLGE_PRIO_ID_INVALID ? 0 :
+				hdev->tm_info.dscp_prio[dscp];
+
+	return 0;
+}
+
 struct hnae3_ae_ops hclge_ops = {
 	.init_ae_dev = hclge_init_ae_dev,
 	.uninit_ae_dev = hclge_uninit_ae_dev,
@@ -11652,6 +13313,8 @@ struct hnae3_ae_ops hclge_ops = {
 	.put_vector = hclge_put_vector,
 	.set_promisc_mode = hclge_set_promisc_mode,
 	.request_update_promisc_mode = hclge_request_update_promisc_mode,
+	.request_flush_qb_config = hclge_flush_qb_config,
+	.query_fd_qb_state = hclge_query_fd_qb_state,
 	.set_loopback = hclge_set_loopback,
 	.start = hclge_ae_start,
 	.stop = hclge_ae_stop,
@@ -11662,6 +13325,7 @@ struct hnae3_ae_ops hclge_ops = {
 	.cfg_mac_speed_dup_h = hclge_cfg_mac_speed_dup_h,
 	.get_media_type = hclge_get_media_type,
 	.check_port_speed = hclge_check_port_speed,
+	.get_fec_stats = hclge_get_fec_stats,
 	.get_fec = hclge_get_fec,
 	.set_fec = hclge_set_fec,
 	.get_rss_key_size = hclge_get_rss_key_size,
@@ -11726,7 +13390,6 @@ struct hnae3_ae_ops hclge_ops = {
 	.set_timer_task = hclge_set_timer_task,
 	.mac_connect_phy = hclge_mac_connect_phy,
 	.mac_disconnect_phy = hclge_mac_disconnect_phy,
-	.reset_end = hclge_reset_end,
 	.get_vf_config = hclge_get_vf_config,
 	.set_vf_link_state = hclge_set_vf_link_state,
 	.set_vf_spoofchk = hclge_set_vf_spoofchk,
@@ -11735,6 +13398,16 @@ struct hnae3_ae_ops hclge_ops = {
 	.set_vf_mac = hclge_set_vf_mac,
 	.get_module_eeprom = hclge_get_module_eeprom,
 	.get_cmdq_stat = hclge_get_cmdq_stat,
+	.get_phy_link_ksettings = hclge_get_phy_link_ksettings,
+	.set_phy_link_ksettings = hclge_set_phy_link_ksettings,
+	.set_tx_hwts_info = hclge_ptp_set_tx_info,
+	.get_rx_hwts = hclge_ptp_get_rx_hwts,
+	.get_ts_info = hclge_ptp_get_ts_info,
+	.get_link_diagnosis_info = hclge_get_link_diagnosis_info,
+	.get_dscp_prio = hclge_get_dscp_prio,
+	.get_wol = hclge_get_wol,
+	.set_wol = hclge_set_wol,
+	.priv_ops = hclge_ext_ops_handle,
 };
 
 static struct hnae3_ae_algo ae_algo = {
@@ -11763,6 +13436,7 @@ module_init(hclge_init);
 
 static void hclge_exit(void)
 {
+	hnae3_unregister_ae_algo_prepare(&ae_algo);
 	hnae3_unregister_ae_algo(&ae_algo);
 	destroy_workqueue(hclge_wq);
 }

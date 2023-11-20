@@ -13,7 +13,8 @@ ccflags-y += 	-I$(PWD) \
 		-I$(PWD)/hns3_extension \
 		-I$(PWD)/hns3_extension/hns3pf \
 		-I$(PWD)/hns3vf \
-		-I$(PWD)/hns3_cae
+		-I$(PWD)/hns3_cae \
+		-I$(PWD)/hns3_common
 
 #### compile hnae3.ko
 obj-$(CONFIG_HNS3) += hnae3.o
@@ -25,27 +26,32 @@ HNS3_OBJS	=	hns3_enet.o \
 HNS3_OBJS_IT	=	hns3_extension/hns3_enet_it.o
 obj-$(CONFIG_HNS3_ENET) += hns3.o
 hns3-objs = $(HNS3_OBJS) $(HNS3_OBJS_IT)
+hns3-objs += hns3_ext.o
 
 hns3-$(CONFIG_HNS3_DCB) += hns3_dcbnl.o
 
 #### compile hclge.ko
 HCLGE_OBJ = 	hns3pf/hclge_main.o \
-			hns3pf/hclge_cmd.o \
 			hns3pf/hclge_mdio.o \
 			hns3pf/hclge_debugfs.o \
 			hns3pf/hclge_tm.o \
+			hns3pf/hclge_sysfs.o \
 			hns3pf/hclge_mbx.o \
-			hns3pf/hclge_err.o
-
+			hns3pf/hclge_err.o \
+			hns3pf/hclge_ptp.o \
+			hns3pf/hclge_devlink.o
 
 HCLGE_OBJ_IT_MAIN	=	hns3_extension/hns3pf/hclge_main_it.o \
 				hns3_extension/hns3pf/hclge_sysfs.o
 obj-$(CONFIG_HNS3_HCLGE) += hclge.o
 hclge-objs := $(HCLGE_OBJ) $(HCLGE_OBJ_IT_MAIN)
+hclge-objs += hns3pf/hclge_ext.o
+hclge-objs += hns3_common/hclge_comm_cmd.o
+
 hclge-$(CONFIG_HNS3_DCB) += hns3pf/hclge_dcb.o
 #### compile hclgevf.ko
 obj-$(CONFIG_HNS3_HCLGEVF) += hclgevf.o
-hclgevf-objs := hns3vf/hclgevf_main.o hns3vf/hclgevf_cmd.o hns3vf/hclgevf_mbx.o
+hclgevf-objs := hns3vf/hclgevf_main.o hns3vf/hclgevf_mbx.o hns3vf/hclgevf_devlink.o hns3_common/hclge_comm_cmd.o
 
 #### compile hns3_cae.ko
 #add rally code

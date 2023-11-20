@@ -9,7 +9,7 @@
 
 enum HCLGE_MBX_OPCODE {
 	HCLGE_MBX_RESET = 0x01,		/* (VF -> PF) assert reset */
-	HCLGE_MBX_ASSERTING_RESET,	/* (PF -> VF) PF is asserting reset*/
+	HCLGE_MBX_ASSERTING_RESET,	/* (PF -> VF) PF is asserting reset */
 	HCLGE_MBX_SET_UNICAST,		/* (VF -> PF) set UC addr */
 	HCLGE_MBX_SET_MULTICAST,	/* (VF -> PF) set MC addr */
 	HCLGE_MBX_SET_VLAN,		/* (VF -> PF) set VLAN */
@@ -24,7 +24,7 @@ enum HCLGE_MBX_OPCODE {
 	HCLGE_MBX_GET_RETA,		/* (VF -> PF) get RETA */
 	HCLGE_MBX_GET_RSS_KEY,		/* (VF -> PF) get RSS key */
 	HCLGE_MBX_GET_MAC_ADDR,		/* (VF -> PF) get MAC addr */
-	HCLGE_MBX_PF_VF_RESP,		/* (PF -> VF) generate respone to VF */
+	HCLGE_MBX_PF_VF_RESP,		/* (PF -> VF) generate response to VF */
 	HCLGE_MBX_GET_BDNUM,		/* (VF -> PF) get BD num */
 	HCLGE_MBX_GET_BUFSIZE,		/* (VF -> PF) get buffer size */
 	HCLGE_MBX_GET_STREAMID,		/* (VF -> PF) get stream id */
@@ -47,6 +47,8 @@ enum HCLGE_MBX_OPCODE {
 	HCLGE_MBX_VF_UNINIT,            /* (VF -> PF) vf is unintializing */
 	HCLGE_MBX_HANDLE_VF_TBL,	/* (VF -> PF) store/clear hw table */
 	HCLGE_MBX_GET_RING_VECTOR_MAP,	/* (VF -> PF) get ring-to-vector map */
+	HCLGE_MBX_SET_QB = 0x28,        /* (VF -> PF) set queue bonding */
+	HCLGE_MBX_PUSH_QB_STATE,        /* (PF -> VF) push qb state */
 
 	HCLGE_MBX_GET_VF_FLR_STATUS = 200, /* (M7 -> PF) get vf flr status */
 	HCLGE_MBX_PUSH_LINK_STATUS,	/* (M7 -> PF) get port link status */
@@ -77,9 +79,18 @@ enum hclge_mbx_tbl_cfg_subcode {
 	HCLGE_MBX_VPORT_LIST_CLEAR,
 };
 
+enum hclge_mbx_qb_cfg_subcode {
+	HCLGE_MBX_QB_CHECK_CAPS = 0,	/* query whether support qb */
+	HCLGE_MBX_QB_ENABLE,		/* request pf enable qb */
+	HCLGE_MBX_QB_GET_STATE		/* query whether qb enabled */
+};
+
 #define HCLGE_MBX_MAX_MSG_SIZE	14
 #define HCLGE_MBX_MAX_RESP_DATA_SIZE	8U
 #define HCLGE_MBX_MAX_RING_CHAIN_PARAM_NUM	4
+
+#define HCLGE_RESET_SCHED_TIMEOUT	(3 * HZ)
+#define HCLGE_MBX_SCHED_TIMEOUT	(HZ / 2)
 
 struct hclge_ring_chain_param {
 	u8 ring_type;
@@ -119,6 +130,7 @@ struct hclge_vf_to_pf_msg {
 			u8 en_bc;
 			u8 en_uc;
 			u8 en_mc;
+			u8 en_limit_promisc;
 		};
 		struct {
 			u8 vector_id;
@@ -181,6 +193,15 @@ struct hclgevf_mbx_arq_ring {
 	atomic_t count;
 	u16 msg_q[HCLGE_MBX_MAX_ARQ_MSG_NUM][HCLGE_MBX_MAX_ARQ_MSG_SIZE];
 };
+
+#define HCLGE_MBX_OPCODE_MAX 256
+struct hclge_mbx_ops_param {
+	struct hclge_vport *vport;
+	struct hclge_mbx_vf_to_pf_cmd *req;
+	struct hclge_respond_to_vf_msg *resp_msg;
+};
+
+typedef int (*hclge_mbx_ops_fn)(struct hclge_mbx_ops_param *param);
 
 #define hclge_mbx_ring_ptr_move_crq(crq) \
 	(crq->next_to_use = (crq->next_to_use + 1) % crq->desc_num)

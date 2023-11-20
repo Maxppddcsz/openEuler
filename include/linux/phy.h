@@ -19,6 +19,7 @@
 #include <linux/compiler.h>
 #include <linux/spinlock.h>
 #include <linux/ethtool.h>
+#include <linux/linkmode.h>
 #include <linux/mdio.h>
 #include <linux/mii.h>
 #include <linux/module.h>
@@ -693,6 +694,15 @@ size_t phy_speeds(unsigned int *speeds, size_t size,
 		  unsigned long *mask, size_t maxbit);
 
 void phy_resolve_aneg_linkmode(struct phy_device *phydev);
+
+/**
+ * phy_is_started - Convenience function to check whether PHY is started
+ * @phydev: The phy_device struct
+ */
+static inline bool phy_is_started(struct phy_device *phydev)
+{
+	return phydev->state >= PHY_UP;
+}
 
 /**
  * phy_read_mmd - Convenience function for reading a register
