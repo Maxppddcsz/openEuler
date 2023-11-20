@@ -241,6 +241,7 @@ static u16 get_its_list(struct its_vm *vm)
 static inline u32 its_get_event_id(struct irq_data *d)
 {
 	struct its_device *its_dev = irq_data_get_irq_chip_data(d);
+
 	return d->hwirq - its_dev->event_map.lpi_base;
 }
 
@@ -295,6 +296,7 @@ static int irq_to_cpuid_lock(struct irq_data *d, unsigned long *flags)
 		vpe = irq_data_get_irq_chip_data(d);
 	} else {
 		struct its_vlpi_map *map = get_vlpi_map(d);
+
 		if (map)
 			vpe = map->vpe;
 	}
@@ -320,6 +322,7 @@ static void irq_to_cpuid_unlock(struct irq_data *d, unsigned long flags)
 		vpe = irq_data_get_irq_chip_data(d);
 	} else {
 		struct its_vlpi_map *map = get_vlpi_map(d);
+
 		if (map)
 			vpe = map->vpe;
 	}
@@ -1600,6 +1603,7 @@ static unsigned int cpumask_pick_least_loaded(unsigned int target_cpu, struct ir
 
 	for_each_cpu(tmp, cpu_mask) {
 		int this_count = its_read_lpi_count(d, tmp);
+
 		dest_skt = (cpu_logical_map(tmp) >> 16) & 0xff;
 
 		if ((this_count < count) && (dest_skt == target_skt)) {
@@ -1624,6 +1628,7 @@ static int its_select_cpu(unsigned int target_cpu, struct irq_data *d,
 	struct cpumask *tmpmask;
 	unsigned long flags;
 	int cpu = target_cpu, node;
+
 	node = its_dev->its->numa_node;
 	tmpmask = &__tmpmask;
 
@@ -1704,40 +1709,36 @@ static int its_cpumask_select(struct its_device *its_dev,
 	for (i = 0; i < nr_cpu_ids; i++) {
 		skt = (cpu_logical_map(i) >> 16) & 0xff;
 		if ((skt >= 0) && (skt < MAX_MARS3_SKT_COUNT)) {
-			if ((is_kdump_kernel()) && (skt_id == skt)) {
+			if ((is_kdump_kernel()) && (skt_id == skt))
 				return i;
-			}
 
 			skt_cpu_cnt[skt]++;
-		}
-		else if (skt != 0xff)
+		}else if (skt != 0xff)
 			pr_err("socket address: %d is out of range.", skt);
 	}
 
-	if (0 != skt_id) {
+	if (skt_id != 0) {
 		for (i = 0; i < skt_id; i++)
 			cpus += skt_cpu_cnt[i];
 	}
 
 	cpu = cpumask_any_and(mask_val, cpu_mask);
 	cpus = cpus + cpu % skt_cpu_cnt[skt_id];
-    if (is_kdump_kernel()){
-        skt = (cpu_logical_map(cpu) >> 16) & 0xff;
-        if(skt_id == skt){
-            return cpu;
-        }
+	if (is_kdump_kernel()){
+		skt = (cpu_logical_map(cpu) >> 16) & 0xff;
+		if(skt_id == skt)
+			return cpu;
+	}
 
-        for (i = 0; i < nr_cpu_ids; i++) {
-            skt = (cpu_logical_map(i) >> 16) & 0xff;
-            if ((skt >= 0) && (skt < MAX_MARS3_SKT_COUNT)) {
-                if(skt_id == skt){
-                    return i;
-                }
-            } else if (0xff != skt ) {
-                pr_err("socket address: %d is out of range.", skt);
-            }
-        }
-    }
+	for (i = 0; i < nr_cpu_ids; i++) {
+		skt = (cpu_logical_map(i) >> 16) & 0xff;
+		if ((skt >= 0) && (skt < MAX_MARS3_SKT_COUNT)) {
+			if (skt_id == skt) 
+				return i;
+		} else if (0xff != skt) {
+			pr_err("socket address: %d is out of range.", skt);
+		}
+	}
 	return cpus;
 }
 
@@ -3076,7 +3077,7 @@ static bool enabled_lpis_allowed(void)
 	addr = val & GENMASK_ULL(51, 12);
 	/* Allow a kdump kernel */
 	if (is_kdump_kernel())
-        	return true;
+		return true;
 
 	return gic_check_reserved_range(addr, LPI_PROPBASE_SZ);
 }
@@ -3721,23 +3722,25 @@ static int its_cpumask_first(struct its_device *its_dev,
 	cpu = cpumask_first(cpu_mask);
 	if ((cpu > cpus) && (cpu < (cpus + skt_cpu_cnt[skt_id])))
 		cpus = cpu;
-    if (is_kdump_kernel()){
-        skt = (cpu_logical_map(cpu) >> 16) & 0xff;
-        if(skt_id == skt){
-            return cpu;
-        }
+	if (is_kdump_kernel()) {
+   	 skt = (cpu_logical_map(cpu) >> 16) & 0xff;
+	if (is_kdump_kernel()) {
+		skt = (cpu_logical_map(cpu) >> 16) & 0xff;
+		if (skt_id == skt) {
+			return cpu;
+		}
 
-        for (i = 0; i < nr_cpu_ids; i++) {
-            skt = (cpu_logical_map(i) >> 16) & 0xff;
-            if ((skt >= 0) && (skt < MAX_MARS3_SKT_COUNT)) {
-                if(skt_id == skt){
-                    return i;
-                }
-            } else if (0xff != skt ) {
-                pr_err("socket address: %d is out of range.", skt);
-            }
-        }
-    }
+		for (i = 0; i < nr_cpu_ids; i++) {
+			skt = (cpu_logical_map(i) >> 16) & 0xff;
+			if ((skt >= 0) && (skt < MAX_MARS3_SKT_COUNT)) {
+				if (skt_id == skt) {
+					return i;
+				}
+			} else if (0xff != skt) {
+				pr_err("socket address: %d is out of range.", skt);
+			}
+		}
+	}
 	return cpus;
 }
 static int its_irq_domain_activate(struct irq_domain *domain,

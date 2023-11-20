@@ -551,12 +551,13 @@ acpi_map_gic_cpu_interface(struct acpi_madt_generic_interrupt *processor)
 	if (cpu_count >= NR_CPUS)
 		return;
 
-	 /*
-	  * 1. SPI and LPI cannot communicate across cpu sockets, but SGI can.
-  	* 2. Make sure that there is  a cpu on each socket to handle interrupt if we are booting with kdump.
-  	*/
- 	if(is_kdump_kernel() && (hwid & 0xffff) != (cpu_logical_map(0) & 0xffff))
-        	 return;
+	/*
+	* 1. SPI and LPI cannot communicate across cpu sockets, but SGI can.
+	* 2. Make sure that there is a cpu on each socket to handle interrupt
+	*    if we are booting with kdump.
+	*/
+	if (is_kdump_kernel() && (hwid & 0xffff) != (cpu_logical_map(0) & 0xffff))
+		return;
 
 	/* map the logical cpu id to cpu MPIDR */
 	set_cpu_logical_map(cpu_count, hwid);

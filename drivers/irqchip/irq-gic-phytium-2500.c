@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2022 Phytium Corporation.
- * Author: 
+ * Author:
  *         Wang Yinfeng <wangyinfeng@phytium.com.cn>
  *         Chen Baozi <chenbaozi@phytium.com.cn>
  *         Chen Siyu  <chensiyu1321@phytium.com.cn>
@@ -476,7 +476,7 @@ static void gic_poke_irq(struct irq_data *d, u32 offset)
 	offset = convert_offset_index(d, offset, &index);
 	mask = 1 << (index % 32);
 
-	if (gic_irq_in_rdist(d)){
+	if (gic_irq_in_rdist(d)) {
 		base = gic_data_rdist_sgi_base();
 		writel_relaxed(mask, base + offset + (index / 32) * 4);
 		gic_redist_wait_for_rwp();
@@ -762,9 +762,9 @@ static int gic_set_type(struct irq_data *d, unsigned int type)
 		return -EINVAL;
 	offset = convert_offset_index(d, GICD_ICFGR, &index);
 
-	if (gic_irq_in_rdist(d)){
+	if (gic_irq_in_rdist(d)) {
 		base = gic_data_rdist_sgi_base();
-        ret = gic_configure_irq(index, type, base + offset, gic_redist_wait_for_rwp);
+		ret = gic_configure_irq(index, type, base + offset, gic_redist_wait_for_rwp);
 
 		mpidr = (unsigned long)cpu_logical_map(smp_processor_id());
 
@@ -1035,7 +1035,7 @@ static void __init gic_dist_init(void)
 	u32 val, skt;
 
 	for(skt = 0; skt < MAX_MARS3_SOC_COUNT; skt++) {
-		if((((unsigned int)1 << skt) & mars3_sockets_bitmap) == 0)
+		if ((1U << skt) & mars3_sockets_bitmap == 0)
 			continue;
 
 		base = mars3_gic_dists[skt].dist_base;
@@ -1062,7 +1062,7 @@ static void __init gic_dist_init(void)
 
 		for (i = 0; i < GIC_ESPI_NR; i += 32)
 			writel_relaxed(~0U, base + GICD_IGROUPRnE + i / 8);
-	
+
 		for (i = 0; i < GIC_ESPI_NR; i += 16)
 			writel_relaxed(0, base + GICD_ICFGRnE + i / 4);
 
@@ -1158,6 +1158,7 @@ static int __gic_populate_rdist(struct redist_region *region, void __iomem *ptr)
 	typer = gic_read_typer(ptr + GICR_TYPER);
 	if ((typer >> 32) == aff) {
 		u64 offset = ptr - region->redist_base;
+
 		raw_spin_lock_init(&gic_data_rdist()->rd_lock);
 		gic_data_rdist_rd_base() = ptr;
 		gic_data_rdist()->phys_base = region->phys_base + offset;
@@ -1191,7 +1192,7 @@ static int __gic_update_rdist_properties(struct redist_region *region,
 	u64 typer = gic_read_typer(ptr + GICR_TYPER);
 	u32 ctlr = readl_relaxed(ptr + GICR_CTLR);
 
-	
+
 
 	gic_data.rdists.has_vlpis &= !!(typer & GICR_TYPER_VLPIS);
 
@@ -1305,7 +1306,7 @@ static void gic_cpu_sys_reg_init(void)
 
 	/* Always whack Group0 before Group1 */
 	if (group0) {
-		switch(pribits) {
+		switch (pribits) {
 		case 8:
 		case 7:
 			write_gicreg(0, ICC_AP0R3_EL1);
@@ -1322,7 +1323,7 @@ static void gic_cpu_sys_reg_init(void)
 		isb();
 	}
 
-	switch(pribits) {
+	switch (pribits) {
 	case 8:
 	case 7:
 		write_gicreg(0, ICC_AP1R3_EL1);
@@ -1544,40 +1545,36 @@ static int gic_cpumask_select(struct irq_data *d, const struct cpumask *mask_val
 	for (i = 0; i < nr_cpu_ids; i++) {
 		skt = (cpu_logical_map(i) >> 16) & 0xff;
 		if ((skt >= 0) && (skt < MAX_MARS3_SOC_COUNT)) {
-			if ((is_kdump_kernel()) && (irq_skt == skt)) {
+			if ((is_kdump_kernel()) && (irq_skt == skt))
 				return i;
-			}
 
 			skt_cpu_cnt[skt]++;
-		}
-		else if (skt != 0xff)
+		} else if (skt != 0xff)
 			pr_err("socket address: %d is out of range.", skt);
 	}
 
-	if (0 != irq_skt) {
+	if (irq_skt != 0) {
 		for (i = 0; i < irq_skt; i++)
 			cpus += skt_cpu_cnt[i];
 	}
 
 	cpu = cpumask_any_and(mask_val, cpu_online_mask);
 	cpus = cpus + cpu % skt_cpu_cnt[irq_skt];
-    if (is_kdump_kernel()){
-        skt = (cpu_logical_map(cpu) >> 16) & 0xff;
-        if(irq_skt == skt){
-            return cpu;
-        }
+	if (is_kdump_kernel()) {
+		skt = (cpu_logical_map(cpu) >> 16) & 0xff;
+		if (irq_skt == skt)
+			return cpu;
 
-        for (i = 0; i < nr_cpu_ids; i++) {
-            skt = (cpu_logical_map(i) >> 16) & 0xff;
-            if ((skt >= 0) && (skt < MAX_MARS3_SOC_COUNT)) {
-                if(irq_skt == skt){
-                    return i;
-                }
-            } else if (0xff != skt ) {
-                pr_err("socket address: %d is out of range.", skt);
-            }
-        }
-    }
+		for (i = 0; i < nr_cpu_ids; i++) {
+			skt = (cpu_logical_map(i) >> 16) & 0xff;
+			if ((skt >= 0) && (skt < MAX_MARS3_SOC_COUNT)) {
+				if (irq_skt == skt)
+					return i;
+			} else if (skt != 0xff) {
+				pr_err("socket address: %d is out of range.", skt);
+			}
+		}
+	}
 	return cpus;
 }
 
@@ -1628,7 +1625,7 @@ static int gic_set_affinity(struct irq_data *d, const struct cpumask *mask_val,
 #else
 #define gic_set_affinity	NULL
 #define gic_ipi_send_mask	NULL
-#define gic_smp_init()		do { } while(0)
+#define gic_smp_init()		do { } while (0)
 #endif
 
 static int gic_retrigger(struct irq_data *data)
@@ -1797,10 +1794,10 @@ static int gic_irq_domain_translate(struct irq_domain *d,
 	}
 
 	if (is_fwnode_irqchip(fwspec->fwnode)) {
-		if(fwspec->param_count != 2)
+		if (fwspec->param_count != 2)
 			return -EINVAL;
 
-		
+
 		*hwirq = fwspec->param[0];
 		*type = fwspec->param[1];
 
@@ -1839,6 +1836,7 @@ static void gic_irq_domain_free(struct irq_domain *domain, unsigned int virq,
 
 	for (i = 0; i < nr_irqs; i++) {
 		struct irq_data *d = irq_domain_get_irq_data(domain, virq + i);
+
 		irq_set_handler(virq + i, NULL);
 		irq_domain_reset_irq_data(d);
 	}
@@ -1873,7 +1871,7 @@ static int gic_irq_domain_select(struct irq_domain *d,
 	irq_hw_number_t hwirq;
 
 	/* Not for us */
-        if (fwspec->fwnode != d->fwnode)
+  if (fwspec->fwnode != d->fwnode)
 		return 0;
 
 	/* If this is not DT, then we have a single domain */
@@ -2031,7 +2029,7 @@ static int __init gic_init_bases(phys_addr_t dist_phys_base,
 	typer = readl_relaxed(gic_data.dist_base + GICD_TYPER);
 	gic_data.rdists.gicd_typer = typer;
 
-	
+
 
 	pr_info("%d SPIs implemented\n", GIC_LINE_NR - 32);
 	pr_info("%d Extended SPIs implemented\n", GIC_ESPI_NR);
@@ -2287,7 +2285,7 @@ static int __init gic_of_init(struct device_node *node, struct device_node *pare
 		mars3_sockets_bitmap = 0x1;
 
 	for (skt = 1; skt < MAX_MARS3_SOC_COUNT; skt++) {
-		if ((((unsigned int)1 << skt) & mars3_sockets_bitmap) == 0)
+		if ((1U << skt) & mars3_sockets_bitmap == 0)
 			continue;
 
 		mars3_gic_dists[skt].phys_base = ((unsigned long)skt << MARS3_ADDR_SKTID_SHIFT) |
@@ -2654,9 +2652,9 @@ gic_acpi_init(union acpi_subtable_headers *header, const unsigned long end)
 	mars3_gic_dists[0].dist_base = acpi_data.dist_base;
 
 	mars3_sockets_bitmap = gic_mars3_sockets_bitmap();
-    if (is_kdump_kernel()){
-        mars3_sockets_bitmap = 0x3;
-    }
+	if (is_kdump_kernel()) {
+		mars3_sockets_bitmap = 0x3;
+	}
 	if (mars3_sockets_bitmap == 0) {
 		mars3_sockets_bitmap = 0x1;
 		pr_err("No socket, please check cpus MPIDR_AFFINITY_LEVEL!");
@@ -2664,7 +2662,7 @@ gic_acpi_init(union acpi_subtable_headers *header, const unsigned long end)
 		pr_info("mars3_sockets_bitmap = 0x%x\n", mars3_sockets_bitmap);
 
 	for (skt = 1; skt < MAX_MARS3_SOC_COUNT; skt++) {
-		if ((((unsigned int)1 << skt) & mars3_sockets_bitmap) == 0)
+		if ((1U << skt) & mars3_sockets_bitmap == 0)
 			continue;
 
 		mars3_gic_dists[skt].phys_base = ((unsigned long)skt << MARS3_ADDR_SKTID_SHIFT) |
