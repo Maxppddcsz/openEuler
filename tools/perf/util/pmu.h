@@ -55,6 +55,7 @@ struct perf_pmu_alias {
 	double scale;
 	bool per_pkg;
 	bool snapshot;
+	bool deprecated;
 	char *metric_expr;
 	char *metric_name;
 };
@@ -83,7 +84,8 @@ int perf_pmu__format_parse(char *dir, struct list_head *head);
 struct perf_pmu *perf_pmu__scan(struct perf_pmu *pmu);
 
 void print_pmu_events(const char *event_glob, bool name_only, bool quiet,
-		      bool long_desc, bool details_flag);
+		      bool long_desc, bool details_flag,
+		      bool deprecated);
 bool pmu_have_event(const char *pname, const char *name);
 
 int perf_pmu__scan_file(struct perf_pmu *pmu, const char *name, const char *fmt, ...) __scanf(3, 4);
@@ -93,5 +95,7 @@ int perf_pmu__test(void);
 struct perf_event_attr *perf_pmu__get_default_config(struct perf_pmu *pmu);
 
 struct pmu_events_map *perf_pmu__find_map(struct perf_pmu *pmu);
+
+int perf_pmu__convert_scale(const char *scale, char **end, double *sval);
 
 #endif /* __PMU_H */
