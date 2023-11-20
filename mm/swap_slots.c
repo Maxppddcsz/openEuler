@@ -321,10 +321,6 @@ static bool has_preferred_swap(struct page *page, struct vm_area_struct *vma,
 		*si = ERR_PTR(-EPERM);
 		return false;
 	}
-	if (vma->vm_file) {
-		*si = ERR_PTR(-EPERM);
-		return false;
-	}
 	if (vma->vm_mm->preferred_swap) {
 		*si = vma->vm_mm->preferred_swap;
 	} else {
@@ -358,7 +354,7 @@ swp_entry_t get_swap_page(struct page *page)
 #ifdef CONFIG_PREFERRED_SWAP
 	struct swap_info_struct *preferred_swap = NULL;
 
-	if (!page_mapping(page))
+	if (page_mapcount(page) <= 1)
 		preferred_swap = page_preferred_swap(page);
 #endif
 
