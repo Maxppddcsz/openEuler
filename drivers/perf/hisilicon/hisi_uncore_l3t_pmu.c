@@ -1,17 +1,12 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * HiSilicon SoC L3T uncore Hardware event counters support
  *
- * Copyright (C) 2021 Hisilicon Limited
- * Author: Fang Lijun <fanglijun3@huawei.com>
- *         Anurup M <anurup.m@huawei.com>
+ * Copyright (C) 2017 Hisilicon Limited
+ * Author: Anurup M <anurup.m@huawei.com>
  *         Shaokun Zhang <zhangshaokun@hisilicon.com>
  *
  * This code is based on the uncore PMUs like arm-cci and arm-ccn.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 #include <linux/acpi.h>
 #include <linux/bug.h>
@@ -19,8 +14,6 @@
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/list.h>
-#include <linux/of.h>
-#include <linux/platform_device.h>
 #include <linux/smp.h>
 
 #include "hisi_uncore_pmu.h"
@@ -31,10 +24,12 @@
 #define L3T_INT_STATUS		0x0808
 #define L3T_INT_CLEAR		0x080c
 #define L3T_EVENT_CTRL	        0x1c00
+#define L3T_VERSION		0x1cf0
 #define L3T_EVENT_TYPE0		0x1d00
 /*
- * Each counter is 48-bits and [48:63] are reserved
- * which are Read-As-Zero and Writes-Ignored.
+ * If the HW version only supports a 48-bit counter, then
+ * bits [63:48] are reserved, which are Read-As-Zero and
+ * Writes-Ignored.
  */
 #define L3T_CNTR0_LOWER		0x1e00
 
@@ -43,11 +38,12 @@
 
 #define L3T_PERF_CTRL_EN	0x20000
 #define L3T_EVTYPE_NONE		0xff
+#define L3T_NR_EVENTS		0x59
 
 /*
  * Select the counter register offset using the counter index
  */
-static u32 hisi_l3t_pmu_get_counter_offset(u32 cntr_idx)
+static u32 hisi_l3t_pmu_get_counter_offset(int cntr_idx)
 {
 	return (L3T_CNTR0_LOWER + (cntr_idx * 8));
 }
@@ -55,29 +51,13 @@ static u32 hisi_l3t_pmu_get_counter_offset(u32 cntr_idx)
 static u64 hisi_l3t_pmu_read_counter(struct hisi_pmu *l3t_pmu,
 				     struct hw_perf_event *hwc)
 {
-	u32 idx = hwc->idx;
-
-	if (!hisi_uncore_pmu_counter_valid(l3t_pmu, idx)) {
-		dev_err(l3t_pmu->dev, "Unsupported event index:%d!\n", idx);
-		return 0;
-	}
-
-	/* Read 64-bits and the upper 16 bits are RAZ */
-	return readq(l3t_pmu->base + hisi_l3t_pmu_get_counter_offset(idx));
+	return readq(l3t_pmu->base + hisi_l3t_pmu_get_counter_offset(hwc->idx));
 }
 
 static void hisi_l3t_pmu_write_counter(struct hisi_pmu *l3t_pmu,
 				       struct hw_perf_event *hwc, u64 val)
 {
-	u32 idx = hwc->idx;
-
-	if (!hisi_uncore_pmu_counter_valid(l3t_pmu, idx)) {
-		dev_err(l3t_pmu->dev, "Unsupported event index:%d!\n", idx);
-		return;
-	}
-
-	/* Write 64-bits and the upper 16 bits are WI */
-	writeq(val, l3t_pmu->base + hisi_l3t_pmu_get_counter_offset(idx));
+	writeq(val, l3t_pmu->base + hisi_l3t_pmu_get_counter_offset(hwc->idx));
 }
 
 static void hisi_l3t_pmu_write_evtype(struct hisi_pmu *l3t_pmu, int idx,
@@ -173,75 +153,29 @@ static void hisi_l3t_pmu_disable_counter_int(struct hisi_pmu *l3t_pmu,
 	writel(val, l3t_pmu->base + L3T_INT_MASK);
 }
 
-static irqreturn_t hisi_l3t_pmu_isr(int irq, void *dev_id)
+static u32 hisi_l3t_pmu_get_int_status(struct hisi_pmu *l3t_pmu)
 {
-	struct hisi_pmu *l3t_pmu = dev_id;
-	struct perf_event *event;
-	unsigned long overflown;
-	int idx;
-
-	/* Read L3T_INT_STATUS register */
-	overflown = readl(l3t_pmu->base + L3T_INT_STATUS);
-	if (!overflown)
-		return IRQ_NONE;
-
-	/*
-	 * Find the counter index which overflowed if the bit was set
-	 * and handle it.
-	 */
-	for_each_set_bit(idx, &overflown, L3T_NR_COUNTERS) {
-		/* Write 1 to clear the IRQ status flag */
-		writel((1 << idx), l3t_pmu->base + L3T_INT_CLEAR);
-
-		/* Get the corresponding event struct */
-		event = l3t_pmu->pmu_events.hw_events[idx];
-		if (!event)
-			continue;
-
-		hisi_uncore_pmu_event_update(event);
-		hisi_uncore_pmu_set_event_period(event);
-	}
-
-	return IRQ_HANDLED;
+	return readl(l3t_pmu->base + L3T_INT_STATUS);
 }
 
-static int hisi_l3t_pmu_init_irq(struct hisi_pmu *l3t_pmu,
-				 struct platform_device *pdev)
+static void hisi_l3t_pmu_clear_int_status(struct hisi_pmu *l3t_pmu, int idx)
 {
-	int irq, ret;
-
-	/* Read and init IRQ */
-	irq = platform_get_irq(pdev, 0);
-	if (irq < 0) {
-		dev_err(&pdev->dev, "L3T PMU get irq fail; irq:%d\n", irq);
-		return irq;
-	}
-
-	ret = devm_request_irq(&pdev->dev, irq, hisi_l3t_pmu_isr,
-			       IRQF_NOBALANCING | IRQF_NO_THREAD | IRQF_SHARED,
-			       dev_name(&pdev->dev), l3t_pmu);
-	if (ret < 0) {
-		dev_err(&pdev->dev,
-			"Fail to request IRQ:%d ret:%d\n", irq, ret);
-		return ret;
-	}
-
-	l3t_pmu->irq = irq;
-
-	return 0;
+	writel(1 << idx, l3t_pmu->base + L3T_INT_CLEAR);
 }
+
+static const struct acpi_device_id hisi_l3t_pmu_acpi_match[] = {
+	{}
+};
+MODULE_DEVICE_TABLE(acpi, hisi_l3t_pmu_acpi_match);
 
 static const struct of_device_id l3t_of_match[] = {
 	{ .compatible = "hisilicon,l3t-pmu", },
 	{},
 };
-MODULE_DEVICE_TABLE(of, l3t_of_match);
 
 static int hisi_l3t_pmu_init_data(struct platform_device *pdev,
 				  struct hisi_pmu *l3t_pmu)
 {
-	struct resource *res;
-
 	/*
 	 * Use the SCCL_ID and CCL_ID to identify the L3T PMU, while
 	 * SCCL_ID is in MPIDR[aff2] and CCL_ID is in MPIDR[aff1].
@@ -258,33 +192,28 @@ static int hisi_l3t_pmu_init_data(struct platform_device *pdev,
 		return -EINVAL;
 	}
 
-	if (device_property_read_u32(&pdev->dev, "hisilicon,index-id",
-			     &l3t_pmu->index_id)) {
-		dev_err(&pdev->dev, "Can not read l3t index-id!\n");
-		return -EINVAL;
-	}
-
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	l3t_pmu->base = devm_ioremap_resource(&pdev->dev, res);
+	l3t_pmu->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(l3t_pmu->base)) {
 		dev_err(&pdev->dev, "ioremap failed for l3t_pmu resource\n");
 		return PTR_ERR(l3t_pmu->base);
 	}
 
+	l3t_pmu->identifier = readl(l3t_pmu->base + L3T_VERSION);
+
 	return 0;
 }
 
-static struct attribute *hisi_l3t_pmu_format_attr[] = {
+static struct attribute *hisi_l3t_pmu_v1_format_attr[] = {
 	HISI_PMU_FORMAT_ATTR(event, "config:0-7"),
 	NULL,
 };
 
-static const struct attribute_group hisi_l3t_pmu_format_group = {
+static const struct attribute_group hisi_l3t_pmu_v1_format_group = {
 	.name = "format",
-	.attrs = hisi_l3t_pmu_format_attr,
+	.attrs = hisi_l3t_pmu_v1_format_attr,
 };
 
-static struct attribute *hisi_l3t_pmu_events_attr[] = {
+static struct attribute *hisi_l3t_pmu_v1_events_attr[] = {
 	HISI_PMU_EVENT_ATTR(rd_cpipe,		0x00),
 	HISI_PMU_EVENT_ATTR(wr_cpipe,		0x01),
 	HISI_PMU_EVENT_ATTR(rd_hit_cpipe,	0x02),
@@ -301,9 +230,9 @@ static struct attribute *hisi_l3t_pmu_events_attr[] = {
 	NULL,
 };
 
-static const struct attribute_group hisi_l3t_pmu_events_group = {
+static const struct attribute_group hisi_l3t_pmu_v1_events_group = {
 	.name = "events",
-	.attrs = hisi_l3t_pmu_events_attr,
+	.attrs = hisi_l3t_pmu_v1_events_attr,
 };
 
 static DEVICE_ATTR(cpumask, 0444, hisi_cpumask_sysfs_show, NULL);
@@ -317,10 +246,23 @@ static const struct attribute_group hisi_l3t_pmu_cpumask_attr_group = {
 	.attrs = hisi_l3t_pmu_cpumask_attrs,
 };
 
-static const struct attribute_group *hisi_l3t_pmu_attr_groups[] = {
-	&hisi_l3t_pmu_format_group,
-	&hisi_l3t_pmu_events_group,
+static struct device_attribute hisi_l3t_pmu_identifier_attr =
+	__ATTR(identifier, 0444, hisi_uncore_pmu_identifier_attr_show, NULL);
+
+static struct attribute *hisi_l3t_pmu_identifier_attrs[] = {
+	&hisi_l3t_pmu_identifier_attr.attr,
+	NULL
+};
+
+static struct attribute_group hisi_l3t_pmu_identifier_group = {
+	.attrs = hisi_l3t_pmu_identifier_attrs,
+};
+
+static const struct attribute_group *hisi_l3t_pmu_v1_attr_groups[] = {
+	&hisi_l3t_pmu_v1_format_group,
+	&hisi_l3t_pmu_v1_events_group,
 	&hisi_l3t_pmu_cpumask_attr_group,
+	&hisi_l3t_pmu_identifier_group,
 	NULL,
 };
 
@@ -335,6 +277,8 @@ static const struct hisi_uncore_ops hisi_uncore_l3t_ops = {
 	.disable_counter_int	= hisi_l3t_pmu_disable_counter_int,
 	.write_counter		= hisi_l3t_pmu_write_counter,
 	.read_counter		= hisi_l3t_pmu_read_counter,
+	.get_int_status		= hisi_l3t_pmu_get_int_status,
+	.clear_int_status	= hisi_l3t_pmu_clear_int_status,
 };
 
 static int hisi_l3t_pmu_dev_probe(struct platform_device *pdev,
@@ -346,16 +290,18 @@ static int hisi_l3t_pmu_dev_probe(struct platform_device *pdev,
 	if (ret)
 		return ret;
 
-	ret = hisi_l3t_pmu_init_irq(l3t_pmu, pdev);
+	ret = hisi_uncore_pmu_init_irq(l3t_pmu, pdev);
 	if (ret)
 		return ret;
 
-	l3t_pmu->num_counters = L3T_NR_COUNTERS;
 	l3t_pmu->counter_bits = 48;
+	l3t_pmu->check_event = L3T_NR_EVENTS;
+	l3t_pmu->pmu_events.attr_groups = hisi_l3t_pmu_v1_attr_groups;
+
+	l3t_pmu->num_counters = L3T_NR_COUNTERS;
 	l3t_pmu->ops = &hisi_uncore_l3t_ops;
 	l3t_pmu->dev = &pdev->dev;
 	l3t_pmu->on_cpu = -1;
-	l3t_pmu->check_event = 0x59;
 
 	return 0;
 }
@@ -376,15 +322,32 @@ static int hisi_l3t_pmu_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	if (device_property_read_u32(&pdev->dev, "hisilicon,index-id", &l3t_pmu->index_id)) {
+		dev_err(&pdev->dev, "Can not read l3t index-id!\n");
+		return -EINVAL;
+	}
+
+	/*
+	 * CCL_ID is used to identify the L3T in the same SCCL which was
+	 * used _UID by mistake.
+	 */
 	name = devm_kasprintf(&pdev->dev, GFP_KERNEL, "hisi_sccl%u_l3t%u",
 			      l3t_pmu->sccl_id, l3t_pmu->index_id);
-	HISI_INIT_PMU(&l3t_pmu->pmu, name, hisi_l3t_pmu_attr_groups);
-
-	ret = perf_pmu_register(&l3t_pmu->pmu, name, -1);
-	if (ret) {
-		dev_err(l3t_pmu->dev, "L3T PMU register failed!\n");
-		return ret;
-	}
+	l3t_pmu->pmu = (struct pmu) {
+		.name		= name,
+		.module		= THIS_MODULE,
+		.task_ctx_nr	= perf_invalid_context,
+		.event_init	= hisi_uncore_pmu_event_init,
+		.pmu_enable	= hisi_uncore_pmu_enable,
+		.pmu_disable	= hisi_uncore_pmu_disable,
+		.add		= hisi_uncore_pmu_add,
+		.del		= hisi_uncore_pmu_del,
+		.start		= hisi_uncore_pmu_start,
+		.stop		= hisi_uncore_pmu_stop,
+		.read		= hisi_uncore_pmu_read,
+		.attr_groups	= l3t_pmu->pmu_events.attr_groups,
+		.capabilities	= PERF_PMU_CAP_NO_EXCLUDE,
+	};
 
 	/* Pick one core to use for cpumask attributes */
 	cpumask_set_cpu(smp_processor_id(), &l3t_pmu->associated_cpus);
@@ -393,7 +356,9 @@ static int hisi_l3t_pmu_probe(struct platform_device *pdev)
 	if (l3t_pmu->on_cpu >= nr_cpu_ids)
 		return -EINVAL;
 
-	return 0;
+	ret = perf_pmu_register(&l3t_pmu->pmu, name, -1);
+
+	return ret;
 }
 
 static int hisi_l3t_pmu_remove(struct platform_device *pdev)
@@ -408,7 +373,9 @@ static int hisi_l3t_pmu_remove(struct platform_device *pdev)
 static struct platform_driver hisi_l3t_pmu_driver = {
 	.driver = {
 		.name = "hisi_l3t_pmu",
-		.of_match_table = of_match_ptr(l3t_of_match),
+		.acpi_match_table = ACPI_PTR(hisi_l3t_pmu_acpi_match),
+		.of_match_table = l3t_of_match,
+		.suppress_bind_attrs = true,
 	},
 	.probe = hisi_l3t_pmu_probe,
 	.remove = hisi_l3t_pmu_remove,
@@ -416,7 +383,11 @@ static struct platform_driver hisi_l3t_pmu_driver = {
 
 static int __init hisi_l3t_pmu_module_init(void)
 {
-	return platform_driver_register(&hisi_l3t_pmu_driver);
+	int ret;
+
+	ret = platform_driver_register(&hisi_l3t_pmu_driver);
+
+	return ret;
 }
 module_init(hisi_l3t_pmu_module_init);
 
@@ -428,5 +399,5 @@ module_exit(hisi_l3t_pmu_module_exit);
 
 MODULE_DESCRIPTION("HiSilicon SoC L3T uncore PMU driver");
 MODULE_LICENSE("GPL v2");
-MODULE_AUTHOR("HUAWEI TECHNOLOGIES CO., LTD.");
-MODULE_AUTHOR("Fang Lijun <fanglijun3@huawei.com>");
+MODULE_AUTHOR("Anurup M <anurup.m@huawei.com>");
+MODULE_AUTHOR("Shaokun Zhang <zhangshaokun@hisilicon.com>");
