@@ -14,6 +14,7 @@
 #include <linux/string.h>
 #include <linux/backing-dev.h>
 #include <linux/writeback.h>
+#include <linux/psi.h>
 #include <linux/slab.h>
 #include <linux/sched/mm.h>
 #include <linux/log2.h>
@@ -500,7 +501,8 @@ static u64 bio_end_offset(struct bio *bio)
 
 static noinline int add_ra_bio_pages(struct inode *inode,
 				     u64 compressed_end,
-				     struct compressed_bio *cb)
+				     struct compressed_bio *cb,
+				     int *memstall, unsigned long *pflags)
 {
 	unsigned long end_index;
 	unsigned long pg_index;
@@ -547,6 +549,11 @@ static noinline int add_ra_bio_pages(struct inode *inode,
 		if (add_to_page_cache_lru(page, mapping, pg_index, GFP_NOFS)) {
 			put_page(page);
 			goto next;
+		}
+
+		if (!*memstall && PageWorkingset(page)) {
+			psi_memstall_enter(pflags);
+			*memstall = 1;
 		}
 
 		end = last_offset + PAGE_SIZE - 1;
@@ -630,6 +637,8 @@ blk_status_t btrfs_submit_compressed_read(struct inode *inode, struct bio *bio,
 	u64 cur_disk_byte = (u64)bio->bi_iter.bi_sector << 9;
 	u64 em_len;
 	u64 em_start;
+	unsigned long pflags;
+	int memstall = 0;
 	struct extent_map *em;
 	blk_status_t ret = BLK_STS_RESOURCE;
 	int faili = 0;
@@ -688,7 +697,7 @@ blk_status_t btrfs_submit_compressed_read(struct inode *inode, struct bio *bio,
 	faili = nr_pages - 1;
 	cb->nr_pages = nr_pages;
 
-	add_ra_bio_pages(inode, em_start + em_len, cb);
+	add_ra_bio_pages(inode, em_start + em_len, cb, &memstall, &pflags);
 
 	/* include any pages we added in add_ra-bio_pages */
 	cb->len = bio->bi_iter.bi_size;
@@ -766,6 +775,9 @@ blk_status_t btrfs_submit_compressed_read(struct inode *inode, struct bio *bio,
 		comp_bio->bi_status = ret;
 		bio_endio(comp_bio);
 	}
+
+	if (memstall)
+		psi_memstall_leave(&pflags);
 
 	return 0;
 

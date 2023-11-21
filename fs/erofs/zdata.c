@@ -7,6 +7,7 @@
 #include "zdata.h"
 #include "compress.h"
 #include <linux/prefetch.h>
+#include <linux/psi.h>
 
 #include <trace/events/erofs.h>
 
@@ -1165,6 +1166,8 @@ static void z_erofs_submit_queue(struct super_block *sb,
 	pgoff_t last_index;
 	unsigned int nr_bios = 0;
 	struct bio *bio = NULL;
+	unsigned long pflags;
+	int memstall = 0;
 
 	bi_private = jobqueueset_init(sb, q, fgq, force_fg);
 	qtail[JQ_BYPASS] = &q[JQ_BYPASS]->head;
@@ -1204,7 +1207,16 @@ static void z_erofs_submit_queue(struct super_block *sb,
 			if (bio && cur != last_index + 1) {
 submit_bio_retry:
 				submit_bio(bio);
+				if (memstall) {
+					psi_memstall_leave(&pflags);
+					memstall = 0;
+				}
 				bio = NULL;
+			}
+
+			if (unlikely(PageWorkingset(page)) && !memstall) {
+				psi_memstall_enter(&pflags);
+				memstall = 1;
 			}
 
 			if (!bio) {
@@ -1234,8 +1246,11 @@ submit_bio_retry:
 			move_to_bypass_jobqueue(pcl, qtail, owned_head);
 	} while (owned_head != Z_EROFS_PCLUSTER_TAIL);
 
-	if (bio)
+	if (bio) {
 		submit_bio(bio);
+		if (memstall)
+			psi_memstall_leave(&pflags);
+	}
 
 	/*
 	 * although background is preferred, no one is pending for submission.

@@ -39,7 +39,6 @@
 #include <linux/t10-pi.h>
 #include <linux/debugfs.h>
 #include <linux/bpf.h>
-#include <linux/psi.h>
 #include <linux/sched/sysctl.h>
 #include <linux/blk-crypto.h>
 
@@ -1106,24 +1105,6 @@ blk_qc_t submit_bio(struct bio *bio)
 			task_io_account_read(bio->bi_iter.bi_size);
 			count_vm_events(PGPGIN, count);
 		}
-	}
-
-	/*
-	 * If we're reading data that is part of the userspace workingset, count
-	 * submission time as memory stall.  When the device is congested, or
-	 * the submitting cgroup IO-throttled, submission can be a significant
-	 * part of overall IO time.
-	 */
-	if (unlikely(bio_op(bio) == REQ_OP_READ &&
-	    bio_flagged(bio, BIO_WORKINGSET))) {
-		unsigned long pflags;
-		blk_qc_t ret;
-
-		psi_memstall_enter(&pflags);
-		ret = submit_bio_noacct(bio);
-		psi_memstall_leave(&pflags);
-
-		return ret;
 	}
 
 	return submit_bio_noacct(bio);
