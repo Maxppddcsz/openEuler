@@ -52,6 +52,8 @@ struct crypto_instance {
 	struct crypto_template *tmpl;
 	struct hlist_node list;
 
+	struct work_struct free_work;
+
 	void *__ctx[] CRYPTO_MINALIGN_ATTR;
 };
 
