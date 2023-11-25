@@ -123,6 +123,7 @@ bool _on_sdei_stack(unsigned long sp, struct stack_info *info)
 
 unsigned long sdei_arch_get_entry_point(int conduit)
 {
+#ifndef CONFIG_ASCEND_SDEI
 	/*
 	 * SDEI works between adjacent exception levels. If we booted at EL1 we
 	 * assume a hypervisor is marshalling events. If we booted at EL2 and
@@ -133,6 +134,7 @@ unsigned long sdei_arch_get_entry_point(int conduit)
 		pr_err("Not supported on this hardware/boot configuration\n");
 		return 0;
 	}
+#endif
 
 	if (IS_ENABLED(CONFIG_VMAP_STACK)) {
 		if (init_sdei_stacks())

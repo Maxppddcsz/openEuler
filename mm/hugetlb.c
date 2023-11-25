@@ -4906,7 +4906,9 @@ retry:
 			ret = vmf_error(PTR_ERR(page));
 			goto out;
 		}
+#ifndef CONFIG_ASCEND_CLEAR_HUGEPAGE_DISABLE
 		clear_huge_page(page, address, pages_per_huge_page(h));
+#endif
 		__SetPageUptodate(page);
 		new_page = true;
 
@@ -6297,14 +6299,15 @@ const struct hstate *hugetlb_get_hstate(void)
 EXPORT_SYMBOL_GPL(hugetlb_get_hstate);
 
 static struct page *hugetlb_alloc_hugepage_normal(struct hstate *h,
-		gfp_t gfp_mask, int nid)
+		gfp_t gfp_mask, int nid, nodemask_t *nodemask)
 {
+	unsigned long flags;
 	struct page *page = NULL;
 
-	spin_lock(&hugetlb_lock);
+	spin_lock_irqsave(&hugetlb_lock, flags);
 	if (h->free_huge_pages - h->resv_huge_pages > 0)
-		page = dequeue_huge_page_nodemask(h, gfp_mask, nid, NULL, NULL);
-	spin_unlock(&hugetlb_lock);
+		page = dequeue_huge_page_nodemask(h, gfp_mask, nid, nodemask, NULL);
+	spin_unlock_irqrestore(&hugetlb_lock, flags);
 
 	return page;
 }
@@ -6334,7 +6337,7 @@ struct page *hugetlb_alloc_hugepage_nodemask(int nid, int flag, nodemask_t *node
 		gfp_mask &= ~__GFP_RECLAIM;
 
 	if (flag & HUGETLB_ALLOC_NORMAL)
-		page = hugetlb_alloc_hugepage_normal(h, gfp_mask, nid);
+		page = hugetlb_alloc_hugepage_normal(h, gfp_mask, nid, nodemask);
 	else if (flag & HUGETLB_ALLOC_BUDDY)
 		page = alloc_migrate_huge_page(h, gfp_mask, nid, nodemask);
 	else
