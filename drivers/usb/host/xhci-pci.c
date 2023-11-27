@@ -12,6 +12,7 @@
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/acpi.h>
+#include <linux/crash_dump.h>
 #include <linux/reset.h>
 #include <linux/suspend.h>
 
@@ -638,6 +639,8 @@ static int xhci_pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	struct usb_hcd *hcd;
 	struct xhci_driver_data *driver_data;
 	struct reset_control *reset;
+	if (is_kdump_kernel())
+		return 0;
 
 	driver_data = (struct xhci_driver_data *)id->driver_data;
 	if (driver_data && driver_data->quirks & XHCI_RENESAS_FW_QUIRK) {
