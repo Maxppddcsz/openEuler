@@ -1449,7 +1449,11 @@ struct task_struct {
 	KABI_RESERVE(10)
 	KABI_RESERVE(11)
 #endif
+#ifdef CONFIG_PSI_FINE_GRAINED
+	KABI_USE(12, int memstall_type)
+#else
 	KABI_RESERVE(12)
+#endif
 	KABI_RESERVE(13)
 	KABI_RESERVE(14)
 	KABI_RESERVE(15)
