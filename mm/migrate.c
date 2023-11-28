@@ -548,26 +548,35 @@ int migrate_huge_page_move_mapping(struct address_space *mapping,
  * arithmetic will work across the entire page.  We need something more
  * specialized.
  */
-static void __copy_gigantic_page(struct page *dst, struct page *src,
-				int nr_pages)
+static int __copy_gigantic_page(struct page *dst, struct page *src,
+				int nr_pages, bool mc)
 {
-	int i;
+	int i, ret = 0;
 	struct page *dst_base = dst;
 	struct page *src_base = src;
 
 	for (i = 0; i < nr_pages; ) {
 		cond_resched();
-		copy_highpage(dst, src);
+		if (!mc) {
+			copy_highpage(dst, src);
+		} else {
+			ret = copy_mc_highpage(dst, src);
+			if (!ret)
+				return ret;
+		}
 
 		i++;
 		dst = mem_map_next(dst, dst_base, i);
 		src = mem_map_next(src, src_base, i);
 	}
+
+	return ret;
 }
 
-static void copy_huge_page(struct page *dst, struct page *src)
+static int copy_huge_page(struct page *dst, struct page *src, bool mc)
 {
 	int nr_pages;
+	int ret = 0;
 
 	if (PageHuge(src)) {
 		/* hugetlbfs page */
@@ -575,8 +584,8 @@ static void copy_huge_page(struct page *dst, struct page *src)
 		nr_pages = pages_per_huge_page(h);
 
 		if (unlikely(nr_pages > MAX_ORDER_NR_PAGES)) {
-			__copy_gigantic_page(dst, src, nr_pages);
-			return;
+			ret = __copy_gigantic_page(dst, src, nr_pages, mc);
+			return ret;
 		}
 	} else {
 		/* thp page */
@@ -584,7 +593,12 @@ static void copy_huge_page(struct page *dst, struct page *src)
 		nr_pages = thp_nr_pages(src);
 	}
 
-	copy_highpages(dst, src, nr_pages);
+	if (!mc)
+		copy_highpages(dst, src, nr_pages);
+	else
+		ret = copy_mc_highpages(dst, src, nr_pages);
+
+	return ret;
 }
 
 /*
@@ -666,13 +680,30 @@ EXPORT_SYMBOL(migrate_page_states);
 void migrate_page_copy(struct page *newpage, struct page *page)
 {
 	if (PageHuge(page) || PageTransHuge(page))
-		copy_huge_page(newpage, page);
+		copy_huge_page(newpage, page, false);
 	else
 		copy_highpage(newpage, page);
 
 	migrate_page_states(newpage, page);
 }
 EXPORT_SYMBOL(migrate_page_copy);
+
+int migrate_page_copy_mc(struct page *newpage, struct page *page)
+{
+	int rc;
+
+	if (PageHuge(page) || PageTransHuge(page))
+		rc = copy_huge_page(newpage, page, true);
+	else
+		rc = copy_mc_highpage(newpage, page);
+
+	if (rc)
+		return rc;
+
+	migrate_page_states(newpage, page);
+
+	return 0;
+}
 
 /************************************************************
  *                    Migration functions
@@ -691,10 +722,18 @@ int migrate_page_extra(struct address_space *mapping,
 	if (rc != MIGRATEPAGE_SUCCESS)
 		return rc;
 
-	if (mode != MIGRATE_SYNC_NO_COPY)
-		migrate_page_copy(newpage, page);
-	else
+	if (mode != MIGRATE_SYNC_NO_COPY) {
+		if (IS_ENABLED(CONFIG_ARCH_HAS_COPY_MC) &&
+		    current->flags & PF_MCS) {
+			rc = migrate_page_copy_mc(newpage, page);
+			if (!rc)
+				return -EFAULT;
+		} else {
+			migrate_page_copy(newpage, page);
+		}
+	} else {
 		migrate_page_states(newpage, page);
+	}
 	return MIGRATEPAGE_SUCCESS;
 }
 
