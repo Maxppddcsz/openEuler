@@ -126,6 +126,7 @@ int __weak arch_asym_cpu_priority(int cpu)
 
 #ifdef CONFIG_QOS_SCHED
 static DEFINE_PER_CPU_SHARED_ALIGNED(struct list_head, qos_throttled_cfs_rq);
+static int unthrottle_qos_cfs_rqs(int cpu);
 #endif
 
 #ifdef CONFIG_CFS_BANDWIDTH
@@ -6309,6 +6310,9 @@ static void __maybe_unused unthrottle_offline_cfs_rqs(struct rq *rq)
 	rcu_read_unlock();
 
 	rq_clock_stop_loop_update(rq);
+#ifdef CONFIG_QOS_SCHED
+	unthrottle_qos_cfs_rqs(cpu_of(rq));
+#endif
 }
 
 bool cfs_task_bw_constrained(struct task_struct *p)
