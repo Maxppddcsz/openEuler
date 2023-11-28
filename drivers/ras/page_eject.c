@@ -68,6 +68,7 @@ static int page_eject_offline_page(unsigned long pfn)
 		return -EINVAL;
 	}
 
+	current->flags |= PF_MCS;
 	/*
 	 * if soft_offline_page return 0 because PageHWPoison, this pfn
 	 * will add to list and this add will be removed during online
@@ -79,6 +80,7 @@ static int page_eject_offline_page(unsigned long pfn)
 		       ret, pfn);
 		return ret;
 	}
+	current->flags &= ~PF_MCS;
 
 	item = kzalloc(sizeof(struct ejected_pfn), GFP_KERNEL);
 	if (!item)
