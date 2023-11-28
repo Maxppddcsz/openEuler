@@ -8220,6 +8220,7 @@ static void unthrottle_qos_cfs_rq(struct cfs_rq *cfs_rq)
 
 	cfs_rq->throttled = 0;
 
+	update_rq_clock(rq);
 	list_del_init(&cfs_rq->qos_throttled_list);
 
 	/* update hierarchical throttle state */
