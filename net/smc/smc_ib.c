@@ -122,10 +122,11 @@ int smc_ib_ready_link(struct smc_link *lnk)
 	if (rc)
 		goto out;
 	smc_wr_remember_qp_attr(lnk);
-	rc = ib_req_notify_cq(lnk->smcibdev->roce_cq_recv,
-			      IB_CQ_SOLICITED_MASK);
+	rc = ib_req_notify_cq(lnk->smcibdev->roce_cq_send,
+			      IB_CQ_NEXT_COMP | IB_CQ_REPORT_MISSED_EVENTS);
 	if (rc)
 		goto out;
+
 	rc = smc_wr_rx_post_init(lnk);
 	if (rc)
 		goto out;
@@ -365,10 +366,12 @@ int smc_ib_create_queue_pair(struct smc_link *lnk)
 		.srq = NULL,
 		.cap = {
 				/* include unsolicited rdma_writes as well,
-				 * there are max. 2 RDMA_WRITE per 1 WR_SEND
+				 * there are max. 2 RDMA_WRITE per 1 WR_SEND.
+				 * RDMA_WRITE consumes send queue entities,
+				 * without recv queue entities.
 				 */
 			.max_send_wr = SMC_WR_BUF_CNT * 3,
-			.max_recv_wr = SMC_WR_BUF_CNT * 3,
+			.max_recv_wr = SMC_WR_BUF_CNT,
 			.max_send_sge = SMC_IB_MAX_SEND_SGE,
 			.max_recv_sge = 1,
 			.max_inline_data = 0,
