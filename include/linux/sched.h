@@ -2198,6 +2198,19 @@ static inline void rseq_syscall(struct pt_regs *regs)
 
 #endif
 
+#ifdef CONFIG_RICH_CONTAINER
+bool child_cpuacct(struct task_struct *tsk);
+bool check_rich_container(unsigned int cpu, unsigned int *index,
+               bool *rich_container, unsigned int *total);
+
+#else
+static inline bool check_rich_container(unsigned int cpu, unsigned int *index,
+               bool *rich_container, unsigned int *total)
+{
+       return false;
+}
+#endif
+
 const struct sched_avg *sched_trace_cfs_rq_avg(struct cfs_rq *cfs_rq);
 char *sched_trace_cfs_rq_path(struct cfs_rq *cfs_rq, char *str, int len);
 int sched_trace_cfs_rq_cpu(struct cfs_rq *cfs_rq);

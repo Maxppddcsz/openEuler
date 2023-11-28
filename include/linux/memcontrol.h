@@ -34,6 +34,8 @@ struct kmem_cache;
 enum memcg_stat_item {
 	MEMCG_SWAP = NR_VM_NODE_STAT_ITEMS,
 	MEMCG_SOCK,
+/* XXX: why are these zone and not node counters? */
+        MEMCG_KERNEL_STACK_KB,
 	MEMCG_PERCPU_B,
 	MEMCG_NR_STAT,
 };
@@ -342,7 +344,7 @@ struct mem_cgroup {
 	/* Legacy tcp memory accounting */
 	bool			tcpmem_active;
 	int			tcpmem_pressure;
-
+	unsigned int            wmark_ratio;
 #ifdef CONFIG_MEMCG_QOS
 	/* Currently support 0 and -1.
 	 * in the future it can expand to other value.
@@ -1046,6 +1048,7 @@ void __unlock_page_memcg(struct mem_cgroup *memcg);
 void unlock_page_memcg(struct page *page);
 
 void __mod_memcg_state(struct mem_cgroup *memcg, int idx, int val);
+void memcg_meminfo(struct mem_cgroup *memcg, struct sysinfo *info, struct sysinfo_ext *ext);
 
 /* idx can be of type enum memcg_stat_item or node_stat_item */
 static inline void mod_memcg_state(struct mem_cgroup *memcg,
@@ -1706,6 +1709,12 @@ static inline void count_memcg_page_event(struct page *page,
 
 static inline
 void count_memcg_event_mm(struct mm_struct *mm, enum vm_event_item idx)
+{
+}
+
+static inline void
+memcg_meminfo(struct mem_cgroup *memcg,
+                struct sysinfo *info, struct sysinfo_ext *ext)
 {
 }
 
