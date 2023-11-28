@@ -2457,4 +2457,20 @@ static inline int sched_core_idle_cpu(int cpu) { return idle_cpu(cpu); }
 
 extern void sched_set_stop_task(int cpu, struct task_struct *stop);
 
+#ifdef CONFIG_QOS_SCHED_DYNAMIC_AFFINITY
+int set_prefer_cpus_ptr(struct task_struct *p,
+			const struct cpumask *new_mask);
+int sched_prefer_cpus_fork(struct task_struct *p, struct cpumask *mask);
+void sched_prefer_cpus_free(struct task_struct *p);
+
+extern struct static_key_false __dynamic_affinity_switch;
+static inline bool dynamic_affinity_enabled(void)
+{
+	return static_branch_unlikely(&__dynamic_affinity_switch);
+}
+#endif
+#ifdef CONFIG_QOS_SCHED
+void sched_move_offline_task(struct task_struct *p);
+#endif
+
 #endif
