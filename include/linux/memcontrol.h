@@ -332,6 +332,8 @@ struct mem_cgroup {
 	/* per-memcg mm_struct list */
 	struct lru_gen_mm_list mm_list;
 #endif
+	int high_async_ratio;
+	bool high_async_reclaim;
 
 	struct mem_cgroup_per_node *nodeinfo[];
 };
