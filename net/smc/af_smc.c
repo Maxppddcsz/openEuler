@@ -48,6 +48,7 @@
 #include "smc_tx.h"
 #include "smc_rx.h"
 #include "smc_close.h"
+#include "smc_hp.h"
 
 static DEFINE_MUTEX(smc_server_lgr_pending);	/* serialize link group
 						 * creation on server
@@ -59,6 +60,20 @@ static DEFINE_MUTEX(smc_client_lgr_pending);	/* serialize link group
 static struct workqueue_struct	*smc_tcp_ls_wq;	/* wq for tcp listen work */
 struct workqueue_struct	*smc_hs_wq;	/* wq for handshake work */
 struct workqueue_struct	*smc_close_wq;	/* wq for close work */
+
+bool smc_hp_mode = SMC_HP_MODE;			/* flag for smc high performance mode */
+ushort smc_rx_micro_loop_us = SMC_RX_MICRO_LOOP_US;	/* rx micro loop time in us */
+ushort smc_tx_micro_loop_us = SMC_TX_MICRO_LOOP_US;	/* tx micro loop time in us */
+
+module_param_named(hp_mode, smc_hp_mode, bool, 0644);
+MODULE_PARM_DESC(hp_mode,
+		 "SMC high performance mode. [Default=" __stringify(SMC_HP_MODE) "]");
+module_param_named(rx_micro_loop, smc_rx_micro_loop_us, ushort, 0644);
+MODULE_PARM_DESC(rx_micro_loop,
+		 "SMC rx micro loop time in us. [Default=" __stringify(SMC_RX_MICRO_LOOP_US) "]");
+module_param_named(tx_micro_loop, smc_tx_micro_loop_us, ushort, 0644);
+MODULE_PARM_DESC(tx_micro_loop,
+		 "SMC tx micro loop time in us. [Default=" __stringify(SMC_TX_MICRO_LOOP_US) "]");
 
 static void smc_tcp_listen_work(struct work_struct *);
 static void smc_connect_work(struct work_struct *);

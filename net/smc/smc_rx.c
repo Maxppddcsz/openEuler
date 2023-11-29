@@ -21,6 +21,7 @@
 #include "smc_cdc.h"
 #include "smc_tx.h" /* smc_tx_consumer_update() */
 #include "smc_rx.h"
+#include "smc_hp.h"
 
 /* callback implementation to wakeup consumers blocked with smc_rx_wait().
  * indirectly called by smc_cdc_msg_recv_action().
@@ -214,6 +215,24 @@ int smc_rx_wait(struct smc_sock *smc, long *timeo,
 	return rc;
 }
 
+/* enter real rx wait process until rx micro polling timeout */
+int smc_hp_rx_wait(struct smc_sock *smc, long *timeo,
+		   int (*fcrit)(struct smc_connection *conn), ktime_t *end_time)
+{
+	int rc = 0;
+
+	if (unlikely(!smc_rx_micro_loop_us)) {
+		rc = smc_rx_wait(smc, timeo, fcrit);
+	} else if (unlikely(!(*end_time))) {
+		*end_time = ktime_add_us(ktime_get(), (u64)smc_rx_micro_loop_us);
+	} else if (unlikely(ktime_after(ktime_get(), *end_time))) {
+		*end_time = 0;
+		rc = smc_rx_wait(smc, timeo, fcrit);
+	}
+
+	return rc;
+}
+
 static int smc_rx_recv_urg(struct smc_sock *smc, struct msghdr *msg, int len,
 			   int flags)
 {
@@ -291,6 +310,7 @@ int smc_rx_recvmsg(struct smc_sock *smc, struct msghdr *msg,
 	long timeo;
 	int target;		/* Read at least these many bytes */
 	int rc;
+	ktime_t end_time = 0;
 
 	if (unlikely(flags & MSG_ERRQUEUE))
 		return -EINVAL; /* future work for sk.sk_family == AF_SMC */
@@ -355,7 +375,10 @@ int smc_rx_recvmsg(struct smc_sock *smc, struct msghdr *msg,
 		}
 
 		if (!smc_rx_data_available(conn)) {
-			smc_rx_wait(smc, &timeo, smc_rx_data_available);
+			if (likely(smc_hp_mode))
+				smc_hp_rx_wait(smc, &timeo, smc_rx_data_available, &end_time);
+			else
+				smc_rx_wait(smc, &timeo, smc_rx_data_available);
 			continue;
 		}
 
@@ -369,9 +392,15 @@ copy:
 				func = smc_rx_data_available_and_no_splice_pend;
 			else
 				func = smc_rx_data_available;
-			smc_rx_wait(smc, &timeo, func);
+			if (likely(smc_hp_mode))
+				smc_hp_rx_wait(smc, &timeo, func, &end_time);
+			else
+				smc_rx_wait(smc, &timeo, func);
 			continue;
 		}
+
+		if (end_time)
+			end_time = 0;
 
 		smc_curs_copy(&cons, &conn->local_tx_ctrl.cons, conn);
 		/* subsequent splice() calls pick up where previous left */

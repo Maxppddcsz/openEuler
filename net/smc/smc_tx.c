@@ -27,6 +27,7 @@
 #include "smc_close.h"
 #include "smc_ism.h"
 #include "smc_tx.h"
+#include "smc_hp.h"
 
 #define SMC_TX_WORK_DELAY	0
 
@@ -120,6 +121,24 @@ static int smc_tx_wait(struct smc_sock *smc, int flags)
 	return rc;
 }
 
+/* enter real tx wait process until tx micro polling timeout */
+static int smc_hp_tx_wait(struct smc_sock *smc, int flags,
+			  ktime_t *end_time)
+{
+	int rc = 0;
+
+	if (flags & MSG_DONTWAIT || !smc_tx_micro_loop_us) {
+		rc = smc_tx_wait(smc, flags);
+	} else if (unlikely(!(*end_time))) {
+		*end_time = ktime_add_us(ktime_get(), (u64)smc_tx_micro_loop_us);
+	} else if (unlikely(ktime_after(ktime_get(), *end_time))) {
+		*end_time = 0;
+		rc = smc_tx_wait(smc, flags);
+	}
+
+	return rc;
+}
+
 static bool smc_tx_is_corked(struct smc_sock *smc)
 {
 	struct tcp_sock *tp = tcp_sk(smc->clcsock->sk);
@@ -186,6 +205,7 @@ int smc_tx_sendmsg(struct smc_sock *smc, struct msghdr *msg, size_t len)
 	int tx_cnt_prep;
 	int writespace;
 	int rc, chunk;
+	ktime_t end_time = 0;
 
 	/* This should be in poll */
 	sk_clear_bit(SOCKWQ_ASYNC_NOSPACE, sk);
@@ -211,11 +231,17 @@ int smc_tx_sendmsg(struct smc_sock *smc, struct msghdr *msg, size_t len)
 		if (!atomic_read(&conn->sndbuf_space) || conn->urg_tx_pend) {
 			if (send_done)
 				return send_done;
-			rc = smc_tx_wait(smc, msg->msg_flags);
+			if (likely(smc_hp_mode))
+				rc = smc_hp_tx_wait(smc, msg->msg_flags, &end_time);
+			else
+				rc = smc_tx_wait(smc, msg->msg_flags);
 			if (rc)
 				goto out_err;
 			continue;
 		}
+
+		if (end_time)
+			end_time = 0;
 
 		/* initialize variables for 1st iteration of subsequent loop */
 		/* could be just 1 byte, even after smc_tx_wait above */
