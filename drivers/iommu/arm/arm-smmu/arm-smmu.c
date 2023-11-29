@@ -34,6 +34,8 @@
 #include <linux/pm_runtime.h>
 #include <linux/ratelimit.h>
 #include <linux/slab.h>
+#include <linux/spinlock.h>
+#include <asm/machine_types.h>
 
 #include <linux/fsl/mc.h>
 
@@ -1363,6 +1365,17 @@ static struct iommu_device *arm_smmu_probe_device(struct device *dev)
 		return ERR_PTR(-ENODEV);
 	}
 
+#ifdef CONFIG_ARCH_PHYTIUM
+#define FWID_READ(id) (((u16)(id) >> 3) | (((id) >>16 | 0x7000) << 16))
+	if (typeof_ft2000plus()) {
+		int num = fwspec->num_ids;
+		for (i = 0; i < num; i++) {
+			u32 fwid = FWID_READ(fwspec->ids[i]);
+			iommu_fwspec_add_ids(dev, &fwid, 1);
+		}
+	}
+#endif
+
 	ret = -EINVAL;
 	for (i = 0; i < fwspec->num_ids; i++) {
 		u16 sid = FIELD_GET(ARM_SMMU_SMR_ID, fwspec->ids[i]);
@@ -1458,13 +1471,19 @@ static struct iommu_group *arm_smmu_device_group(struct device *dev)
 			mutex_unlock(&smmu->stream_map_mutex);
 			return ERR_PTR(-EINVAL);
 		}
-
+#ifdef CONFIG_ARCH_PHYTIUM
+		if (typeof_s2500())
+			break;
+		if (typeof_ft2000plus() && !smmu->s2crs[idx].group)
+			continue;
+#endif
 		group = smmu->s2crs[idx].group;
 	}
 
 	if (group) {
 		mutex_unlock(&smmu->stream_map_mutex);
-		return iommu_group_ref_get(group);
+		group = iommu_group_ref_get(group);
+		goto fast_lookups;
 	}
 
 	if (dev_is_pci(dev))
@@ -1473,7 +1492,7 @@ static struct iommu_group *arm_smmu_device_group(struct device *dev)
 		group = fsl_mc_device_group(dev);
 	else
 		group = generic_device_group(dev);
-
+fast_lookups:
 	/* Remember group for faster lookups */
 	if (!IS_ERR(group))
 		for_each_cfg_sme(cfg, fwspec, i, idx)
