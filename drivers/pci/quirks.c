@@ -690,7 +690,7 @@ DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ATI,	PCI_DEVICE_ID_ATI_RS100,   quirk_ati_
 /*
  * In the AMD NL platform, this device ([1022:7912]) has a class code of
  * PCI_CLASS_SERIAL_USB_XHCI (0x0c0330), which means the xhci driver will
- * claim it. The same applies on the VanGogh platform device ([1022:163a]).
+ * claim it.
  *
  * But the dwc3 driver is a more specific driver for this device, and we'd
  * prefer to use it instead of xhci. To prevent xhci from claiming the
@@ -698,7 +698,7 @@ DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ATI,	PCI_DEVICE_ID_ATI_RS100,   quirk_ati_
  * defines as "USB device (not host controller)". The dwc3 driver can then
  * claim it based on its Vendor and Device ID.
  */
-static void quirk_amd_dwc_class(struct pci_dev *pdev)
+static void quirk_amd_nl_class(struct pci_dev *pdev)
 {
 	u32 class = pdev->class;
 
@@ -708,9 +708,7 @@ static void quirk_amd_dwc_class(struct pci_dev *pdev)
 		 class, pdev->class);
 }
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_AMD, PCI_DEVICE_ID_AMD_NL_USB,
-		quirk_amd_dwc_class);
-DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_AMD, PCI_DEVICE_ID_AMD_VANGOGH_USB,
-		quirk_amd_dwc_class);
+		quirk_amd_nl_class);
 
 /*
  * Synopsys USB 3.x host HAPS platform has a class code of
@@ -5067,6 +5065,13 @@ static const struct pci_dev_acs_enabled {
 	{ PCI_VENDOR_ID_AMPERE, 0xE00A, pci_quirk_xgene_acs },
 	{ PCI_VENDOR_ID_AMPERE, 0xE00B, pci_quirk_xgene_acs },
 	{ PCI_VENDOR_ID_AMPERE, 0xE00C, pci_quirk_xgene_acs },
+#ifdef CONFIG_ARCH_PHYTIUM
+	/* because PLX switch Vendor id is 0x10b5 on phytium cpu */
+	{ 0x10b5, PCI_ANY_ID, pci_quirk_xgene_acs },
+	/* because rootcomplex Vendor id is 0x17cd on phytium cpu */
+	{ 0x17cd, PCI_ANY_ID, pci_quirk_xgene_acs },
+#endif
+
 	/* Broadcom multi-function device */
 	{ PCI_VENDOR_ID_BROADCOM, 0x16D7, pci_quirk_mf_endpoint_acs },
 	{ PCI_VENDOR_ID_BROADCOM, 0x1750, pci_quirk_mf_endpoint_acs },
