@@ -131,22 +131,26 @@ static struct mempolicy default_policy = {
 static struct mempolicy preferred_node_policy[MAX_NUMNODES];
 
 /**
- * numa_map_to_online_node - Find closest online node
+ * numa_nearest_node - Find nearest node by state
  * @node: Node id to start the search
+ * @state: State to filter the search
  *
- * Lookup the next closest node by distance if @nid is not online.
+ * Lookup the closest node by distance if @nid is not in state.
  *
- * Return: this @node if it is online, otherwise the closest node by distance
+ * Return: this @node if it is in state, otherwise the closest node by distance
  */
-int numa_map_to_online_node(int node)
+int numa_nearest_node(int node, unsigned int state)
 {
 	int min_dist = INT_MAX, dist, n, min_node;
 
-	if (node == NUMA_NO_NODE || node_online(node))
+	if (state >= NR_NODE_STATES)
+		return -EINVAL;
+
+	if (node == NUMA_NO_NODE || node_state(node, state))
 		return node;
 
 	min_node = node;
-	for_each_online_node(n) {
+	for_each_node_state(n, state) {
 		dist = node_distance(node, n);
 		if (dist < min_dist) {
 			min_dist = dist;
@@ -156,7 +160,7 @@ int numa_map_to_online_node(int node)
 
 	return min_node;
 }
-EXPORT_SYMBOL_GPL(numa_map_to_online_node);
+EXPORT_SYMBOL_GPL(numa_nearest_node);
 
 struct mempolicy *get_task_policy(struct task_struct *p)
 {
@@ -2566,24 +2570,25 @@ static void sp_free(struct sp_node *n)
 }
 
 /**
- * mpol_misplaced - check whether current page node is valid in policy
+ * mpol_misplaced - check whether current folio node is valid in policy
  *
- * @page: page to be checked
- * @vma: vm area where page mapped
- * @addr: virtual address where page mapped
+ * @folio: folio to be checked
+ * @vma: vm area where folio mapped
+ * @addr: virtual address in @vma for shared policy lookup and interleave policy
  *
- * Lookup current policy node id for vma,addr and "compare to" page's
+ * Lookup current policy node id for vma,addr and "compare to" folio's
  * node id.  Policy determination "mimics" alloc_page_vma().
  * Called from fault path where we know the vma and faulting address.
  *
  * Return: NUMA_NO_NODE if the page is in a node that is valid for this
- * policy, or a suitable node ID to allocate a replacement page from.
+ * policy, or a suitable node ID to allocate a replacement folio from.
  */
-int mpol_misplaced(struct page *page, struct vm_area_struct *vma, unsigned long addr)
+int mpol_misplaced(struct folio *folio, struct vm_area_struct *vma,
+		   unsigned long addr)
 {
 	struct mempolicy *pol;
 	struct zoneref *z;
-	int curnid = page_to_nid(page);
+	int curnid = folio_nid(folio);
 	unsigned long pgoff;
 	int thiscpu = raw_smp_processor_id();
 	int thisnid = cpu_to_node(thiscpu);
@@ -2639,11 +2644,12 @@ int mpol_misplaced(struct page *page, struct vm_area_struct *vma, unsigned long 
 		BUG();
 	}
 
-	/* Migrate the page towards the node whose CPU is referencing it */
+	/* Migrate the folio towards the node whose CPU is referencing it */
 	if (pol->flags & MPOL_F_MORON) {
 		polnid = thisnid;
 
-		if (!should_numa_migrate_memory(current, page, curnid, thiscpu))
+		if (!should_numa_migrate_memory(current, folio, curnid,
+						thiscpu))
 			goto out;
 	}
 
