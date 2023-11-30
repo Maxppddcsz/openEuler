@@ -602,12 +602,10 @@ static int vtimer_mbigen_chip_match_cpu(struct vtimer_mbigen_device *chip)
 			if (chip->cpu_base == -1) {
 				/* Make sure cpu_base is attached to PIN0 */
 				u64 mpidr = cpu_logical_map(cpu);
-				if (MPIDR_AFFINITY_LEVEL(mpidr, 2)
-				    || MPIDR_AFFINITY_LEVEL(mpidr, 1)
-				    || MPIDR_AFFINITY_LEVEL(mpidr, 0))
-					return -EINVAL;
-
-				chip->cpu_base = cpu;
+				if (!MPIDR_AFFINITY_LEVEL(mpidr, 2) &&
+				    !MPIDR_AFFINITY_LEVEL(mpidr, 1) &&
+				    !MPIDR_AFFINITY_LEVEL(mpidr, 0))
+					chip->cpu_base = cpu;
 			}
 
 			chip->cpu_num++;
@@ -624,17 +622,6 @@ static int vtimer_mbigen_chip_match_cpu(struct vtimer_mbigen_device *chip)
 		return -EINVAL;
 
 	return 0;
-}
-
-static void vtimer_mbigen_chip_set_type(struct vtimer_mbigen_device *chip)
-{
-	int cpuid_start, cpuid_end, cpuid;
-
-	cpuid_start = chip->cpu_base;
-	cpuid_end = chip->cpu_base + chip->cpu_num;
-
-	for (cpuid = cpuid_start; cpuid < cpuid_end; cpuid++)
-		vtimer_mbigen_set_type(cpuid);
 }
 
 static bool is_mbigen_vtimer_bypass_enabled(struct mbigen_device *mgn_chip)
@@ -675,11 +662,115 @@ static bool vtimer_mbigen_should_probe(struct mbigen_device *mgn_chip)
 	return true;
 }
 
+
+#define CHIP0_TA_MBIGEN_PHY_BASE	0x4604400000
+#define CHIP0_TA_MBIGEN_ITS_BASE	0x84028
+#define CHIP0_TA_PERI_PHY_BASE		0x4614002018
+
+#define CHIP0_TB_MBIGEN_PHY_BASE	0xc604400000
+#define CHIP0_TB_PERI_PHY_BASE		0xc614002018
+#define CHIP0_TB_MBIGEN_ITS_BASE	0x4028
+
+#define CHIP1_TA_MBIGEN_PHY_BASE	0x204604400000
+#define CHIP1_TA_PERI_PHY_BASE		0x204614002018
+#define CHIP1_TA_MBIGEN_ITS_BASE	0x2084028
+
+#define CHIP1_TB_MBIGEN_PHY_BASE	0x20c604400000
+#define CHIP1_TB_MBIGEN_ITS_BASE	0x2004028
+#define CHIP1_TB_PERI_PHY_BASE		0x20c614002018
+extern bool vtimer_irqbypass;
+static int vtimer_mbigen_set_regs(struct platform_device *pdev)
+{
+	struct mbigen_device *mgn_chip = platform_get_drvdata(pdev);
+	struct resource *res;
+	void __iomem *addr;
+	unsigned int mpidr_aff3;
+	u32 val;
+	struct vtimer_mbigen_device *chip;
+
+	if (!vtimer_irqbypass)
+		return 0;
+
+	addr = mgn_chip->base + MBIGEN_CTLR;
+	val = readl_relaxed(addr);
+	mpidr_aff3 = (val & MBIGEN_AFF3_MASK) >> MBIGEN_AFF3_SHIFT;
+	list_for_each_entry(chip, &vtimer_mgn_list, entry) {
+		if (chip->mpidr_aff3 == mpidr_aff3)
+			return 0;
+	}
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!mgn_chip)
+		return -ENOMEM;
+
+	if (res->start == CHIP0_TA_MBIGEN_PHY_BASE) {
+		addr = ioremap(CHIP0_TA_PERI_PHY_BASE, 4);
+		if (!addr) {
+			pr_err("Unable to map CHIP0-TA-PERI\n");
+			return -ENOMEM;
+		}
+
+		writel_relaxed(1, addr);
+		iounmap(addr);
+
+		addr = mgn_chip->base + MBIX_VPPI_ITS_TA;
+		writel_relaxed(CHIP0_TA_MBIGEN_ITS_BASE, addr);
+	}
+
+	if (res->start == CHIP0_TB_MBIGEN_PHY_BASE) {
+		addr = ioremap(CHIP0_TB_PERI_PHY_BASE, 4);
+		if (!addr) {
+			pr_err("Unable to map CHIP0-TB-PERI\n");
+			return -ENOMEM;
+		}
+
+		writel_relaxed(1, addr);
+		iounmap(addr);
+
+		addr = mgn_chip->base + MBIX_VPPI_ITS_TA;
+		writel_relaxed(CHIP0_TB_MBIGEN_ITS_BASE, addr);
+	}
+
+	if (res->start == CHIP1_TA_MBIGEN_PHY_BASE) {
+		addr = ioremap(CHIP1_TA_PERI_PHY_BASE, 4);
+		if (!addr) {
+			pr_err("Unable to map CHIP1-TA-PERI\n");
+			return -ENOMEM;
+		}
+
+		writel_relaxed(1, addr);
+		iounmap(addr);
+
+		addr = mgn_chip->base + MBIX_VPPI_ITS_TA;
+		writel_relaxed(CHIP1_TA_MBIGEN_ITS_BASE, addr);
+	}
+
+	if (res->start == CHIP1_TB_MBIGEN_PHY_BASE) {
+		addr = ioremap(CHIP1_TB_PERI_PHY_BASE, 4);
+		if (!addr) {
+			pr_err("Unable to map CHIP1-TB-PERI\n");
+			return -ENOMEM;
+		}
+
+		writel_relaxed(1, addr);
+		iounmap(addr);
+
+		addr = mgn_chip->base + MBIX_VPPI_ITS_TA;
+		writel_relaxed(CHIP1_TB_MBIGEN_ITS_BASE, addr);
+	}
+
+	return 0;
+}
+
 static int vtimer_mbigen_device_probe(struct platform_device *pdev)
 {
 	struct mbigen_device *mgn_chip = platform_get_drvdata(pdev);
 	struct vtimer_mbigen_device *vtimer_mgn_chip;
 	int err;
+
+	err = vtimer_mbigen_set_regs(pdev);
+	if (err)
+		return err;
 
 	mgn_chip->vtimer_bypass_enabled =
 		is_mbigen_vtimer_bypass_enabled(mgn_chip);
@@ -705,7 +796,8 @@ static int vtimer_mbigen_device_probe(struct platform_device *pdev)
 	spin_lock_init(&vtimer_mgn_chip->vmgn_lock);
 	list_add(&vtimer_mgn_chip->entry, &vtimer_mgn_list);
 	vtimer_mbigen_set_kvm_info();
-	vtimer_mbigen_chip_set_type(vtimer_mgn_chip);
+	cpuhp_setup_state(CPUHP_AP_ONLINE_DYN, "irqchip/mbigen-vtimer:online",
+			  vtimer_mbigen_set_type, NULL);
 
 	pr_info("vtimer mbigen device @%p probed success!\n", mgn_chip->base);
 	return 0;
