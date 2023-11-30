@@ -1739,6 +1739,20 @@ bool coresight_loses_context_with_cpu(struct device *dev)
 }
 EXPORT_SYMBOL_GPL(coresight_loses_context_with_cpu);
 
+void coresight_release_dev_list(void *data)
+{
+	struct coresight_dev_list *dict = data;
+
+	mutex_lock(&coresight_mutex);
+
+	if (dict->nr_idx) {
+		kfree(dict->fwnode_list);
+		dict->nr_idx = 0;
+	}
+
+	mutex_unlock(&coresight_mutex);
+}
+
 /*
  * coresight_alloc_device_name - Get an index for a given device in the
  * device index list specific to a driver. An index is allocated for a
@@ -1749,11 +1763,15 @@ EXPORT_SYMBOL_GPL(coresight_loses_context_with_cpu);
 char *coresight_alloc_device_name(struct coresight_dev_list *dict,
 				  struct device *dev)
 {
-	int idx;
+	int idx, ret;
 	char *name = NULL;
 	struct fwnode_handle **list;
 
 	mutex_lock(&coresight_mutex);
+
+	ret = devm_add_action_or_reset(dev, coresight_release_dev_list, dict);
+	if (ret)
+		goto done;
 
 	idx = coresight_search_device_idx(dict, dev_fwnode(dev));
 	if (idx < 0) {
