@@ -585,8 +585,6 @@ int kvm_vgic_config_vtimer_irqbypass(struct kvm_vcpu *vcpu, u32 vintid,
 	WARN_ON(!irq);
 	WARN_ON(!kvm_vgic_vtimer_irqbypass_support());
 
-	vgic_cpu->vtimer_irqbypass = true;
-
 	vtimer->intid = vintid;
 	vtimer->get_active_stat = get_as;
 	vtimer->set_active_stat = set_as;
