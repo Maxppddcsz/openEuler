@@ -758,11 +758,15 @@ int kvm_timer_vcpu_reset(struct kvm_vcpu *vcpu)
 	timer_set_ctl(vcpu_ptimer(vcpu), 0);
 
 	if (timer->enabled) {
-		kvm_timer_update_irq(vcpu, false, vcpu_vtimer(vcpu));
+		if (!vtimer_is_irqbypass())
+			kvm_timer_update_irq(vcpu, false, vcpu_vtimer(vcpu));
+
 		kvm_timer_update_irq(vcpu, false, vcpu_ptimer(vcpu));
 
 		if (irqchip_in_kernel(vcpu->kvm)) {
-			kvm_vgic_reset_mapped_irq(vcpu, map.direct_vtimer->irq.irq);
+			if (!vtimer_is_irqbypass())
+				kvm_vgic_reset_mapped_irq(vcpu, map.direct_vtimer->irq.irq);
+
 			if (map.direct_ptimer)
 				kvm_vgic_reset_mapped_irq(vcpu, map.direct_ptimer->irq.irq);
 		}
@@ -1183,6 +1187,35 @@ bool kvm_arch_timer_get_input_level(int vintid)
 	return kvm_timer_should_fire(timer);
 }
 
+static void vtimer_set_active_stat(struct kvm_vcpu *vcpu, int vintid, bool set)
+{
+}
+
+static bool vtimer_get_active_stat(struct kvm_vcpu *vcpu, int vintid)
+{
+	return false;
+}
+
+int kvm_vtimer_config(struct kvm_vcpu *vcpu)
+{
+	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
+	int intid;
+
+	if (!vtimer_is_irqbypass())
+		return 0;
+
+	if (timer->enabled)
+		return 0;
+
+	if (!irqchip_in_kernel(vcpu->kvm))
+		return -EINVAL;
+
+	intid = vcpu_vtimer(vcpu)->irq.irq;
+	return kvm_vgic_config_vtimer_irqbypass(vcpu, intid,
+						vtimer_get_active_stat,
+						vtimer_set_active_stat);
+}
+
 int kvm_timer_enable(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = vcpu_timer(vcpu);
@@ -1193,8 +1226,12 @@ int kvm_timer_enable(struct kvm_vcpu *vcpu)
 		return 0;
 
 	/* Without a VGIC we do not map virtual IRQs to physical IRQs */
-	if (!irqchip_in_kernel(vcpu->kvm))
-		goto no_vgic;
+	if (!irqchip_in_kernel(vcpu->kvm)) {
+		if (!vtimer_is_irqbypass())
+			goto no_vgic;
+
+		return -EINVAL;
+	}
 
 	if (!vgic_initialized(vcpu->kvm))
 		return -ENODEV;
@@ -1206,12 +1243,14 @@ int kvm_timer_enable(struct kvm_vcpu *vcpu)
 
 	get_timer_map(vcpu, &map);
 
-	ret = kvm_vgic_map_phys_irq(vcpu,
-				    map.direct_vtimer->host_timer_irq,
-				    map.direct_vtimer->irq.irq,
-				    kvm_arch_timer_get_input_level);
-	if (ret)
-		return ret;
+	if (!vtimer_is_irqbypass()) {
+		ret = kvm_vgic_map_phys_irq(vcpu,
+					    map.direct_vtimer->host_timer_irq,
+					    map.direct_vtimer->irq.irq,
+					    kvm_arch_timer_get_input_level);
+		if (ret)
+			return ret;
+	}
 
 	if (map.direct_ptimer) {
 		ret = kvm_vgic_map_phys_irq(vcpu,
