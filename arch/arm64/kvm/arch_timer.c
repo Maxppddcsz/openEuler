@@ -27,6 +27,19 @@ static unsigned int host_ptimer_irq;
 static u32 host_vtimer_irq_flags;
 static u32 host_ptimer_irq_flags;
 
+static bool vtimer_irqbypass;
+
+static int __init early_vtimer_irqbypass(char *buf)
+{
+	return strtobool(buf, &vtimer_irqbypass);
+}
+early_param("kvm-arm.vtimer_irqbypass", early_vtimer_irqbypass);
+
+static inline bool vtimer_is_irqbypass(void)
+{
+	return !!vtimer_irqbypass && kvm_vgic_vtimer_irqbypass_support();
+}
+
 static DEFINE_STATIC_KEY_FALSE(has_gic_active_state);
 
 static const struct kvm_irq_level default_ptimer_irq = {
@@ -813,7 +826,8 @@ void kvm_timer_vcpu_init(struct kvm_vcpu *vcpu)
 
 static void kvm_timer_init_interrupt(void *info)
 {
-	enable_percpu_irq(host_vtimer_irq, host_vtimer_irq_flags);
+	if (!vtimer_is_irqbypass())
+		enable_percpu_irq(host_vtimer_irq, host_vtimer_irq_flags);
 	enable_percpu_irq(host_ptimer_irq, host_ptimer_irq_flags);
 }
 
@@ -984,7 +998,9 @@ static int kvm_timer_starting_cpu(unsigned int cpu)
 
 static int kvm_timer_dying_cpu(unsigned int cpu)
 {
-	disable_percpu_irq(host_vtimer_irq);
+	if (!vtimer_is_irqbypass())
+		disable_percpu_irq(host_vtimer_irq);
+
 	return 0;
 }
 
@@ -1030,7 +1046,8 @@ static int kvm_vtimer_hyp_init(struct arch_timer_kvm_info *info, bool has_gic)
 
 	return 0;
 out_free_irq:
-	free_percpu_irq(host_vtimer_irq, kvm_get_running_vcpus());
+	if (!vtimer_is_irqbypass())
+		free_percpu_irq(host_vtimer_irq, kvm_get_running_vcpus());
 	return err;
 }
 
@@ -1049,9 +1066,30 @@ int kvm_timer_hyp_init(bool has_gic)
 
 	/* First, do the virtual EL1 timer irq */
 
-	err = kvm_vtimer_hyp_init(info, has_gic);
-	if (err)
-		return err;
+	/*
+	 * vtimer-irqbypass depends on:
+	 *
+	 * - HW support at mbigen level (vtimer_irqbypass_hw_support)
+	 * - HW support at GIC level (kvm_vgic_vtimer_irqbypass_support)
+	 * - in_kernel irqchip support
+	 * - "kvm-arm.vtimer_irqbypass=1"
+	 */
+	vtimer_irqbypass &= vtimer_irqbypass_hw_support(info);
+	vtimer_irqbypass &= has_gic;
+	kvm_info("vtimer-irqbypass %sabled\n",
+		 vtimer_is_irqbypass() ? "en" : "dis");
+
+	/*
+	 * If vtimer irqbypass is enabled, there's no need to use the vtimer
+	 * forwarded irq inject.
+	 */
+	if (!vtimer_is_irqbypass()) {
+		int err;
+
+		err = kvm_vtimer_hyp_init(info, has_gic);
+		if (err)
+			return err;
+	}
 
 	/* Now let's do the physical EL1 timer irq */
 
