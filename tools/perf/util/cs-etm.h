@@ -27,13 +27,17 @@ enum {
 /*
  * Update the version for new format.
  *
- * New version 1 format adds a param count to the per cpu metadata.
+ * Version 1: format adds a param count to the per cpu metadata.
  * This allows easy adding of new metadata parameters.
  * Requires that new params always added after current ones.
  * Also allows client reader to handle file versions that are different by
  * checking the number of params in the file vs the number expected.
+ *
+ * Version 2: Drivers will use PERF_RECORD_AUX_OUTPUT_HW_ID to output
+ * CoreSight Trace ID. ...TRACEIDR metadata will be set to legacy values
+ * but with addition flags.
  */
-#define CS_HEADER_CURRENT_VERSION 1
+#define CS_HEADER_CURRENT_VERSION	2
 
 /* Beginning of header common to both ETMv3 and V4 */
 enum {
@@ -80,9 +84,24 @@ enum {
  * added in header V1
  */
 enum {
-	CS_ETE_TRCDEVARCH = CS_ETMV4_PRIV_MAX,
+	/* Dynamic, configurable parameters */
+	CS_ETE_TRCCONFIGR = CS_ETM_COMMON_BLK_MAX_V1,
+	CS_ETE_TRCTRACEIDR,
+	/* RO, taken from sysFS */
+	CS_ETE_TRCIDR0,
+	CS_ETE_TRCIDR1,
+	CS_ETE_TRCIDR2,
+	CS_ETE_TRCIDR8,
+	CS_ETE_TRCAUTHSTATUS,
+	CS_ETE_TRCDEVARCH,
 	CS_ETE_PRIV_MAX
 };
+
+/*
+ * Check for valid CoreSight trace ID. If an invalid value is present in the metadata,
+ * then IDs are present in the hardware ID packet in the data file.
+ */
+#define CS_IS_VALID_TRACE_ID(id) ((id > 0) && (id < 0x70))
 
 /*
  * ETMv3 exception encoding number:
@@ -200,9 +219,13 @@ struct cs_etm_packet_queue {
 #define CS_ETMV4_PRIV_SIZE (CS_ETMV4_PRIV_MAX * sizeof(u64))
 #define CS_ETE_PRIV_SIZE (CS_ETE_PRIV_MAX * sizeof(u64))
 
-#ifdef HAVE_CSTRACE_SUPPORT
+#define INFO_HEADER_SIZE (sizeof(((struct perf_record_auxtrace_info *)0)->type) + \
+			  sizeof(((struct perf_record_auxtrace_info *)0)->reserved__))
+
 int cs_etm__process_auxtrace_info(union perf_event *event,
 				  struct perf_session *session);
+
+#ifdef HAVE_CSTRACE_SUPPORT
 int cs_etm__get_cpu(u8 trace_chan_id, int *cpu);
 int cs_etm__get_pid_fmt(u8 trace_chan_id, u64 *pid_fmt);
 int cs_etm__etmq_set_tid(struct cs_etm_queue *etmq,
@@ -212,10 +235,12 @@ void cs_etm__etmq_set_traceid_queue_timestamp(struct cs_etm_queue *etmq,
 					      u8 trace_chan_id);
 struct cs_etm_packet_queue
 *cs_etm__etmq_get_packet_queue(struct cs_etm_queue *etmq, u8 trace_chan_id);
+int cs_etm__process_auxtrace_info_full(union perf_event *event __maybe_unused,
+				       struct perf_session *session __maybe_unused);
 #else
 static inline int
-cs_etm__process_auxtrace_info(union perf_event *event __maybe_unused,
-			      struct perf_session *session __maybe_unused)
+cs_etm__process_auxtrace_info_full(union perf_event *event __maybe_unused,
+				   struct perf_session *session __maybe_unused)
 {
 	return -1;
 }
