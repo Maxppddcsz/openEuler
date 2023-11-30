@@ -90,6 +90,9 @@ kernel_sec_end:
 	.arm
 
 	__HEAD
+	.globl	swapper_pg_dir
+	.equ	swapper_pg_dir, . - PG_DIR_SIZE
+
 ENTRY(stext)
  ARM_BE8(setend	be )			@ ensure we are in BE8 mode
 
@@ -185,7 +188,7 @@ ENDPROC(stext)
  *  r4 = physical page table address
  */
 __create_page_tables:
-	pgtbl	r4, r8				@ page table address
+	adr_l	r4, swapper_pg_dir		@ page table address
 
 	/*
 	 * Clear the swapper page table
