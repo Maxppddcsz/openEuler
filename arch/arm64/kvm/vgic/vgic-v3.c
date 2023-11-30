@@ -655,6 +655,10 @@ int vgic_v3_probe(const struct gic_kvm_info *info)
 		kvm_info("GICv4%s support %sabled\n",
 			 kvm_vgic_global_state.has_gicv4_1 ? ".1" : "",
 			 gicv4_enable ? "en" : "dis");
+
+		kvm_vgic_global_state.has_direct_vtimer = info->has_vtimer && gicv4_enable;
+		kvm_info("vtimer-irqbypass support %sabled at GIC level\n",
+			 kvm_vgic_global_state.has_direct_vtimer ? "en" : "dis");
 	}
 
 	if (!info->vcpu.start) {
