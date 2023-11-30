@@ -988,20 +988,9 @@ static int kvm_timer_dying_cpu(unsigned int cpu)
 	return 0;
 }
 
-int kvm_timer_hyp_init(bool has_gic)
+static int kvm_vtimer_hyp_init(struct arch_timer_kvm_info *info, bool has_gic)
 {
-	struct arch_timer_kvm_info *info;
 	int err;
-
-	info = arch_timer_get_kvm_info();
-	timecounter = &info->timecounter;
-
-	if (!timecounter->cc) {
-		kvm_err("kvm_arch_timer: uninitialized timecounter\n");
-		return -ENODEV;
-	}
-
-	/* First, do the virtual EL1 timer irq */
 
 	if (info->virtual_irq <= 0) {
 		kvm_err("kvm_arch_timer: invalid virtual timer IRQ: %d\n",
@@ -1038,6 +1027,31 @@ int kvm_timer_hyp_init(bool has_gic)
 	}
 
 	kvm_debug("virtual timer IRQ%d\n", host_vtimer_irq);
+
+	return 0;
+out_free_irq:
+	free_percpu_irq(host_vtimer_irq, kvm_get_running_vcpus());
+	return err;
+}
+
+int kvm_timer_hyp_init(bool has_gic)
+{
+	struct arch_timer_kvm_info *info;
+	int err;
+
+	info = arch_timer_get_kvm_info();
+	timecounter = &info->timecounter;
+
+	if (!timecounter->cc) {
+		kvm_err("kvm_arch_timer: uninitialized timecounter\n");
+		return -ENODEV;
+	}
+
+	/* First, do the virtual EL1 timer irq */
+
+	err = kvm_vtimer_hyp_init(info, has_gic);
+	if (err)
+		return err;
 
 	/* Now let's do the physical EL1 timer irq */
 
