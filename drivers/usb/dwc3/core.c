@@ -40,6 +40,20 @@
 
 #define DWC3_DEFAULT_AUTOSUSPEND_DELAY	5000 /* ms */
 
+/*
+ * Default to the number of outstanding pipelined transfer
+ * requests is 0x3[11:8], modify the field change to 0x7.
+ */
+static void dwc3_outstanding_pipe_choose(struct dwc3 *dwc)
+{
+	u32	reg;
+
+	reg = dwc3_readl(dwc->regs, DWC3_GSBUSCFG1);
+	reg &= ~DWC3_PIPE_TRANS_LIMIT_MASK;
+	reg |= DWC3_PIPE_TRANS_LIMIT;
+	dwc3_writel(dwc->regs, DWC3_GSBUSCFG1, reg);
+}
+
 /**
  * dwc3_get_dr_mode - Validates and sets dr_mode
  * @dwc: pointer to our context structure
@@ -1036,6 +1050,7 @@ static int dwc3_core_init(struct dwc3 *dwc)
 		goto err4;
 	}
 
+	dwc3_outstanding_pipe_choose(dwc);
 	/*
 	 * ENDXFER polling is available on version 3.10a and later of
 	 * the DWC_usb3 controller. It is NOT available in the
