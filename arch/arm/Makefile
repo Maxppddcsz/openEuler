@@ -53,6 +53,7 @@ endif
 
 ifeq ($(CONFIG_RELOCATABLE),y)
 KBUILD_CFLAGS		+= -fpic -include $(srctree)/include/linux/hidden.h
+CFLAGS_MODULE		+= -fno-pic
 LDFLAGS_vmlinux		+= -pie -shared -Bsymbolic
 endif
 
