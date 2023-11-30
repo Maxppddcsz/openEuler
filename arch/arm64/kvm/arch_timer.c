@@ -632,6 +632,13 @@ static void kvm_vtimer_mbigen_auto_clr_set(struct kvm_vcpu *vcpu, bool set)
 	vtimer_mbigen_set_auto_clr(vcpu->cpu, set);
 }
 
+static void kvm_vtimer_gic_auto_clr_set(struct kvm_vcpu *vcpu, bool set)
+{
+	BUG_ON(!vtimer_is_irqbypass());
+
+	vtimer_gic_set_auto_clr(vcpu->cpu, set);
+}
+
 static void kvm_vtimer_mbigen_restore_stat(struct kvm_vcpu *vcpu)
 {
 	struct vtimer_mbigen_context *mbigen_ctx = vcpu_vtimer_mbigen(vcpu);
@@ -654,6 +661,9 @@ static void kvm_vtimer_mbigen_restore_stat(struct kvm_vcpu *vcpu)
 out:
 	local_irq_restore(flags);
 }
+
+bool gic_clr_enable = true;
+module_param(gic_clr_enable, bool, S_IRUGO | S_IWUSR);
 
 void kvm_timer_vcpu_load(struct kvm_vcpu *vcpu)
 {
@@ -686,8 +696,12 @@ void kvm_timer_vcpu_load(struct kvm_vcpu *vcpu)
 
 	timer_restore_state(map.direct_vtimer);
 
-	if (vtimer_is_irqbypass())
+	if (vtimer_is_irqbypass()) {
 		kvm_vtimer_mbigen_auto_clr_set(vcpu, true);
+		if (gic_clr_enable) {
+			kvm_vtimer_gic_auto_clr_set(vcpu, true);
+		}
+	}
 
 	if (map.direct_ptimer)
 		timer_restore_state(map.direct_ptimer);
@@ -747,8 +761,10 @@ void kvm_timer_vcpu_put(struct kvm_vcpu *vcpu)
 
 	get_timer_map(vcpu, &map);
 
-	if (vtimer_is_irqbypass())
+	if (vtimer_is_irqbypass()) {
 		kvm_vtimer_mbigen_auto_clr_set(vcpu, false);
+		kvm_vtimer_gic_auto_clr_set(vcpu, false);
+	}
 
 	timer_save_state(map.direct_vtimer);
 
