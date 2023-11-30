@@ -75,7 +75,7 @@
  */
 #define ARM_ASSERTS							\
 	.plt : {							\
-		*(.iplt) *(.rel.iplt) *(.iplt) *(.igot.plt) *(.plt)	\
+		*(.iplt) * (.rel.iplt) * (.iplt) * (.igot.plt) * (.plt)	\
 	}								\
 	ASSERT(SIZEOF(.plt) == 0,					\
 	       "Unexpected run-time procedure linkages detected!")
