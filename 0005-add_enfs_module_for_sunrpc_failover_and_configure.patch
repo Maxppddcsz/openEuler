@@ -1,0 +1,1600 @@
+diff --git a/fs/nfs/enfs/enfs_config.c b/fs/nfs/enfs/enfs_config.c
+new file mode 100644
+index 000000000..a0ca93114
+--- /dev/null
++++ b/fs/nfs/enfs/enfs_config.c
+@@ -0,0 +1,378 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ */
++#include <linux/cdev.h>
++#include <linux/errno.h>
++#include <linux/fcntl.h>
++#include <linux/fs.h>
++#include <linux/kernel.h>
++#include <linux/kthread.h>
++#include <linux/slab.h>
++#include <linux/string.h>
++#include <linux/uaccess.h>
++#include <linux/delay.h>
++
++#include "enfs_errcode.h"
++#include "enfs_log.h"
++#include "enfs_config.h"
++
++#define MAX_FILE_SIZE 8192
++#define STRING_BUF_SIZE 128
++#define CONFIG_FILE_PATH "/etc/enfs/config.ini"
++#define ENFS_NOTIFY_FILE_PERIOD 1000UL
++
++#define MAX_PATH_DETECT_INTERVAL 300
++#define MIN_PATH_DETECT_INTERVAL 5
++#define MAX_PATH_DETECT_TIMEOUT 60
++#define MIN_PATH_DETECT_TIMEOUT 1
++#define MAX_MULTIPATH_TIMEOUT 60
++#define MIN_MULTIPATH_TIMEOUT 0
++#define MAX_MULTIPATH_STATE ENFS_MULTIPATH_DISABLE
++#define MIN_MULTIPATH_STATE ENFS_MULTIPATH_ENABLE
++
++#define DEFAULT_PATH_DETECT_INTERVAL 10
++#define DEFAULT_PATH_DETECT_TIMEOUT 5
++#define DEFAULT_MULTIPATH_TIMEOUT 0
++#define DEFAULT_MULTIPATH_STATE ENFS_MULTIPATH_ENABLE
++#define DEFAULT_LOADBALANCE_MODE ENFS_LOADBALANCE_RR
++
++typedef int (*check_and_assign_func)(char *, char *, int, int);
++
++struct enfs_config_info {
++	int path_detect_interval;
++	int path_detect_timeout;
++	int multipath_timeout;
++	int loadbalance_mode;
++	int multipath_state;
++};
++
++struct check_and_assign_value {
++	char *field_name;
++	check_and_assign_func func;
++	int min_value;
++	int max_value;
++};
++
++static struct enfs_config_info g_enfs_config_info;
++static struct timespec64 modify_time;
++static struct task_struct *thread;
++
++static int enfs_check_config_value(char *value, int min_value, int max_value)
++{
++	unsigned long num_value;
++	int ret;
++
++	ret = kstrtol(value, 10, &num_value);
++	if (ret != 0) {
++		enfs_log_error("Failed to convert string to int\n");
++		return -EINVAL;
++	}
++
++	if (num_value < min_value || num_value > max_value)
++		return -EINVAL;
++
++	return num_value;
++}
++
++static int enfs_check_and_assign_int_value(char *field_name, char *value,
++						  int min_value, int max_value)
++{
++	int int_value = enfs_check_config_value(value, min_value, max_value);
++
++	if (int_value < 0)
++		return -EINVAL;
++
++	if (strcmp(field_name, "path_detect_interval") == 0) {
++		g_enfs_config_info.path_detect_interval = int_value;
++		return ENFS_RET_OK;
++	}
++	if (strcmp(field_name, "path_detect_timeout") == 0) {
++		g_enfs_config_info.path_detect_timeout = int_value;
++		return ENFS_RET_OK;
++	}
++	if (strcmp(field_name, "multipath_timeout") == 0) {
++		g_enfs_config_info.multipath_timeout = int_value;
++		return ENFS_RET_OK;
++	}
++	if (strcmp(field_name, "multipath_disable") == 0) {
++		g_enfs_config_info.multipath_state = int_value;
++		return ENFS_RET_OK;
++	}
++	return -EINVAL;
++}
++
++static int enfs_check_and_assign_loadbalance_mode(char *field_name,
++							 char *value,
++							 int min_value,
++							 int max_value)
++{
++	if (value == NULL)
++		return -EINVAL;
++
++	if (strcmp(field_name, "multipath_select_policy") == 0) {
++		if (strcmp(value, "roundrobin") == 0) {
++			g_enfs_config_info.loadbalance_mode
++				= ENFS_LOADBALANCE_RR;
++			return ENFS_RET_OK;
++		}
++	}
++	return -EINVAL;
++}
++
++static const struct check_and_assign_value g_check_and_assign_value[] = {
++	{"path_detect_interval", enfs_check_and_assign_int_value,
++	MIN_PATH_DETECT_INTERVAL, MAX_PATH_DETECT_INTERVAL},
++	{"path_detect_timeout", enfs_check_and_assign_int_value,
++	MIN_PATH_DETECT_TIMEOUT, MAX_PATH_DETECT_TIMEOUT},
++	{"multipath_timeout", enfs_check_and_assign_int_value,
++	MIN_MULTIPATH_TIMEOUT, MAX_MULTIPATH_TIMEOUT},
++	{"multipath_disable", enfs_check_and_assign_int_value,
++	MIN_MULTIPATH_STATE, MAX_MULTIPATH_STATE},
++	{"multipath_select_policy", enfs_check_and_assign_loadbalance_mode,
++	0, 0},
++};
++
++static int enfs_read_config_file(char *buffer, char *file_path)
++{
++	int ret;
++	struct file *filp = NULL;
++	loff_t f_pos = 0;
++	mm_segment_t fs;
++
++
++	filp = filp_open(file_path, O_RDONLY, 0);
++
++	if (IS_ERR(filp)) {
++		enfs_log_error("Failed to open file %s\n", CONFIG_FILE_PATH);
++		ret = -ENOENT;
++		return ret;
++	}
++
++	fs = get_fs();
++	set_fs(get_ds());
++	kernel_read(filp, buffer, MAX_FILE_SIZE, &f_pos);
++	set_fs(fs);
++
++	ret = filp_close(filp, NULL);
++	if (ret) {
++		enfs_log_error("Close File:%s failed:%d.\n",
++			      CONFIG_FILE_PATH, ret);
++		return -EINVAL;
++	}
++	return ENFS_RET_OK;
++}
++
++static int enfs_deal_with_comment_line(char *buffer)
++{
++	int ret;
++	char *pos = strchr(buffer, '\n');
++
++	if (pos != NULL)
++		ret = strlen(buffer) - strlen(pos);
++	else
++		ret = strlen(buffer);
++
++	return ret;
++}
++
++static int enfs_parse_key_value_from_config(char *buffer, char *key,
++					       char *value, int keyLen,
++					       int valueLen)
++{
++	char *line;
++	char *tokenPtr;
++	int len;
++	char *tem;
++	char *pos = strchr(buffer, '\n');
++
++	if (pos != NULL)
++		len = strlen(buffer) - strlen(pos);
++	else
++		len = strlen(buffer);
++
++	line = kmalloc(len + 1, GFP_KERNEL);
++	if (!line) {
++		enfs_log_error("Failed to allocate memory.\n");
++		return -ENOMEM;
++	}
++	line[len] = '\0';
++	strncpy(line, buffer, len);
++
++	tem = line;
++	tokenPtr = strsep(&tem, "=");
++	if (tokenPtr == NULL || tem == NULL) {
++		kfree(line);
++		return len;
++	}
++	strncpy(key, strim(tokenPtr), keyLen);
++	strncpy(value, strim(tem), valueLen);
++
++	kfree(line);
++	return len;
++}
++
++static int enfs_get_value_from_config_file(char *buffer, char *field_name,
++					      char *value, int valueLen)
++{
++	int ret;
++	char key[STRING_BUF_SIZE + 1] = {0};
++	char val[STRING_BUF_SIZE + 1] = {0};
++
++	while (buffer[0] != '\0') {
++		if (buffer[0] == '\n') {
++			buffer++;
++		} else if (buffer[0] == '#') {
++			ret = enfs_deal_with_comment_line(buffer);
++			if (ret > 0)
++				buffer += ret;
++		} else {
++			ret = enfs_parse_key_value_from_config(buffer, key, val,
++							      STRING_BUF_SIZE,
++							      STRING_BUF_SIZE);
++			if (ret < 0) {
++				enfs_log_error("failed parse key value, %d\n"
++					, ret);
++				return ret;
++			}
++			key[STRING_BUF_SIZE] = '\0';
++			val[STRING_BUF_SIZE] = '\0';
++
++			buffer += ret;
++
++			if (strcmp(field_name, key) == 0) {
++				strncpy(value, val, valueLen);
++				return ENFS_RET_OK;
++			}
++		}
++	}
++	enfs_log_error("can not find value which matched field_name: %s.\n",
++			  field_name);
++	return -EINVAL;
++}
++
++int enfs_config_load(void)
++{
++	char value[STRING_BUF_SIZE + 1];
++	int ret;
++	int table_len;
++	int min;
++	int max;
++	int i;
++	char *buffer;
++
++	buffer = kmalloc(MAX_FILE_SIZE, GFP_KERNEL);
++	if (!buffer) {
++		enfs_log_error("Failed to allocate memory.\n");
++		return -ENOMEM;
++	}
++	memset(buffer, 0, MAX_FILE_SIZE);
++
++	g_enfs_config_info.path_detect_interval = DEFAULT_PATH_DETECT_INTERVAL;
++	g_enfs_config_info.path_detect_timeout = DEFAULT_PATH_DETECT_TIMEOUT;
++	g_enfs_config_info.multipath_timeout = DEFAULT_MULTIPATH_TIMEOUT;
++	g_enfs_config_info.multipath_state = DEFAULT_MULTIPATH_STATE;
++	g_enfs_config_info.loadbalance_mode = DEFAULT_LOADBALANCE_MODE;
++
++	table_len = sizeof(g_check_and_assign_value) /
++				sizeof(g_check_and_assign_value[0]);
++
++	ret = enfs_read_config_file(buffer, CONFIG_FILE_PATH);
++	if (ret != 0) {
++		kfree(buffer);
++		return ret;
++	}
++
++	for (i = 0; i < table_len; i++) {
++		ret = enfs_get_value_from_config_file(buffer,
++				g_check_and_assign_value[i].field_name,
++				value, STRING_BUF_SIZE);
++		if (ret < 0)
++			continue;
++
++		value[STRING_BUF_SIZE] = '\0';
++		min = g_check_and_assign_value[i].min_value;
++		max = g_check_and_assign_value[i].max_value;
++		if (g_check_and_assign_value[i].func != NULL)
++			(*g_check_and_assign_value[i].func)(
++				g_check_and_assign_value[i].field_name,
++				value, min, max);
++	}
++
++	kfree(buffer);
++	return ENFS_RET_OK;
++}
++
++int enfs_get_config_path_detect_interval(void)
++{
++	return g_enfs_config_info.path_detect_interval;
++}
++
++int enfs_get_config_path_detect_timeout(void)
++{
++	return g_enfs_config_info.path_detect_timeout;
++}
++
++int enfs_get_config_multipath_timeout(void)
++{
++	return g_enfs_config_info.multipath_timeout;
++}
++
++int enfs_get_config_multipath_state(void)
++{
++	return g_enfs_config_info.multipath_state;
++}
++
++int enfs_get_config_loadbalance_mode(void)
++{
++	return g_enfs_config_info.loadbalance_mode;
++}
++
++static bool enfs_file_changed(const char *filename)
++{
++	int err;
++	struct kstat file_stat;
++
++	err = vfs_stat(filename, &file_stat);
++	if (err) {
++		pr_err("failed to open file:%s err:%d\n", filename, err);
++		return false;
++	}
++
++	if (timespec64_compare(&modify_time, &file_stat.mtime) == -1) {
++		modify_time = file_stat.mtime;
++		pr_info("file change: %lld %lld\n", modify_time.tv_sec,
++			   file_stat.mtime.tv_sec);
++		return true;
++	}
++
++	return false;
++}
++
++static int enfs_thread_func(void *data)
++{
++	while (!kthread_should_stop()) {
++		if (enfs_file_changed(CONFIG_FILE_PATH))
++			enfs_config_load();
++
++		msleep(ENFS_NOTIFY_FILE_PERIOD);
++	}
++	return 0;
++}
++
++int enfs_config_timer_init(void)
++{
++	thread = kthread_run(enfs_thread_func, NULL, "enfs_notiy_file_thread");
++	if (IS_ERR(thread)) {
++		pr_err("Failed to create kernel thread\n");
++		return PTR_ERR(thread);
++	}
++	return 0;
++}
++
++void enfs_config_timer_exit(void)
++{
++	pr_info("enfs_notify_file_exit\n");
++	if (thread)
++		kthread_stop(thread);
++}
+diff --git a/fs/nfs/enfs/enfs_config.h b/fs/nfs/enfs/enfs_config.h
+new file mode 100644
+index 000000000..4eff0ccc3
+--- /dev/null
++++ b/fs/nfs/enfs/enfs_config.h
+@@ -0,0 +1,31 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ * Description: nfs configuration
++ * Create: 2023-07-27
++ */
++
++#ifndef ENFS_CONFIG_H
++#define ENFS_CONFIG_H
++
++#include <linux/types.h>
++
++enum enfs_multipath_state {
++	ENFS_MULTIPATH_ENABLE = 0,
++	ENFS_MULTIPATH_DISABLE = 1,
++};
++
++enum enfs_loadbalance_mode {
++	ENFS_LOADBALANCE_RR,
++};
++
++
++int enfs_get_config_path_detect_interval(void);
++int enfs_get_config_path_detect_timeout(void);
++int enfs_get_config_multipath_timeout(void);
++int enfs_get_config_multipath_state(void);
++int enfs_get_config_loadbalance_mode(void);
++int enfs_config_load(void);
++int enfs_config_timer_init(void);
++void enfs_config_timer_exit(void);
++#endif // ENFS_CONFIG_H
+diff --git a/fs/nfs/enfs/enfs_errcode.h b/fs/nfs/enfs/enfs_errcode.h
+new file mode 100644
+index 000000000..ffa089088
+--- /dev/null
++++ b/fs/nfs/enfs/enfs_errcode.h
+@@ -0,0 +1,16 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ * Description: nfs errocode
++ * Create: 2023-07-31
++ */
++
++#ifndef ENFS_ERRCODE_H
++#define ENFS_ERRCODE_H
++
++enum {
++	ENFS_RET_OK = 0,
++	ENFS_RET_FAIL
++};
++
++#endif // ENFS_ERRCODE_H
+diff --git a/fs/nfs/enfs/enfs_log.h b/fs/nfs/enfs/enfs_log.h
+new file mode 100644
+index 000000000..e12f8f3ae
+--- /dev/null
++++ b/fs/nfs/enfs/enfs_log.h
+@@ -0,0 +1,24 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ * Description: enfs log
++ * Create: 2023-07-31
++ */
++#ifndef ENFS_LOG_H
++#define ENFS_LOG_H
++
++#include <linux/printk.h>
++
++#define enfs_log_info(fmt, ...) \
++	pr_info("enfs:[%s]" pr_fmt(fmt), \
++	__func__, ##__VA_ARGS__)
++
++#define enfs_log_error(fmt, ...) \
++	pr_err("enfs:[%s]" pr_fmt(fmt), \
++	__func__, ##__VA_ARGS__)
++
++#define enfs_log_debug(fmt, ...) \
++	pr_debug("enfs:[%s]" pr_fmt(fmt), \
++	__func__, ##__VA_ARGS__)
++
++#endif  // ENFS_ERRCODE_H
+diff --git a/fs/nfs/enfs/failover_com.h b/fs/nfs/enfs/failover_com.h
+new file mode 100644
+index 000000000..c52940da2
+--- /dev/null
++++ b/fs/nfs/enfs/failover_com.h
+@@ -0,0 +1,23 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ * Description: failover time commont header file
++ * Create: 2023-08-02
++ */
++#ifndef FAILOVER_COMMON_H
++#define FAILOVER_COMMON_H
++
++static inline bool failover_is_enfs_clnt(struct rpc_clnt *clnt)
++{
++	struct rpc_clnt *next = clnt->cl_parent;
++
++	while (next) {
++		if (next == next->cl_parent)
++			break;
++		next = next->cl_parent;
++	}
++
++	return next != NULL ? next->cl_enfs : clnt->cl_enfs;
++}
++
++#endif // FAILOVER_COMMON_H
+diff --git a/fs/nfs/enfs/failover_path.c b/fs/nfs/enfs/failover_path.c
+new file mode 100644
+index 000000000..2f5387216
+--- /dev/null
++++ b/fs/nfs/enfs/failover_path.c
+@@ -0,0 +1,212 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ * Description: nfs path failover file
++ * Create: 2023-08-02
++ */
++
++#include "failover_path.h"
++#include <linux/nfs.h>
++#include <linux/nfs3.h>
++#include <linux/nfs4.h>
++#include <linux/sunrpc/clnt.h>
++#include <linux/sunrpc/sched.h>
++#include <linux/sunrpc/xprt.h>
++#include "enfs_config.h"
++#include "enfs_log.h"
++#include "failover_com.h"
++#include "pm_state.h"
++#include "pm_ping.h"
++
++enum failover_policy_t {
++	FAILOVER_NOACTION = 1,
++	FAILOVER_RETRY,
++	FAILOVER_RETRY_DELAY,
++};
++
++static void failover_retry_path(struct rpc_task *task)
++{
++	int ret;
++
++	ret = rpc_restart_call(task);
++
++	if (ret == 1) {
++		xprt_release(task);
++		rpc_init_task_retry_counters(task);
++		rpc_task_release_transport(task);
++		task->tk_xprt = rpc_task_get_next_xprt(task->tk_client);
++	}
++}
++
++static void failover_retry_path_delay(struct rpc_task *task, int32_t delay)
++{
++	failover_retry_path(task);
++	rpc_delay(task, delay);
++}
++
++static void failover_retry_path_by_policy(struct rpc_task *task,
++			enum failover_policy_t policy)
++{
++	if (policy == FAILOVER_RETRY)
++		failover_retry_path(task);
++	else if (policy == FAILOVER_RETRY_DELAY)
++		failover_retry_path_delay(task, 3 * HZ); // delay 3s
++}
++
++static
++enum failover_policy_t failover_get_nfs3_retry_policy(struct rpc_task *task)
++{
++	enum failover_policy_t policy = FAILOVER_NOACTION;
++	const struct rpc_procinfo *procinfo = task->tk_msg.rpc_proc;
++	u32 proc;
++
++	if (unlikely(procinfo == NULL)) {
++		enfs_log_error("the task contains no valid proc.\n");
++		return FAILOVER_NOACTION;
++	}
++
++	proc = procinfo->p_proc;
++
++	switch (proc) {
++	case NFS3PROC_CREATE:
++	case NFS3PROC_MKDIR:
++	case NFS3PROC_REMOVE:
++	case NFS3PROC_RMDIR:
++	case NFS3PROC_SYMLINK:
++	case NFS3PROC_LINK:
++	case NFS3PROC_SETATTR:
++	case NFS3PROC_WRITE:
++		policy = FAILOVER_RETRY_DELAY;
++	default:
++		policy = FAILOVER_RETRY;
++	}
++	return policy;
++}
++
++static
++enum failover_policy_t failover_get_nfs4_retry_policy(struct rpc_task *task)
++{
++	enum failover_policy_t policy = FAILOVER_NOACTION;
++	const struct rpc_procinfo *procinfo = task->tk_msg.rpc_proc;
++	u32 proc_idx;
++
++	if (unlikely(procinfo == NULL)) {
++		enfs_log_error("the task contains no valid proc.\n");
++		return FAILOVER_NOACTION;
++	}
++
++	proc_idx = procinfo->p_statidx;
++
++	switch (proc_idx) {
++	case NFSPROC4_CLNT_CREATE:
++	case NFSPROC4_CLNT_REMOVE:
++	case NFSPROC4_CLNT_LINK:
++	case NFSPROC4_CLNT_SYMLINK:
++	case NFSPROC4_CLNT_SETATTR:
++	case NFSPROC4_CLNT_WRITE:
++	case NFSPROC4_CLNT_RENAME:
++	case NFSPROC4_CLNT_SETACL:
++		policy = FAILOVER_RETRY_DELAY;
++	default:
++		policy = FAILOVER_RETRY;
++	}
++	return policy;
++}
++
++static enum failover_policy_t failover_get_retry_policy(struct rpc_task *task)
++{
++	struct rpc_clnt *clnt = task->tk_client;
++	u32 version = clnt->cl_vers;
++	enum failover_policy_t policy = FAILOVER_NOACTION;
++
++	// 1. if the task meant to send to certain xprt, take no action
++	if (task->tk_flags & RPC_TASK_FIXED)
++		return FAILOVER_NOACTION;
++
++	// 2. get policy by different version of nfs protocal
++	if (version == 3) // nfs v3
++		policy = failover_get_nfs3_retry_policy(task);
++	else if (version == 4) // nfs v4
++		policy = failover_get_nfs4_retry_policy(task);
++	else
++		return FAILOVER_NOACTION;
++
++	// 3. if the task is not send to target, retry immediately
++	if (!RPC_WAS_SENT(task))
++		policy = FAILOVER_RETRY;
++
++	return policy;
++}
++
++static int failover_check_task(struct rpc_task *task)
++{
++	struct rpc_clnt *clnt = NULL;
++	int disable_mpath = enfs_get_config_multipath_state();
++
++	if (disable_mpath != ENFS_MULTIPATH_ENABLE)	{
++		enfs_log_debug("Multipath is not enabled.\n");
++		return -EINVAL;
++	}
++
++	if (unlikely((task == NULL) || (task->tk_client == NULL))) {
++		enfs_log_error("The task is not valid.\n");
++		return -EINVAL;
++	}
++
++	clnt = task->tk_client;
++
++	if (clnt->cl_prog != NFS_PROGRAM) {
++		enfs_log_debug("The clnt is not prog{%u} type.\n",
++			clnt->cl_prog);
++		return -EINVAL;
++	}
++
++	if (!failover_is_enfs_clnt(clnt)) {
++		enfs_log_debug("The clnt is not a enfs-managed type.\n");
++		return -EINVAL;
++	}
++	return 0;
++}
++
++void failover_handle(struct rpc_task *task)
++{
++	enum failover_policy_t policy;
++	int ret;
++
++	ret = failover_check_task(task);
++	if (ret != 0)
++		return;
++
++	pm_set_path_state(task->tk_xprt, PM_STATE_FAULT);
++
++	policy = failover_get_retry_policy(task);
++
++	failover_retry_path_by_policy(task, policy);
++}
++
++bool failover_task_need_call_start_again(struct rpc_task *task)
++{
++	int ret;
++
++	ret = failover_check_task(task);
++	if (ret != 0)
++		return false;
++
++	return true;
++}
++
++bool failover_prepare_transmit(struct rpc_task *task)
++{
++	if (task->tk_flags & RPC_TASK_FIXED)
++		return true;
++
++	if (pm_ping_is_test_xprt_task(task))
++		return true;
++
++	if (pm_get_path_state(task->tk_xprt) == PM_STATE_FAULT) {
++		task->tk_status = -ETIMEDOUT;
++		return false;
++	}
++
++	return true;
++}
+diff --git a/fs/nfs/enfs/failover_path.h b/fs/nfs/enfs/failover_path.h
+new file mode 100644
+index 000000000..9159ada07
+--- /dev/null
++++ b/fs/nfs/enfs/failover_path.h
+@@ -0,0 +1,16 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ * Description: nfs path failover header file
++ * Create: 2023-08-02
++ */
++
++#ifndef FAILOVER_PATH_H
++#define FAILOVER_PATH_H
++
++#include <linux/sunrpc/sched.h>
++
++void failover_handle(struct rpc_task *task);
++bool failover_prepare_transmit(struct rpc_task *task);
++bool failover_task_need_call_start_again(struct rpc_task *task);
++#endif // FAILOVER_PATH_H
+diff --git a/fs/nfs/enfs/failover_time.c b/fs/nfs/enfs/failover_time.c
+new file mode 100644
+index 000000000..866ea82d1
+--- /dev/null
++++ b/fs/nfs/enfs/failover_time.c
+@@ -0,0 +1,99 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ * Description: failover time file
++ * Create: 2023-08-02
++ */
++
++#include "failover_time.h"
++#include <linux/jiffies.h>
++#include <linux/sunrpc/clnt.h>
++#include "enfs_config.h"
++#include "enfs_log.h"
++#include "failover_com.h"
++#include "pm_ping.h"
++
++static unsigned long failover_get_mulitipath_timeout(struct rpc_clnt *clnt)
++{
++	unsigned long config_tmo = enfs_get_config_multipath_timeout() * HZ;
++	unsigned long clnt_tmo = clnt->cl_timeout->to_initval;
++
++	if (config_tmo == 0)
++		return clnt_tmo;
++
++	return config_tmo > clnt_tmo ? clnt_tmo : config_tmo;
++}
++
++void failover_adjust_task_timeout(struct rpc_task *task, void *condition)
++{
++	struct rpc_clnt *clnt = NULL;
++	unsigned long tmo;
++	int disable_mpath = enfs_get_config_multipath_state();
++
++	if (disable_mpath != ENFS_MULTIPATH_ENABLE) {
++		enfs_log_debug("Multipath is not enabled.\n");
++		return;
++	}
++
++	clnt = task->tk_client;
++	if (unlikely(clnt == NULL)) {
++		enfs_log_error("task associate client is NULL.\n");
++		return;
++	}
++
++	if (!failover_is_enfs_clnt(clnt)) {
++		enfs_log_debug("The clnt is not a enfs-managed type.\n");
++		return;
++	}
++
++	tmo = failover_get_mulitipath_timeout(clnt);
++	if (tmo == 0) {
++		enfs_log_debug("Multipath is not enabled.\n");
++		return;
++	}
++
++	if (task->tk_timeout != 0)
++		task->tk_timeout =
++		task->tk_timeout < tmo ? task->tk_timeout : tmo;
++	else
++		task->tk_timeout = tmo;
++}
++
++void failover_init_task_req(struct rpc_task *task, struct rpc_rqst *req)
++{
++	struct rpc_clnt *clnt = NULL;
++	int disable_mpath = enfs_get_config_multipath_state();
++
++	if (disable_mpath != ENFS_MULTIPATH_ENABLE) {
++		enfs_log_debug("Multipath is not enabled.\n");
++		return;
++	}
++
++	clnt = task->tk_client;
++	if (unlikely(clnt == NULL)) {
++		enfs_log_error("task associate client is NULL.\n");
++		return;
++	}
++
++	if (!failover_is_enfs_clnt(clnt)) {
++		enfs_log_debug("The clnt is not a enfs-managed type.\n");
++		return;
++	}
++
++	if (!pm_ping_is_test_xprt_task(task))
++		req->rq_timeout = failover_get_mulitipath_timeout(clnt);
++	else {
++		req->rq_timeout = enfs_get_config_path_detect_timeout() * HZ;
++		req->rq_majortimeo = req->rq_timeout + jiffies;
++	}
++
++	/*
++	 * when task is retried, the req is new, we lost major-timeout times,
++	 * so we have to restore req major
++	 * timeouts from the task, if it is stored.
++	 */
++	if (task->tk_major_timeo != 0)
++		req->rq_majortimeo = task->tk_major_timeo;
++	else
++		task->tk_major_timeo = req->rq_majortimeo;
++}
+diff --git a/fs/nfs/enfs/failover_time.h b/fs/nfs/enfs/failover_time.h
+new file mode 100644
+index 000000000..ede25b577
+--- /dev/null
++++ b/fs/nfs/enfs/failover_time.h
+@@ -0,0 +1,16 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ * Description: failover time header file
++ * Create: 2023-08-02
++ */
++
++#ifndef FAILOVER_TIME_H
++#define FAILOVER_TIME_H
++
++#include <linux/sunrpc/sched.h>
++
++void failover_adjust_task_timeout(struct rpc_task *task, void *condition);
++void failover_init_task_req(struct rpc_task *task, struct rpc_rqst *req);
++
++#endif // FAILOVER_TIME_H
+diff --git a/fs/nfs/enfs/init.h b/fs/nfs/enfs/init.h
+new file mode 100644
+index 000000000..d81af9b02
+--- /dev/null
++++ b/fs/nfs/enfs/init.h
+@@ -0,0 +1,16 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ * Description: nfs client init
++ * Create: 2023-07-31
++ */
++
++#ifndef ENFS_INIT_H
++#define ENFS_INIT_H
++
++#include <linux/types.h>
++
++int32_t enfs_init(void);
++void enfs_fini(void);
++
++#endif
+diff --git a/fs/nfs/enfs/mgmt_init.c b/fs/nfs/enfs/mgmt_init.c
+new file mode 100644
+index 000000000..122790775
+--- /dev/null
++++ b/fs/nfs/enfs/mgmt_init.c
+@@ -0,0 +1,21 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ * Description: mgmt component init
++ * Create: 2023-07-31
++ */
++
++#include "mgmt_init.h"
++#include <linux/printk.h>
++#include "enfs_errcode.h"
++#include "enfs_config.h"
++
++int32_t mgmt_init(void)
++{
++	return enfs_config_timer_init();
++}
++
++void mgmt_fini(void)
++{
++	enfs_config_timer_exit();
++}
+diff --git a/fs/nfs/enfs/mgmt_init.h b/fs/nfs/enfs/mgmt_init.h
+new file mode 100644
+index 000000000..779732740
+--- /dev/null
++++ b/fs/nfs/enfs/mgmt_init.h
+@@ -0,0 +1,17 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ * Description: mgmt component init
++ * Create: 2023-07-31
++ */
++
++#ifndef MGMT_INIT_H
++#define MGMT_INIT_H
++
++#include <linux/types.h>
++
++int32_t mgmt_init(void);
++void mgmt_fini(void);
++
++
++#endif // MGMT_INIT_H
+diff --git a/fs/nfs/enfs/pm_ping.c b/fs/nfs/enfs/pm_ping.c
+new file mode 100644
+index 000000000..9ecbe9a77
+--- /dev/null
++++ b/fs/nfs/enfs/pm_ping.c
+@@ -0,0 +1,420 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ * Description: path state header file
++ * Create: 2023-08-21
++ */
++
++#include "pm_ping.h"
++#include <linux/err.h>
++#include <linux/spinlock.h>
++#include <linux/slab.h>
++#include <linux/module.h>
++#include <linux/printk.h>
++#include <linux/kthread.h>
++#include <linux/nfs.h>
++#include <linux/errno.h>
++#include <linux/rcupdate.h>
++#include <linux/workqueue.h>
++#include <net/netns/generic.h>
++#include <linux/atomic.h>
++#include <linux/sunrpc/clnt.h>
++
++#include "../../../net/sunrpc/netns.h"
++#include "pm_state.h"
++#include "enfs.h"
++#include "enfs_log.h"
++#include "enfs_config.h"
++
++#define SLEEP_INTERVAL 2
++extern unsigned int sunrpc_net_id;
++
++static struct task_struct *pm_ping_timer_thread;
++//protect pint_execute_workq
++static spinlock_t ping_execute_workq_lock;
++// timer for test xprt workqueue
++static struct workqueue_struct *ping_execute_workq;
++// count the ping xprt work on flight
++static atomic_t check_xprt_count;
++
++struct ping_xprt_work {
++	struct rpc_xprt *xprt;  // use this specific xprt
++	struct rpc_clnt *clnt;  // use this specific rpc_client
++	struct work_struct ping_work;
++};
++
++struct pm_ping_async_callback {
++	void *data;
++	void (*func)(void *data);
++};
++
++// set xprt's enum pm_check_state
++void pm_ping_set_path_check_state(struct rpc_xprt *xprt,
++			enum pm_check_state state)
++{
++	struct enfs_xprt_context *ctx = NULL;
++
++	if (IS_ERR(xprt)) {
++		enfs_log_error("The xprt ptr is not exist.\n");
++		return;
++	}
++
++	if (xprt == NULL) {
++		enfs_log_error("The xprt is not valid.\n");
++		return;
++	}
++
++	xprt_get(xprt);
++
++	ctx = (struct enfs_xprt_context *)xprt->multipath_context;
++	if (ctx == NULL) {
++		enfs_log_error("The xprt multipath ctx is not valid.\n");
++		xprt_put(xprt);
++		return;
++	}
++
++	atomic_set(&ctx->path_check_state, state);
++	xprt_put(xprt);
++}
++
++// get xprt's enum pm_check_state
++static enum pm_check_state pm_ping_get_path_check_state(struct rpc_xprt *xprt)
++{
++	struct enfs_xprt_context *ctx = NULL;
++	enum pm_check_state state;
++
++	if (xprt == NULL) {
++		enfs_log_error("The xprt is not valid.\n");
++		return PM_CHECK_UNDEFINE;
++	}
++
++	ctx = (struct enfs_xprt_context *)xprt->multipath_context;
++	if (ctx == NULL) {
++		enfs_log_error("The xprt multipath ctx is not valid.\n");
++		return PM_CHECK_UNDEFINE;
++	}
++
++	state = atomic_read(&ctx->path_check_state);
++
++	return state;
++}
++
++static void pm_ping_call_done_callback(void *data)
++{
++	struct pm_ping_async_callback *callback_data =
++		(struct pm_ping_async_callback *)data;
++
++	if (callback_data == NULL)
++		return;
++
++	callback_data->func(callback_data->data);
++
++	kfree(callback_data);
++}
++
++// Default callback for async RPC calls
++static void pm_ping_call_done(struct rpc_task *task, void *data)
++{
++	struct rpc_xprt *xprt = task->tk_xprt;
++
++	atomic_dec(&check_xprt_count);
++	if (task->tk_status >= 0)
++		pm_set_path_state(xprt, PM_STATE_NORMAL);
++	else
++		pm_set_path_state(xprt, PM_STATE_FAULT);
++
++	pm_ping_set_path_check_state(xprt, PM_CHECK_FINISH);
++
++	pm_ping_call_done_callback(data);
++}
++
++// register func to rpc_call_done
++static const struct rpc_call_ops pm_ping_set_status_ops = {
++	.rpc_call_done = pm_ping_call_done,
++};
++
++// execute work which in work_queue
++static void pm_ping_execute_work(struct work_struct *work)
++{
++	int ret = 0;
++
++	// get the work information
++	struct ping_xprt_work *work_info =
++		container_of(work, struct ping_xprt_work, ping_work);
++
++	// if check state is pending
++	if (pm_ping_get_path_check_state(work_info->xprt) == PM_CHECK_WAITING) {
++
++		pm_ping_set_path_check_state(work_info->xprt,
++		PM_CHECK_CHECKING);
++
++		ret = rpc_clnt_test_xprt(work_info->clnt,
++			work_info->xprt,
++			&pm_ping_set_status_ops,
++			NULL,
++			RPC_TASK_ASYNC | RPC_TASK_FIXED);
++
++		if (ret < 0) {
++			enfs_log_debug("ping xprt execute failed ,ret %d", ret);
++
++			pm_ping_set_path_check_state(work_info->xprt,
++			PM_CHECK_FINISH);
++
++		} else
++			atomic_inc(&check_xprt_count);
++
++	}
++
++	atomic_dec(&work_info->clnt->cl_count);
++	xprt_put(work_info->xprt);
++	kfree(work_info);
++	work_info = NULL;
++}
++
++static bool pm_ping_workqueue_queue_work(struct work_struct *work)
++{
++	bool ret = false;
++
++	spin_lock(&ping_execute_workq_lock);
++
++	if (ping_execute_workq != NULL)
++		ret = queue_work(ping_execute_workq, work);
++
++	spin_unlock(&ping_execute_workq_lock);
++	return ret;
++}
++
++// init test work and add this work to workqueue
++static int pm_ping_add_work(struct rpc_clnt *clnt,
++			struct rpc_xprt *xprt, void *data)
++{
++	struct ping_xprt_work *work_info;
++	bool ret = false;
++
++	if (IS_ERR(xprt) || xprt == NULL) {
++		enfs_log_error("The xprt ptr is not exist.\n");
++		return -EINVAL;
++	}
++
++	if (IS_ERR(clnt) || clnt == NULL) {
++		enfs_log_error("The clnt ptr is not exist.\n");
++		return -EINVAL;
++	}
++
++	if (!xprt->multipath_context) {
++		enfs_log_error("multipath_context is null.\n");
++		return -EINVAL;
++	}
++
++	// check xprt pending status, if pending status equals Finish
++	// means this xprt can inster to work queue
++	if (pm_ping_get_path_check_state(xprt) ==
++		PM_CHECK_FINISH ||
++		pm_ping_get_path_check_state(xprt) ==
++		PM_CHECK_INIT) {
++
++		enfs_log_debug("find xprt pointer.   %p\n", xprt);
++		work_info = kzalloc(sizeof(struct ping_xprt_work), GFP_ATOMIC);
++		if (work_info == NULL)
++			return -ENOMEM;
++		work_info->clnt = clnt;
++		atomic_inc(&clnt->cl_count);
++		work_info->xprt = xprt;
++		xprt_get(xprt);
++		INIT_WORK(&work_info->ping_work, pm_ping_execute_work);
++		pm_ping_set_path_check_state(xprt, PM_CHECK_WAITING);
++
++		ret = pm_ping_workqueue_queue_work(&work_info->ping_work);
++		if (!ret) {
++			atomic_dec(&work_info->clnt->cl_count);
++			xprt_put(work_info->xprt);
++			kfree(work_info);
++			return -EINVAL;
++		}
++	}
++	return 0;
++}
++
++// encapsulate pm_ping_add_work()
++static int pm_ping_execute_xprt_test(struct rpc_clnt *clnt,
++			struct rpc_xprt *xprt, void *data)
++{
++	pm_ping_add_work(clnt, xprt, NULL);
++    // return 0 for rpc_clnt_iterate_for_each_xprt();
++    // because negative value will stop iterate all xprt
++    // and we need return negative value for debug
++    // Therefore, we need this function to iterate all xprt
++	return 0;
++}
++
++// export to other module add ping work to workqueue
++int pm_ping_rpc_test_xprt(struct rpc_clnt *clnt, struct rpc_xprt *xprt)
++{
++	int ret;
++
++	ret = pm_ping_add_work(clnt, xprt, NULL);
++	return ret;
++}
++
++// iterate xprt in the client
++static void pm_ping_loop_rpclnt(struct sunrpc_net *sn)
++{
++	struct rpc_clnt *clnt;
++
++	spin_lock(&sn->rpc_client_lock);
++	list_for_each_entry_rcu(clnt, &sn->all_clients, cl_clients) {
++		if (clnt->cl_enfs) {
++			enfs_log_debug("find rpc_clnt.   %p\n", clnt);
++			rpc_clnt_iterate_for_each_xprt(clnt,
++				pm_ping_execute_xprt_test, NULL);
++		}
++	}
++	spin_unlock(&sn->rpc_client_lock);
++}
++
++// iterate each clnt in the sunrpc_net
++static void pm_ping_loop_sunrpc_net(void)
++{
++	struct net *net;
++	struct sunrpc_net *sn;
++
++	rcu_read_lock();
++	for_each_net_rcu(net) {
++		sn = net_generic(net, sunrpc_net_id);
++		if (sn == NULL)
++			continue;
++		pm_ping_loop_rpclnt(sn);
++	}
++	rcu_read_unlock();
++}
++
++static int pm_ping_routine(void *data)
++{
++	while (!kthread_should_stop()) {
++		// equale 0 means open multipath
++		if (enfs_get_config_multipath_state() ==
++			ENFS_MULTIPATH_ENABLE)
++			pm_ping_loop_sunrpc_net();
++
++		msleep(
++		enfs_get_config_path_detect_interval() * 1000);
++	}
++	return 0;
++}
++
++// start thread to cycly ping
++static int pm_ping_start(void)
++{
++	pm_ping_timer_thread =
++	kthread_run(pm_ping_routine, NULL, "pm_ping_routine");
++	if (IS_ERR(pm_ping_timer_thread)) {
++		enfs_log_error("Failed to create kernel thread\n");
++		return PTR_ERR(pm_ping_timer_thread);
++	}
++	return 0;
++}
++
++// initialize workqueue
++static int pm_ping_workqueue_init(void)
++{
++	struct workqueue_struct *queue = NULL;
++
++	queue = create_workqueue("pm_ping_workqueue");
++
++	if (queue == NULL) {
++		enfs_log_error("create workqueue failed.\n");
++		return -ENOMEM;
++	}
++
++	spin_lock(&ping_execute_workq_lock);
++	ping_execute_workq = queue;
++	spin_unlock(&ping_execute_workq_lock);
++	enfs_log_info("create workqueue succeeeded.\n");
++	return 0;
++}
++
++static void pm_ping_workqueue_fini(void)
++{
++	struct workqueue_struct *queue = NULL;
++
++	spin_lock(&ping_execute_workq_lock);
++	queue = ping_execute_workq;
++	ping_execute_workq = NULL;
++	spin_unlock(&ping_execute_workq_lock);
++
++	enfs_log_info("delete work queue\n");
++
++	if (queue != NULL) {
++		flush_workqueue(queue);
++		destroy_workqueue(queue);
++	}
++}
++
++// module exit func
++void pm_ping_fini(void)
++{
++	if (pm_ping_timer_thread)
++		kthread_stop(pm_ping_timer_thread);
++
++	pm_ping_workqueue_fini();
++
++	while (atomic_read(&check_xprt_count) != 0)
++		msleep(SLEEP_INTERVAL);
++}
++
++// module init func
++int pm_ping_init(void)
++{
++	int ret;
++
++	atomic_set(&check_xprt_count, 0);
++	ret = pm_ping_workqueue_init();
++	if (ret != 0) {
++		enfs_log_error("PM_PING Module loading failed.\n");
++		return ret;
++	}
++	ret = pm_ping_start();
++	if (ret != 0) {
++		enfs_log_error("PM_PING Module loading failed.\n");
++		pm_ping_workqueue_fini();
++		return ret;
++	}
++
++	return ret;
++}
++
++bool pm_ping_is_test_xprt_task(struct rpc_task *task)
++{
++	return task->tk_ops == &pm_ping_set_status_ops ? true : false;
++}
++
++int pm_ping_rpc_test_xprt_with_callback(struct rpc_clnt *clnt,
++			struct rpc_xprt *xprt,
++			void (*func)(void *data),
++			void *data)
++{
++	int ret;
++
++	struct pm_ping_async_callback *callback_data =
++		kzalloc(sizeof(struct pm_ping_async_callback), GFP_KERNEL);
++
++	if (callback_data == NULL) {
++		enfs_log_error("failed to mzalloc mem\n");
++		return -ENOMEM;
++	}
++
++	callback_data->data = data;
++	callback_data->func = func;
++	atomic_inc(&check_xprt_count);
++	ret = rpc_clnt_test_xprt(clnt, xprt,
++		&pm_ping_set_status_ops,
++		callback_data,
++		RPC_TASK_ASYNC | RPC_TASK_FIXED);
++
++	if (ret < 0) {
++		enfs_log_debug("ping xprt execute failed ,ret %d", ret);
++		atomic_dec(&check_xprt_count);
++	}
++
++	return ret;
++}
+diff --git a/fs/nfs/enfs/pm_ping.h b/fs/nfs/enfs/pm_ping.h
+new file mode 100644
+index 000000000..8b159b286
+--- /dev/null
++++ b/fs/nfs/enfs/pm_ping.h
+@@ -0,0 +1,32 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ * Description: nfs configuration
++ * Create: 2023-07-27
++ */
++
++#ifndef PM_PING_H
++#define PM_PING_H
++
++#include <linux/sunrpc/clnt.h>
++
++enum pm_check_state {
++	PM_CHECK_INIT, // this xprt never been queued
++	PM_CHECK_WAITING, // this xprt waiting in the queue
++	PM_CHECK_CHECKING, // this xprt is testing
++	PM_CHECK_FINISH, // this xprt has been finished
++	PM_CHECK_UNDEFINE, // undefine multipath struct
++};
++
++int pm_ping_init(void);
++void pm_ping_fini(void);
++int pm_ping_rpc_test_xprt(struct rpc_clnt *clnt, struct rpc_xprt *xprt);
++void pm_ping_set_path_check_state(struct rpc_xprt *xprt,
++			enum pm_check_state state);
++bool pm_ping_is_test_xprt_task(struct rpc_task *task);
++int pm_ping_rpc_test_xprt_with_callback(struct rpc_clnt *clnt,
++			struct rpc_xprt *xprt,
++			void (*func)(void *data),
++			void *data);
++
++#endif // PM_PING_H
+diff --git a/fs/nfs/enfs/pm_state.c b/fs/nfs/enfs/pm_state.c
+new file mode 100644
+index 000000000..279028dc0
+--- /dev/null
++++ b/fs/nfs/enfs/pm_state.c
+@@ -0,0 +1,156 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ * Description: path state file
++ * Create: 2023-08-12
++ */
++#include "pm_state.h"
++#include <linux/sunrpc/xprt.h>
++
++#include "enfs.h"
++#include "enfs_log.h"
++
++enum pm_path_state pm_get_path_state(struct rpc_xprt *xprt)
++{
++	struct enfs_xprt_context *ctx = NULL;
++	enum pm_path_state state;
++
++	if (xprt == NULL) {
++		enfs_log_error("The xprt is not valid.\n");
++		return PM_STATE_UNDEFINED;
++	}
++
++	xprt_get(xprt);
++
++	ctx = (struct enfs_xprt_context *)xprt->multipath_context;
++	if (ctx == NULL) {
++		enfs_log_error("The xprt multipath ctx is not valid.\n");
++		xprt_put(xprt);
++		return PM_STATE_UNDEFINED;
++	}
++
++	state = atomic_read(&ctx->path_state);
++
++	xprt_put(xprt);
++
++	return state;
++}
++
++void pm_set_path_state(struct rpc_xprt *xprt, enum pm_path_state state)
++{
++	struct enfs_xprt_context *ctx = NULL;
++	enum pm_path_state cur_state;
++
++	if (xprt == NULL) {
++		enfs_log_error("The xprt is not valid.\n");
++		return;
++	}
++
++	xprt_get(xprt);
++
++	ctx = (struct enfs_xprt_context *)xprt->multipath_context;
++	if (ctx == NULL) {
++		enfs_log_error("The xprt multipath ctx is not valid.\n");
++		xprt_put(xprt);
++		return;
++	}
++
++	cur_state = atomic_read(&ctx->path_state);
++	if (cur_state == state) {
++		xprt_put(xprt);
++		return;
++	}
++
++	atomic_set(&ctx->path_state, state);
++	enfs_log_info("The xprt {%p} path state change from {%d} to {%d}.\n",
++		xprt, cur_state, state);
++
++	xprt_put(xprt);
++}
++
++void pm_get_path_state_desc(struct rpc_xprt *xprt, char *buf, int len)
++{
++	enum pm_path_state state;
++
++	if (xprt == NULL) {
++		enfs_log_error("The xprt is not valid.\n");
++		return;
++	}
++
++	if ((buf == NULL) || (len <= 0)) {
++		enfs_log_error("Buffer is not valid, len=%d.\n", len);
++		return;
++	}
++
++	state = pm_get_path_state(xprt);
++
++	switch (state) {
++	case PM_STATE_INIT:
++		(void)snprintf(buf, len, "Init");
++		break;
++	case PM_STATE_NORMAL:
++		(void)snprintf(buf, len, "Normal");
++		break;
++	case PM_STATE_FAULT:
++		(void)snprintf(buf, len, "Fault");
++		break;
++	default:
++		(void)snprintf(buf, len, "Unknown");
++		break;
++	}
++}
++
++void pm_get_xprt_state_desc(struct rpc_xprt *xprt, char *buf, int len)
++{
++	int i;
++	unsigned long state;
++	static unsigned long xprt_mask[] = {
++		XPRT_LOCKED, XPRT_CONNECTED,
++		XPRT_CONNECTING, XPRT_CLOSE_WAIT,
++		XPRT_BOUND, XPRT_BINDING, XPRT_CLOSING,
++		XPRT_CONGESTED};
++
++	static const char *const xprt_state_desc[] = {
++		"LOCKED", "CONNECTED", "CONNECTING",
++		"CLOSE_WAIT", "BOUND", "BINDING",
++		"CLOSING", "CONGESTED"};
++	int pos = 0;
++	int ret = 0;
++
++	if (xprt == NULL) {
++		enfs_log_error("The xprt is not valid.\n");
++		return;
++	}
++
++	if ((buf == NULL) || (len <= 0)) {
++		enfs_log_error(
++			"Xprt state buffer is not valid, len=%d.\n",
++			len);
++		return;
++	}
++
++	xprt_get(xprt);
++	state = READ_ONCE(xprt->state);
++	xprt_put(xprt);
++
++	for (i = 0; i < ARRAY_SIZE(xprt_mask); ++i) {
++		if (pos >= len)
++			break;
++
++		if (!test_bit(xprt_mask[i], &state))
++			continue;
++
++		if (pos == 0)
++			ret = snprintf(buf, len, "%s", xprt_state_desc[i]);
++		else
++			ret = snprintf(buf + pos, len - pos, "|%s",
++					xprt_state_desc[i]);
++
++		if (ret < 0) {
++			enfs_log_error("format state failed, ret %d.\n", ret);
++			break;
++		}
++
++		pos += ret;
++	}
++}
+diff --git a/fs/nfs/enfs/pm_state.h b/fs/nfs/enfs/pm_state.h
+new file mode 100644
+index 000000000..469af998d
+--- /dev/null
++++ b/fs/nfs/enfs/pm_state.h
+@@ -0,0 +1,27 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ * Description: path state header file
++ * Create: 2023-08-12
++ */
++
++#ifndef PM_STATE_H
++#define PM_STATE_H
++
++#include <linux/types.h>
++#include <linux/sunrpc/xprt.h>
++
++enum pm_path_state {
++	PM_STATE_INIT,
++	PM_STATE_NORMAL,
++	PM_STATE_FAULT,
++	PM_STATE_UNDEFINED  // xprt is not multipath xprt
++};
++
++void pm_set_path_state(struct rpc_xprt *xprt, enum pm_path_state state);
++enum pm_path_state pm_get_path_state(struct rpc_xprt *xprt);
++
++void pm_get_path_state_desc(struct rpc_xprt *xprt, char *buf, int len);
++void pm_get_xprt_state_desc(struct rpc_xprt *xprt, char *buf, int len);
++
++#endif // PM_STATE_H

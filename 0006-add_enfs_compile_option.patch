@@ -1,0 +1,70 @@
+diff --git a/arch/arm64/configs/openeuler_defconfig b/arch/arm64/configs/openeuler_defconfig
+index b04256636d4b..ae53510c0627 100644
+--- a/arch/arm64/configs/openeuler_defconfig
++++ b/arch/arm64/configs/openeuler_defconfig
+@@ -5344,6 +5344,7 @@ CONFIG_LOCKD=m
+ CONFIG_LOCKD_V4=y
+ CONFIG_NFS_ACL_SUPPORT=m
+ CONFIG_NFS_COMMON=y
++# CONFIG_ENFS is not set
+ CONFIG_SUNRPC=m
+ CONFIG_SUNRPC_GSS=m
+ CONFIG_SUNRPC_BACKCHANNEL=y
+diff --git a/arch/x86/configs/openeuler_defconfig b/arch/x86/configs/openeuler_defconfig
+index 59baeb2973af..ccc317f7fdb2 100644
+--- a/arch/x86/configs/openeuler_defconfig
++++ b/arch/x86/configs/openeuler_defconfig
+@@ -6825,6 +6825,7 @@ CONFIG_LOCKD=m
+ CONFIG_LOCKD_V4=y
+ CONFIG_NFS_ACL_SUPPORT=m
+ CONFIG_NFS_COMMON=y
++# CONFIG_ENFS is not set
+ CONFIG_SUNRPC=m
+ CONFIG_SUNRPC_GSS=m
+ CONFIG_SUNRPC_BACKCHANNEL=y
+diff --git a/fs/nfs/Kconfig b/fs/nfs/Kconfig
+index e55f86713948..872c9b7671b1 100644
+--- a/fs/nfs/Kconfig
++++ b/fs/nfs/Kconfig
+@@ -196,3 +196,14 @@ config NFS_DEBUG
+ 	depends on NFS_FS && SUNRPC_DEBUG
+ 	select CRC32
+ 	default y
++
++config ENFS
++	tristate "NFS client support for ENFS"
++	depends on NFS_FS
++	default n
++	help
++	  This option enables support multipath of the NFS protocol
++	  in the kernel's NFS client.
++	  This feature will improve performance and reliability.
++
++	  If sure, say Y.
+diff --git a/fs/nfs/Makefile b/fs/nfs/Makefile
+index c587e3c4c6a6..19d0ac2ba3b8 100644
+--- a/fs/nfs/Makefile
++++ b/fs/nfs/Makefile
+@@ -12,6 +12,7 @@ nfs-y 			:= client.o dir.o file.o getroot.o inode.o super.o \
+ nfs-$(CONFIG_ROOT_NFS)	+= nfsroot.o
+ nfs-$(CONFIG_SYSCTL)	+= sysctl.o
+ nfs-$(CONFIG_NFS_FSCACHE) += fscache.o fscache-index.o
++nfs-$(CONFIG_ENFS) += enfs_adapter.o
+ 
+ obj-$(CONFIG_NFS_V2) += nfsv2.o
+ nfsv2-y := nfs2super.o proc.o nfs2xdr.o
+@@ -34,3 +35,5 @@ nfsv4-$(CONFIG_NFS_V4_2)	+= nfs42proc.o
+ obj-$(CONFIG_PNFS_FILE_LAYOUT) += filelayout/
+ obj-$(CONFIG_PNFS_BLOCK) += blocklayout/
+ obj-$(CONFIG_PNFS_FLEXFILE_LAYOUT) += flexfilelayout/
++
++obj-$(CONFIG_ENFS) += enfs/
+diff --git a/net/sunrpc/Makefile b/net/sunrpc/Makefile
+index 090658c3da12..fe4e3b28c5d1 100644
+--- a/net/sunrpc/Makefile
++++ b/net/sunrpc/Makefile
+@@ -19,3 +19,4 @@ sunrpc-$(CONFIG_SUNRPC_DEBUG) += debugfs.o
+ sunrpc-$(CONFIG_SUNRPC_BACKCHANNEL) += backchannel_rqst.o
+ sunrpc-$(CONFIG_PROC_FS) += stats.o
+ sunrpc-$(CONFIG_SYSCTL) += sysctl.o
++sunrpc-$(CONFIG_ENFS) += sunrpc_enfs_adapter.o

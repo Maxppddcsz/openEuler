@@ -1,0 +1,1860 @@
+diff --git a/fs/nfs/enfs/enfs_multipath.c b/fs/nfs/enfs/enfs_multipath.c
+new file mode 100644
+index 000000000..d49dc91e1
+--- /dev/null
++++ b/fs/nfs/enfs/enfs_multipath.c
+@@ -0,0 +1,654 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ */
++#include "enfs_multipath.h"
++#include <linux/in.h>
++#include <linux/in6.h>
++#include <linux/kallsyms.h>
++#include <linux/mm.h>
++#include <linux/module.h>
++#include <linux/mount.h>
++#include <linux/namei.h>
++#include <linux/rcupdate.h>
++#include <linux/slab.h>
++#include <linux/socket.h>
++#include <linux/atomic.h>
++#include <linux/sunrpc/addr.h>
++#include <linux/sunrpc/bc_xprt.h>
++#include <linux/sunrpc/clnt.h>
++#include <linux/sunrpc/metrics.h>
++#include <linux/sunrpc/rpc_pipe_fs.h>
++#include <linux/sunrpc/xprt.h>
++#include <linux/sunrpc/xprtmultipath.h>
++#include <linux/types.h>
++#include <linux/un.h>
++#include <linux/utsname.h>
++#include <linux/workqueue.h>
++#include <trace/events/sunrpc.h>
++#include <linux/sunrpc/sunrpc_enfs_adapter.h>
++
++#include "enfs.h"
++#include "enfs_log.h"
++#include "enfs_multipath_parse.h"
++#include "enfs_path.h"
++#include "enfs_proc.h"
++#include "enfs_remount.h"
++#include "enfs_roundrobin.h"
++#include "failover_path.h"
++#include "failover_time.h"
++#include "pm_ping.h"
++#include "pm_state.h"
++
++struct xprt_attach_callback_data {
++	atomic_t *conditon;
++	wait_queue_head_t *waitq;
++};
++
++struct xprt_attach_info {
++	struct sockaddr_storage *localAddress;
++	struct sockaddr_storage *remoteAddress;
++	struct rpc_xprt *xprt;
++	struct xprt_attach_callback_data *data;
++};
++
++static DECLARE_WAIT_QUEUE_HEAD(path_attach_wait_queue);
++
++/**
++ * set socket port.
++ * @ns: need transform to network byte order
++ */
++static void sockaddr_set_port(struct sockaddr *addr, __be16 port, bool ns)
++{
++	switch (addr->sa_family) {
++	case AF_INET:
++		((struct sockaddr_in *)addr)->sin_port =
++			ns ? htons(port) : port;
++		break;
++	case AF_INET6:
++		((struct sockaddr_in6 *)addr)->sin6_port =
++			ns ? htons(port) : port;
++		break;
++	}
++}
++
++static __be16 get_rpc_clnt_port(struct rpc_clnt *clnt)
++{
++	struct sockaddr_storage ss;
++	struct sockaddr *addr = (struct sockaddr *)&ss;
++
++	rpc_peeraddr(clnt, (struct sockaddr *)&ss, sizeof(ss));
++	switch (addr->sa_family) {
++	case AF_INET:
++		return ((struct sockaddr_in *)addr)->sin_port;
++
++	case AF_INET6:
++		return ((struct sockaddr_in6 *)addr)->sin6_port;
++
++	default:
++		enfs_log_error("not support family:%d.\n", addr->sa_family);
++		return -1;
++	}
++}
++
++static int sockaddr_ip_to_str(struct sockaddr *addr, char *buf, int len)
++{
++	switch (addr->sa_family) {
++	case AF_INET: {
++		struct sockaddr_in *sin = (struct sockaddr_in *)addr;
++
++		snprintf(buf, len, "%pI4", &sin->sin_addr);
++		return 0;
++	}
++	case AF_INET6: {
++		struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)addr;
++
++		snprintf(buf, len, "%pI6", &sin6->sin6_addr);
++		return 0;
++	}
++	default:
++		break;
++	}
++	return 1;
++}
++
++void print_enfs_multipath_addr(struct sockaddr *local, struct sockaddr *remote)
++{
++	char buf1[128];
++	char buf2[128];
++
++	sockaddr_ip_to_str(local, buf1, sizeof(buf1));
++	sockaddr_ip_to_str(remote, buf2, sizeof(buf2));
++
++	pr_info("local:%s remote:%s\n", buf1, buf2);
++}
++
++static int enfs_servername(char *servername, unsigned long long len,
++						   struct rpc_create_args *args)
++{
++	struct sockaddr_un *sun = (struct sockaddr_un *)args->address;
++	struct sockaddr_in *sin = (struct sockaddr_in *)args->address;
++	struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)args->address;
++
++	servername[0] = '\0';
++	switch (args->address->sa_family) {
++	case AF_LOCAL:
++		snprintf(servername, len, "%s", sun->sun_path);
++		break;
++	case AF_INET:
++		snprintf(servername, len, "%pI4", &sin->sin_addr.s_addr);
++		break;
++	case AF_INET6:
++		snprintf(servername, len, "%pI6", &sin6->sin6_addr);
++		break;
++	default:
++		pr_info("invalid family:%d\n",
++				args->address->sa_family);
++		return -EINVAL;
++	}
++	return 0;
++}
++
++static void pm_xprt_ping_callback(void *data)
++{
++	struct xprt_attach_callback_data *attach_callback_data =
++	(struct xprt_attach_callback_data *)data;
++
++	atomic_dec(attach_callback_data->conditon);
++	wake_up(attach_callback_data->waitq);
++}
++
++static
++int enfs_add_xprt_setup(struct rpc_clnt *clnt, struct rpc_xprt_switch *xps,
++			struct rpc_xprt *xprt, void *data)
++{
++	int ret;
++	struct enfs_xprt_context *ctx;
++	struct xprt_attach_info *attach_info = data;
++	struct sockaddr_storage *srcaddr = attach_info->localAddress;
++
++	ctx = (struct enfs_xprt_context *)xprt->multipath_context;
++	ctx->stats = rpc_alloc_iostats(clnt);
++	ctx->main = false;
++	ctx->srcaddr = *srcaddr;
++	pm_set_path_state(xprt, PM_STATE_INIT);
++	pm_ping_set_path_check_state(xprt, PM_CHECK_INIT);
++
++	attach_info->xprt = xprt;
++	xprt_get(xprt);
++
++	ret = pm_ping_rpc_test_xprt_with_callback(clnt, xprt,
++				pm_xprt_ping_callback, attach_info->data);
++	if (ret != 1) {
++		enfs_log_error("Failed to add ping task.\n");
++		atomic_dec(attach_info->data->conditon);
++	}
++
++	// so that rpc_clnt_add_xprt
++	// does not call rpc_xprt_switch_add_xprt
++	return 1;
++}
++
++int enfs_configure_xprt_to_clnt(struct xprt_create *xprtargs,
++			struct rpc_clnt *clnt,
++			struct xprt_attach_info *attach_info)
++{
++	int err = 0;
++	__be16 port;
++
++	xprtargs->srcaddr = (struct sockaddr *)attach_info->localAddress;
++	xprtargs->dstaddr = (struct sockaddr *)attach_info->remoteAddress;
++
++	port = get_rpc_clnt_port(clnt);
++	sockaddr_set_port((struct sockaddr *)attach_info->remoteAddress, port,
++					  false);
++	print_enfs_multipath_addr((struct sockaddr *)attach_info->localAddress,
++				(struct sockaddr *)attach_info->remoteAddress);
++
++	err = rpc_clnt_add_xprt(clnt, xprtargs,
++							enfs_add_xprt_setup,
++							attach_info);
++	if (err != 1) {
++		enfs_log_error("clnt add xprt err:%d\n", err);
++		return err;
++	}
++	return 0;
++}
++
++// Calculate the greatest common divisor of two numbers
++static int enfs_cal_gcd(int num1, int num2)
++{
++	if (num2 == 0)
++		return num1;
++	return enfs_cal_gcd(num2, num1 % num2);
++}
++
++bool enfs_cmp_addrs(struct sockaddr_storage *srcaddr,
++					struct sockaddr_storage *dstaddr,
++					struct sockaddr_storage *localAddress,
++					struct sockaddr_storage *remoteAddress)
++{
++	if (rpc_cmp_addr((struct sockaddr *)srcaddr,
++		(struct sockaddr *)localAddress)) {
++
++		if (rpc_cmp_addr((struct sockaddr *)dstaddr,
++			(struct sockaddr *)remoteAddress))
++			return true;
++
++	}
++
++	return false;
++}
++
++bool enfs_xprt_addrs_is_same(struct rpc_xprt *xprt,
++			struct sockaddr_storage *localAddress,
++			struct sockaddr_storage *remoteAddress)
++{
++	struct enfs_xprt_context *xprt_local_info = NULL;
++	struct sockaddr_storage *srcaddr = NULL;
++	struct sockaddr_storage *dstaddr = NULL;
++
++	if (xprt == NULL)
++		return true;
++	xprt_local_info = (struct enfs_xprt_context *)xprt->multipath_context;
++	srcaddr = &xprt_local_info->srcaddr;
++	dstaddr = &xprt->addr;
++
++	return enfs_cmp_addrs(srcaddr, dstaddr, localAddress, remoteAddress);
++}
++
++bool enfs_already_have_xprt(struct rpc_clnt *clnt,
++			struct sockaddr_storage *localAddress,
++			struct sockaddr_storage *remoteAddress)
++{
++	struct rpc_xprt *pos = NULL;
++	struct rpc_xprt_switch *xps = NULL;
++
++	rcu_read_lock();
++	xps = xprt_switch_get(rcu_dereference(clnt->cl_xpi.xpi_xpswitch));
++	if (xps == NULL) {
++		rcu_read_unlock();
++		return false;
++	}
++	list_for_each_entry_rcu(pos, &xps->xps_xprt_list, xprt_switch) {
++		if (enfs_xprt_addrs_is_same(pos, localAddress, remoteAddress)) {
++			xprt_switch_put(xps);
++			rcu_read_unlock();
++			return true;
++		}
++	}
++	xprt_switch_put(xps);
++	rcu_read_unlock();
++	return false;
++}
++
++static void enfs_xprt_switch_add_xprt(struct rpc_clnt *clnt,
++			struct rpc_xprt *xprt)
++{
++	struct rpc_xprt_switch *xps;
++
++	rcu_read_lock();
++	xps = rcu_dereference(clnt->cl_xpi.xpi_xpswitch);
++	spin_lock(&xps->xps_lock);
++	if (xps->xps_net == xprt->xprt_net || xps->xps_net == NULL)
++		xprt_switch_add_xprt_locked(xps, xprt);
++	spin_unlock(&xps->xps_lock);
++	rcu_read_unlock();
++}
++
++static void enfs_add_xprts_to_clnt(struct rpc_clnt *clnt,
++			struct xprt_attach_info *attach_infos,
++			int total_combinations)
++{
++	struct rpc_xprt *xprt;
++	enum pm_path_state state;
++	int i;
++	int link_count = 0;
++
++	for (i = 0; i < total_combinations; i++) {
++		xprt = attach_infos[i].xprt;
++
++		if (xprt == NULL)
++			continue;
++
++		state = pm_get_path_state(xprt);
++
++		if (link_count < MAX_XPRT_NUM_PER_CLIENT &&
++			state == PM_STATE_NORMAL) {
++
++			enfs_xprt_switch_add_xprt(clnt, xprt);
++			link_count++;
++			continue;
++
++		}
++
++		xprt_put(xprt);
++	}
++}
++
++static void enfs_combine_addr(struct xprt_create *xprtargs,
++			struct rpc_clnt *clnt,
++			struct nfs_ip_list *local,
++			struct nfs_ip_list *remote)
++{
++	int i;
++	int err;
++	int local_index;
++	int remote_index;
++	int link_count = 0;
++	int local_total = local->count;
++	int remote_total = remote->count;
++	int local_remote_total_lcm;
++	int total_combinations = local_total * remote_total;
++	struct xprt_attach_info *attach_infos;
++	atomic_t wait_queue_condition;
++
++	struct xprt_attach_callback_data attach_callback_data = {
++		&wait_queue_condition, &path_attach_wait_queue};
++
++	atomic_set(&wait_queue_condition, total_combinations);
++
++	pr_info("local count:%d remote count:%d\n", local_total, remote_total);
++	if (local_total == 0 || remote_total == 0) {
++		pr_err("no ip list is present.\n");
++		return;
++	}
++
++	attach_infos = kzalloc(
++			(total_combinations) * sizeof(struct xprt_attach_info),
++			GFP_KERNEL);
++	if (attach_infos == NULL) {
++		enfs_log_error("Failed to kzalloc memory\n");
++		return;
++	}
++	// Calculate the least common multiple of local_total and remote_total
++	local_remote_total_lcm = total_combinations /
++				enfs_cal_gcd(local_total, remote_total);
++
++	// It needs to be offset one for lcm times of
++	// cycle so that all possible link setup method would be traversed
++	for (i = 0; i < total_combinations; i++) {
++		local_index = i % local_total;
++		remote_index = (i + link_count / local_remote_total_lcm) %
++						remote_total;
++
++		if (enfs_already_have_xprt(clnt,
++			&local->address[local_index],
++			&remote->address[remote_index])) {
++
++			atomic_dec(&wait_queue_condition);
++			link_count++;
++			continue;
++
++		}
++
++		attach_infos[i].localAddress = &local->address[local_index];
++		attach_infos[i].remoteAddress = &remote->address[remote_index];
++		attach_infos[i].data = &attach_callback_data;
++
++		err = enfs_configure_xprt_to_clnt(xprtargs,
++					clnt, &attach_infos[i]);
++		if (err) {
++			pr_err("add xprt ippair err:%d\n", err);
++			atomic_dec(&wait_queue_condition);
++		}
++		link_count++;
++	}
++
++	wait_event(path_attach_wait_queue,
++			atomic_read(&wait_queue_condition) == 0);
++
++	enfs_add_xprts_to_clnt(clnt, attach_infos, total_combinations);
++
++	kfree(attach_infos);
++}
++
++void enfs_xprt_ippair_create(struct xprt_create *xprtargs,
++			struct rpc_clnt *clnt,
++			void *data)
++{
++	struct multipath_mount_options *mopt =
++				(struct multipath_mount_options *)data;
++
++	if (mopt == NULL) {
++		pr_err("ip list is NULL.\n");
++		return;
++	}
++
++	enfs_combine_addr(xprtargs, clnt,
++				mopt->local_ip_list,
++				mopt->remote_ip_list);
++	enfs_lb_set_policy(clnt);
++}
++
++struct xprts_options_and_clnt {
++	struct rpc_create_args *args;
++	struct rpc_clnt *clnt;
++	void *data;
++};
++
++static void set_clnt_enfs_flag(struct rpc_clnt *clnt)
++{
++	clnt->cl_enfs = true;
++}
++
++int enfs_config_xprt_create_args(struct xprt_create *xprtargs,
++			struct rpc_create_args *args,
++			char *servername, size_t length)
++{
++	int errno = 0;
++
++	xprtargs->ident = args->protocol;
++	xprtargs->net = args->net;
++	xprtargs->addrlen = args->addrsize;
++	xprtargs->servername = args->servername;
++
++	if (args->flags & RPC_CLNT_CREATE_INFINITE_SLOTS)
++		xprtargs->flags |= XPRT_CREATE_INFINITE_SLOTS;
++	if (args->flags & RPC_CLNT_CREATE_NO_IDLE_TIMEOUT)
++		xprtargs->flags |= XPRT_CREATE_NO_IDLE_TIMEOUT;
++
++	if (xprtargs->servername == NULL) {
++		errno = enfs_servername(servername, length, args);
++		if (errno)
++			return errno;
++		xprtargs->servername = servername;
++	}
++
++	return 0;
++}
++
++int enfs_multipath_create_thread(void *data)
++{
++	int errno;
++	char servername[48];
++	struct xprts_options_and_clnt *create_args =
++			(struct xprts_options_and_clnt *)data;
++	struct multipath_mount_options *mount_options =
++			(struct multipath_mount_options *)
++			create_args->args->multipath_option;
++	struct xprt_create xprtargs;
++
++	memset(&xprtargs, 0, sizeof(struct xprt_create));
++
++	if (mount_options == NULL) {
++		enfs_log_error("enfs: local and remot addr empty\n");
++		return -EINVAL;
++	}
++
++	errno = enfs_config_xprt_create_args(&xprtargs,
++				create_args->args, servername,
++				sizeof(servername));
++	if (errno) {
++		enfs_log_error("enfs: create xprt failed! errno:%d\n",
++			errno);
++		return errno;
++	}
++
++	//mount : localaddrs or remoteaddrs is empty
++	if (mount_options->local_ip_list->count == 0) {
++		errno = rpc_localaddr(create_args->clnt,
++				(struct sockaddr *)
++				&mount_options->local_ip_list->address[0],
++				sizeof(struct sockaddr_storage));
++		if (errno) {
++			enfs_log_error("enfs: get clnt srcaddr errno:%d\n",
++				errno);
++			return errno;
++		}
++		mount_options->local_ip_list->count = 1;
++	}
++
++	if (mount_options->remote_ip_list->count == 0) {
++		errno = rpc_peeraddr(create_args->clnt,
++				(struct sockaddr *)
++				&mount_options->remote_ip_list->address[0],
++				sizeof(struct sockaddr_storage));
++		if (errno == 0) {
++			enfs_log_error("enfs: get clnt dstaddr errno:%d\n",
++				errno);
++			return errno;
++		}
++		mount_options->remote_ip_list->count = 1;
++	}
++
++	errno = enfs_proc_create_clnt(create_args->clnt);
++	if (errno != 0)
++		pr_err("create clnt proc failed.\n");
++
++	set_clnt_enfs_flag(create_args->clnt);
++	enfs_xprt_ippair_create(&xprtargs, create_args->clnt, mount_options);
++
++	kfree(create_args->args);
++	kfree(data);
++	return 0;
++}
++
++static int set_main_xprt_ctx(struct rpc_clnt *clnt, struct rpc_xprt *xprt,
++			struct sockaddr_storage *srcaddr)
++{
++	struct enfs_xprt_context *ctx = xprt->multipath_context;
++
++	if (!ctx) {
++		enfs_log_error("main xprt not multipath ctx.\n");
++		return -1;
++	}
++
++	ctx->main = true;
++	ctx->stats = rpc_alloc_iostats(clnt);
++	ctx->srcaddr = *srcaddr;
++	pm_set_path_state(xprt, PM_STATE_NORMAL);
++	pm_ping_set_path_check_state(xprt, PM_CHECK_INIT);
++
++	return 0;
++}
++
++static int alloc_main_xprt_multicontext(struct rpc_create_args *args,
++			struct rpc_clnt *clnt)
++{
++	int err;
++	struct sockaddr_storage srcaddr;
++
++	// avoid main xprt multicontex local addr is empty.
++	err = rpc_localaddr(clnt, (struct sockaddr *)&srcaddr, sizeof(srcaddr));
++	if (err) {
++		enfs_log_error("get clnt localaddr err:%d\n", err);
++		return err;
++	}
++
++	err = set_main_xprt_ctx(clnt, clnt->cl_xprt, &srcaddr);
++	if (err)
++		enfs_log_error("alloc main xprt failed.\n");
++
++	return err;
++}
++
++void enfs_create_multi_xprt(struct rpc_create_args *args, struct rpc_clnt *clnt)
++{
++	// struct task_struct *th;
++	struct xprts_options_and_clnt *thargs;
++	struct rpc_create_args *cargs;
++	int err;
++
++	enfs_log_info("%s %p\n", __func__, clnt);
++
++	cargs = kmalloc(sizeof(struct rpc_create_args), GFP_KERNEL);
++	if (cargs == NULL)
++		return;
++
++	*cargs = *args;
++
++	thargs = kmalloc(sizeof(struct xprts_options_and_clnt), GFP_KERNEL);
++	if (thargs == NULL) {
++		kfree(cargs);
++		return;
++	}
++
++	alloc_main_xprt_multicontext(args, clnt);
++
++	thargs->args = cargs;
++	thargs->clnt = clnt;
++	thargs->data = args->multipath_option;
++
++	err = enfs_multipath_create_thread(thargs);
++
++	if (err != 0) {
++		kfree(cargs);
++		kfree(thargs);
++	}
++}
++
++static void enfs_create_xprt_ctx(struct rpc_xprt *xprt)
++{
++	int err;
++
++	err = enfs_alloc_xprt_ctx(xprt);
++	if (err)
++		enfs_log_error("alloc xprt failed.\n");
++}
++
++static struct rpc_multipath_ops ops = {
++	.owner = THIS_MODULE,
++	.create_clnt = enfs_create_multi_xprt,
++	.releas_clnt = enfs_proc_delete_clnt,
++	.create_xprt = enfs_create_xprt_ctx,
++	.destroy_xprt = enfs_free_xprt_ctx,
++	.xprt_iostat = enfs_count_iostat,
++	.failover_handle = failover_handle,
++	.task_need_call_start_again = failover_task_need_call_start_again,
++	.adjust_task_timeout = failover_adjust_task_timeout,
++	.init_task_req = failover_init_task_req,
++	.prepare_transmit = failover_prepare_transmit,
++};
++
++int enfs_multipath_init(void)
++{
++	int err;
++
++	enfs_log_info("multipath init.\n");
++
++	err = pm_ping_init();
++	if (err != 0) {
++		enfs_log_error("pm ping init err:%d\n", err);
++		return err;
++	}
++
++	err = enfs_proc_init();
++	if (err != 0) {
++		enfs_log_error("enfs proc init err:%d\n", err);
++		pm_ping_fini();
++		return err;
++	}
++
++	rpc_multipath_ops_register(&ops);
++
++	return 0;
++}
++
++void enfs_multipath_exit(void)
++{
++	enfs_log_info("multipath exit.\n");
++	rpc_multipath_ops_unregister(&ops);
++	enfs_proc_exit();
++	pm_ping_fini();
++}
+diff --git a/fs/nfs/enfs/enfs_multipath.h b/fs/nfs/enfs/enfs_multipath.h
+new file mode 100644
+index 000000000..3c58b0c4c
+--- /dev/null
++++ b/fs/nfs/enfs/enfs_multipath.h
+@@ -0,0 +1,23 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ * Description: enfs multipath
++ * Create: 2023-07-31
++ */
++
++#ifndef ENFS_MULTIPATH_H
++#define ENFS_MULTIPATH_H
++#include <linux/sunrpc/clnt.h>
++
++#define MAX_XPRT_NUM_PER_CLIENT 32
++
++int enfs_multipath_init(void);
++void enfs_multipath_exit(void);
++void enfs_xprt_ippair_create(struct xprt_create *xprtargs,
++			struct rpc_clnt *clnt, void *data);
++int enfs_config_xprt_create_args(struct xprt_create *xprtargs,
++			struct rpc_create_args *args,
++			char *servername, size_t length);
++void print_enfs_multipath_addr(struct sockaddr *local, struct sockaddr *remote);
++
++#endif // ENFS_MULTIPATH_H
+diff --git a/fs/nfs/enfs/enfs_path.c b/fs/nfs/enfs/enfs_path.c
+new file mode 100644
+index 000000000..7355f8c2f
+--- /dev/null
++++ b/fs/nfs/enfs/enfs_path.c
+@@ -0,0 +1,47 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ */
++
++#include <linux/sunrpc/metrics.h>
++#include <linux/sunrpc/xprt.h>
++
++#include "enfs.h"
++#include "enfs_log.h"
++#include "enfs_path.h"
++
++// only create ctx in this function
++// alloc iostat memory in create_clnt
++int enfs_alloc_xprt_ctx(struct rpc_xprt *xprt)
++{
++	struct enfs_xprt_context *ctx;
++
++	if (!xprt) {
++		enfs_log_error("invalid xprt pointer.\n");
++		return -EINVAL;
++	}
++
++	ctx = kzalloc(sizeof(struct enfs_xprt_context), GFP_KERNEL);
++	if (!ctx) {
++		enfs_log_error("add xprt test failed.\n");
++		return -ENOMEM;
++	}
++
++	xprt->multipath_context = (void *)ctx;
++	return 0;
++}
++
++// free multi_context and iostat memory
++void enfs_free_xprt_ctx(struct rpc_xprt *xprt)
++{
++	struct enfs_xprt_context *ctx = xprt->multipath_context;
++
++	if (ctx) {
++		if (ctx->stats) {
++			rpc_free_iostats(ctx->stats);
++			ctx->stats = NULL;
++		}
++		kfree(xprt->multipath_context);
++		xprt->multipath_context = NULL;
++	}
++}
+diff --git a/fs/nfs/enfs/enfs_path.h b/fs/nfs/enfs/enfs_path.h
+new file mode 100644
+index 000000000..97b1ef373
+--- /dev/null
++++ b/fs/nfs/enfs/enfs_path.h
+@@ -0,0 +1,12 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ */
++
++#ifndef ENFS_PATH_H
++#define ENFS_PATH_H
++
++int enfs_alloc_xprt_ctx(struct rpc_xprt *xprt);
++void enfs_free_xprt_ctx(struct rpc_xprt *xprt);
++
++#endif  // ENFS_PATH_H
+diff --git a/fs/nfs/enfs/enfs_proc.c b/fs/nfs/enfs/enfs_proc.c
+new file mode 100644
+index 000000000..53fa1a076
+--- /dev/null
++++ b/fs/nfs/enfs/enfs_proc.c
+@@ -0,0 +1,545 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ */
++#include <linux/module.h>
++#include <linux/proc_fs.h>
++#include <linux/seq_file.h>
++#include <linux/spinlock.h>
++#include <linux/sunrpc/clnt.h>
++#include <linux/sunrpc/metrics.h>
++#include <linux/sunrpc/xprtsock.h>
++#include <net/netns/generic.h>
++
++#include "../../../net/sunrpc/netns.h"
++
++#include "enfs.h"
++#include "enfs_log.h"
++#include "enfs_proc.h"
++#include "enfs_multipath.h"
++#include "pm_state.h"
++
++#define ENFS_PROC_DIR "enfs"
++#define ENFS_PROC_PATH_STATUS_LEN 256
++
++static struct proc_dir_entry *enfs_proc_parent;
++
++void
++enfs_iterate_each_rpc_clnt(int (*fn)(struct rpc_clnt *clnt, void *data),
++			void *data)
++{
++	struct net *net;
++	struct sunrpc_net *sn;
++	struct rpc_clnt *clnt;
++
++	rcu_read_lock();
++	for_each_net_rcu(net) {
++		sn = net_generic(net, sunrpc_net_id);
++		if (sn == NULL)
++			continue;
++		spin_lock(&sn->rpc_client_lock);
++		list_for_each_entry(clnt, &sn->all_clients, cl_clients) {
++			fn(clnt, data);
++		}
++		spin_unlock(&sn->rpc_client_lock);
++	}
++	rcu_read_unlock();
++}
++
++struct proc_dir_entry *enfs_get_proc_parent(void)
++{
++	return enfs_proc_parent;
++}
++
++static int sockaddr_ip_to_str(struct sockaddr *addr, char *buf, int len)
++{
++	switch (addr->sa_family) {
++	case AF_INET: {
++		struct sockaddr_in *sin = (struct sockaddr_in *)addr;
++
++		snprintf(buf, len, "%pI4", &sin->sin_addr);
++		return 0;
++	}
++	case AF_INET6: {
++		struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)addr;
++
++		snprintf(buf, len, "%pI6", &sin6->sin6_addr);
++		return 0;
++	}
++	default:
++		break;
++	}
++	return 1;
++}
++
++static bool should_print(const char *name)
++{
++	int i;
++	static const char * const proc_names[] = {
++	    "READ",
++	    "WRITE",
++	};
++
++	if (name == NULL)
++		return false;
++
++	for (i = 0; i < ARRAY_SIZE(proc_names); i++) {
++		if (strcmp(name, proc_names[i]) == 0)
++			return true;
++	}
++	return false;
++}
++
++struct enfs_xprt_iter {
++	unsigned int id;
++	struct seq_file *seq;
++	unsigned int max_addrs_length;
++};
++
++static int debug_show_xprt(struct rpc_clnt *clnt,
++			struct rpc_xprt *xprt,
++			void *data)
++{
++	struct enfs_xprt_context *ctx = NULL;
++
++	if (xprt->multipath_context)
++		ctx = xprt->multipath_context;
++
++	pr_info("	xprt:%p ctx:%p main:%d queue_len:%lu.\n", xprt,
++			xprt->multipath_context,
++			ctx ? ctx->main : false,
++			atomic_long_read(&xprt->queuelen));
++	return 0;
++}
++
++static int debug_show_clnt(struct rpc_clnt *clnt, void *data)
++{
++	pr_info("    clnt %d addr:%p enfs:%d\n",
++			clnt->cl_clid, clnt,
++			clnt->cl_enfs);
++	rpc_clnt_iterate_for_each_xprt(clnt, debug_show_xprt, NULL);
++	return 0;
++}
++
++static void debug_print_all_xprt(void)
++{
++	enfs_iterate_each_rpc_clnt(debug_show_clnt, NULL);
++}
++
++static
++void enfs_proc_format_xprt_addr_display(struct rpc_clnt *clnt,
++			struct rpc_xprt *xprt,
++			char *local_name_buf,
++			int local_name_buf_len,
++			char *remote_name_buf,
++			int remote_name_buf_len)
++{
++	int err;
++	struct sockaddr_storage srcaddr;
++	struct enfs_xprt_context *ctx;
++
++	ctx = (struct enfs_xprt_context *)xprt->multipath_context;
++
++	sockaddr_ip_to_str((struct sockaddr *)&xprt->addr,
++				remote_name_buf, remote_name_buf_len);
++
++	// get local address depend one main or not
++	if (enfs_is_main_xprt(xprt)) {
++		err = rpc_localaddr(clnt, (struct sockaddr *)&srcaddr,
++					sizeof(srcaddr));
++		if (err != 0)
++			(void)snprintf(local_name_buf,
++						local_name_buf_len, "Unknown");
++		else
++			sockaddr_ip_to_str((struct sockaddr *)&srcaddr,
++						local_name_buf,
++						local_name_buf_len);
++	} else {
++		sockaddr_ip_to_str((struct sockaddr *)&ctx->srcaddr,
++					local_name_buf,
++					local_name_buf_len);
++	}
++}
++
++static int enfs_show_xprt_stats(struct rpc_clnt *clnt,
++			struct rpc_xprt *xprt,
++			void *data)
++{
++	unsigned int op;
++	unsigned int maxproc = clnt->cl_maxproc;
++	struct enfs_xprt_iter *iter = (struct enfs_xprt_iter *)data;
++	struct enfs_xprt_context *ctx;
++	char local_name[INET6_ADDRSTRLEN];
++	char remote_name[INET6_ADDRSTRLEN];
++
++	if (!xprt->multipath_context)
++		return 0;
++
++	ctx = (struct enfs_xprt_context *)xprt->multipath_context;
++
++	enfs_proc_format_xprt_addr_display(clnt, xprt, local_name,
++					sizeof(local_name),
++					remote_name, sizeof(remote_name));
++
++	seq_printf(iter->seq, "%-6u%-*s%-*s", iter->id,
++			iter->max_addrs_length + 4,
++			local_name,
++			iter->max_addrs_length + 4,
++			remote_name);
++
++	iter->id++;
++
++	for (op = 0; op < maxproc; op++) {
++		if (!should_print(clnt->cl_procinfo[op].p_name))
++			continue;
++
++		seq_printf(iter->seq, "%-22lu%-22Lu%-22Lu",
++			ctx->stats[op].om_ops,
++			ctx->stats[op].om_ops == 0 ? 0 :
++			ktime_to_ms(ctx->stats[op].om_rtt) /
++			ctx->stats[op].om_ops,
++			ctx->stats[op].om_ops == 0 ? 0 :
++			ktime_to_ms(ctx->stats[op].om_execute) /
++			ctx->stats[op].om_ops);
++	}
++	seq_puts(iter->seq, "\n");
++	return 0;
++}
++
++static int rpc_proc_show_path_status(struct rpc_clnt *clnt,
++			struct rpc_xprt *xprt,
++			void *data)
++{
++	struct enfs_xprt_iter *iter = (struct enfs_xprt_iter *)data;
++	struct enfs_xprt_context *ctx = NULL;
++	char local_name[INET6_ADDRSTRLEN] = {0};
++	char remote_name[INET6_ADDRSTRLEN] = {0};
++	char multiapth_status[ENFS_PROC_PATH_STATUS_LEN] = {0};
++	char xprt_status[ENFS_PROC_PATH_STATUS_LEN] = {0};
++
++	if (!xprt->multipath_context) {
++		enfs_log_debug("multipath_context is null.\n");
++		return 0;
++	}
++	ctx = (struct enfs_xprt_context *)xprt->multipath_context;
++
++	enfs_proc_format_xprt_addr_display(clnt, xprt,
++				local_name,
++				sizeof(local_name),
++				remote_name, sizeof(remote_name));
++
++	pm_get_path_state_desc(xprt,
++				multiapth_status,
++				ENFS_PROC_PATH_STATUS_LEN);
++
++	pm_get_xprt_state_desc(xprt,
++				xprt_status,
++				ENFS_PROC_PATH_STATUS_LEN);
++
++	seq_printf(iter->seq, "%-6u%-*s%-*s%-12s%-12s\n",
++			iter->id, iter->max_addrs_length + 4,
++			local_name, iter->max_addrs_length + 4,
++			remote_name, multiapth_status,
++			xprt_status);
++	iter->id++;
++	return 0;
++}
++
++static int enfs_get_max_addrs_length(struct rpc_clnt *clnt,
++			struct rpc_xprt *xprt,
++			void *data)
++{
++	struct enfs_xprt_iter *iter = (struct enfs_xprt_iter *)data;
++	char local_name[INET6_ADDRSTRLEN];
++	char remote_name[INET6_ADDRSTRLEN];
++
++	enfs_proc_format_xprt_addr_display(clnt, xprt,
++				local_name, sizeof(local_name),
++				remote_name, sizeof(remote_name));
++
++	if (iter->max_addrs_length < strlen(local_name))
++		iter->max_addrs_length = strlen(local_name);
++
++	if (iter->max_addrs_length < strlen(remote_name))
++		iter->max_addrs_length = strlen(remote_name);
++
++	return 0;
++}
++
++static int rpc_proc_clnt_showpath(struct seq_file *seq, void *v)
++{
++	struct rpc_clnt *clnt = seq->private;
++	struct enfs_xprt_iter iter;
++
++	iter.seq = seq;
++	iter.id = 0;
++	iter.max_addrs_length = 0;
++
++	rpc_clnt_iterate_for_each_xprt(clnt,
++				enfs_get_max_addrs_length,
++				(void *)&iter);
++
++	seq_printf(seq, "%-6s%-*s%-*s%-12s%-12s\n", "id",
++			iter.max_addrs_length + 4,
++			"local_addr",
++			iter.max_addrs_length + 4,
++			"remote_addr",
++			"path_state",
++			"xprt_state");
++
++	rpc_clnt_iterate_for_each_xprt(clnt,
++				rpc_proc_show_path_status,
++				(void *)&iter);
++	return 0;
++}
++
++static int enfs_rpc_proc_show(struct seq_file *seq, void *v)
++{
++	struct rpc_clnt *clnt = seq->private;
++	struct enfs_xprt_iter iter;
++
++	iter.seq = seq;
++	iter.id = 0;
++	iter.max_addrs_length = 0;
++
++	debug_print_all_xprt();
++	pr_info("enfs proc clnt:%p\n", clnt);
++
++	rpc_clnt_iterate_for_each_xprt(clnt,
++				enfs_get_max_addrs_length,
++				(void *)&iter);
++
++	seq_printf(seq, "%-6s%-*s%-*s%-22s%-22s%-22s%-22s%-22s%-22s\n", "id",
++			iter.max_addrs_length + 4, "local_addr",
++			iter.max_addrs_length + 4,
++			"remote_addr", "r_count",
++			"r_rtt", "r_exec", "w_count", "w_rtt", "w_exec");
++
++	// rpc_clnt_show_stats(seq, clnt);
++	rpc_clnt_iterate_for_each_xprt(clnt,
++				enfs_show_xprt_stats,
++				(void *)&iter);
++	return 0;
++}
++
++static int rpc_proc_open(struct inode *inode, struct file *file)
++{
++	struct rpc_clnt *clnt = PDE_DATA(inode);
++
++	pr_info("%s %p\n", __func__, clnt);
++	return single_open(file, enfs_rpc_proc_show, clnt);
++}
++
++static int enfs_reset_xprt_stats(struct rpc_clnt *clnt,
++			struct rpc_xprt *xprt,
++			void *data)
++{
++	unsigned int op;
++	struct enfs_xprt_context *ctx;
++	unsigned int maxproc = clnt->cl_maxproc;
++	struct rpc_iostats stats = {0};
++
++	if (!xprt->multipath_context)
++		return 0;
++	ctx = (struct enfs_xprt_context *)xprt->multipath_context;
++
++	for (op = 0; op < maxproc; op++) {
++		spin_lock(&ctx->stats[op].om_lock);
++		ctx->stats[op] = stats;
++		spin_unlock(&ctx->stats[op].om_lock);
++	}
++	return 0;
++}
++
++static void trim_newline_ch(char *str, int len)
++{
++	int i;
++
++	for (i = 0; str[i] != '\0' && i < len; i++) {
++		if (str[i] == '\n')
++			str[i] = '\0';
++	}
++}
++
++static ssize_t enfs_proc_write(struct file *file,
++			const char __user *user_buf,
++			size_t len,
++			loff_t *offset)
++{
++	char buffer[128];
++	struct rpc_clnt *clnt =
++	((struct seq_file *)file->private_data)->private;
++
++	if (len >= sizeof(buffer))
++		return -E2BIG;
++
++	if (copy_from_user(buffer, user_buf, len) != 0)
++		return -EFAULT;
++
++	buffer[len] = '\0';
++	trim_newline_ch(buffer, len);
++	if (strcmp(buffer, "reset") != 0)
++		return -EINVAL;
++
++	rpc_clnt_iterate_for_each_xprt(clnt, enfs_reset_xprt_stats, NULL);
++	return len;
++}
++
++static int rpc_proc_show_path(struct inode *inode, struct file *file)
++{
++	struct rpc_clnt *clnt = PDE_DATA(inode);
++
++	return single_open(file, rpc_proc_clnt_showpath, clnt);
++}
++
++static const struct file_operations rpc_proc_fops = {
++	.owner = THIS_MODULE,
++	.open = rpc_proc_open,
++	.read = seq_read,
++	.llseek = seq_lseek,
++	.release = single_release,
++	.write = enfs_proc_write,
++};
++
++static const struct file_operations rpc_show_path_fops = {
++	.owner = THIS_MODULE,
++	.open = rpc_proc_show_path,
++	.read = seq_read,
++	.llseek = seq_lseek,
++	.release = single_release,
++};
++
++static int clnt_proc_name(struct rpc_clnt *clnt, char *buf, int len)
++{
++	int ret;
++
++	ret = snprintf(buf, len, "%s_%u",
++				rpc_peeraddr2str(clnt, RPC_DISPLAY_ADDR),
++				clnt->cl_clid);
++	if (ret > len)
++		return -E2BIG;
++	return 0;
++}
++
++static int enfs_proc_create_file(struct rpc_clnt *clnt)
++{
++	int err;
++	char buf[128];
++
++	struct proc_dir_entry *clnt_entry;
++	struct proc_dir_entry *stat_entry;
++
++	err = clnt_proc_name(clnt, buf, sizeof(buf));
++	if (err)
++		return err;
++
++	clnt_entry = proc_mkdir(buf, enfs_proc_parent);
++	if (clnt_entry == NULL)
++		return -EINVAL;
++
++	stat_entry = proc_create_data("stat",
++				0, clnt_entry,
++				&rpc_proc_fops, clnt);
++
++	if (stat_entry == NULL)
++		return -EINVAL;
++
++	stat_entry = proc_create_data("path",
++				0, clnt_entry,
++				&rpc_show_path_fops, clnt);
++
++	if (stat_entry == NULL)
++		return -EINVAL;
++
++	return 0;
++}
++
++void enfs_count_iostat(struct rpc_task *task)
++{
++	struct enfs_xprt_context *ctx = task->tk_xprt->multipath_context;
++
++	if (!ctx || !ctx->stats)
++		return;
++	rpc_count_iostats(task, ctx->stats);
++}
++
++static void enfs_proc_delete_file(struct rpc_clnt *clnt)
++{
++	int err;
++	char buf[128];
++
++	err = clnt_proc_name(clnt, buf, sizeof(buf));
++	if (err) {
++		pr_err("gen clnt name failed.\n");
++		return;
++	}
++	remove_proc_subtree(buf, enfs_proc_parent);
++}
++
++// create proc file "/porc/enfs/[mount_ip]_[id]/stat"
++int enfs_proc_create_clnt(struct rpc_clnt *clnt)
++{
++	int err;
++
++	err = enfs_proc_create_file(clnt);
++	if (err) {
++		pr_err("create client %d\n", err);
++		return err;
++	}
++
++	return 0;
++}
++
++void enfs_proc_delete_clnt(struct rpc_clnt *clnt)
++{
++	if (clnt->cl_enfs)
++		enfs_proc_delete_file(clnt);
++}
++
++static int enfs_proc_create_parent(void)
++{
++	enfs_proc_parent = proc_mkdir(ENFS_PROC_DIR, NULL);
++
++	if (enfs_proc_parent == NULL) {
++		pr_err("Enfs create proc dir err\n");
++		return -ENOMEM;
++	}
++	return 0;
++}
++
++static void enfs_proc_delete_parent(void)
++{
++	remove_proc_entry(ENFS_PROC_DIR, NULL);
++}
++
++static int enfs_proc_init_create_clnt(struct rpc_clnt *clnt, void *data)
++{
++	if (clnt->cl_enfs)
++		enfs_proc_create_file(clnt);
++	return 0;
++}
++
++static int enfs_proc_destroy_clnt(struct rpc_clnt *clnt, void *data)
++{
++	if (clnt->cl_enfs)
++		enfs_proc_delete_file(clnt);
++	return 0;
++}
++
++int enfs_proc_init(void)
++{
++	int err;
++
++	err = enfs_proc_create_parent();
++	if (err)
++		return err;
++
++	enfs_iterate_each_rpc_clnt(enfs_proc_init_create_clnt, NULL);
++	return 0;
++}
++
++void enfs_proc_exit(void)
++{
++	enfs_iterate_each_rpc_clnt(enfs_proc_destroy_clnt, NULL);
++	enfs_proc_delete_parent();
++}
+diff --git a/fs/nfs/enfs/enfs_proc.h b/fs/nfs/enfs/enfs_proc.h
+new file mode 100644
+index 000000000..321951031
+--- /dev/null
++++ b/fs/nfs/enfs/enfs_proc.h
+@@ -0,0 +1,21 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Client-side ENFS PROC.
++ *
++ * Copyright (c) 2023. Huawei Technologies Co., Ltd. All rights reserved.
++ */
++#ifndef ENFS_PROC_H
++#define ENFS_PROC_H
++
++struct rpc_clnt;
++struct rpc_task;
++struct proc_dir_entry;
++
++int enfs_proc_init(void);
++void enfs_proc_exit(void);
++struct proc_dir_entry *enfs_get_proc_parent(void);
++int enfs_proc_create_clnt(struct rpc_clnt *clnt);
++void enfs_proc_delete_clnt(struct rpc_clnt *clnt);
++void enfs_count_iostat(struct rpc_task *task);
++
++#endif
+diff --git a/fs/nfs/enfs/enfs_remount.c b/fs/nfs/enfs/enfs_remount.c
+new file mode 100644
+index 000000000..3b7d6a03d
+--- /dev/null
++++ b/fs/nfs/enfs/enfs_remount.c
+@@ -0,0 +1,220 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ * Description: remount ip source file
++ * Create: 2023-08-12
++ */
++#include "enfs_remount.h"
++
++#include <linux/string.h>
++#include <linux/in.h>
++#include <linux/in6.h>
++#include <linux/sunrpc/clnt.h>
++#include <linux/spinlock.h>
++#include <linux/sunrpc/addr.h>
++#include <linux/sunrpc/metrics.h>
++#include <linux/sunrpc/xprtmultipath.h>
++#include <linux/sunrpc/xprtsock.h>
++#include <linux/sunrpc/xprt.h>
++#include <linux/smp.h>
++#include <linux/delay.h>
++
++#include "enfs.h"
++#include "enfs_log.h"
++#include "enfs_multipath.h"
++#include "enfs_multipath_parse.h"
++#include "enfs_path.h"
++#include "enfs_proc.h"
++#include "enfs_multipath_client.h"
++
++static bool enfs_rpc_xprt_switch_need_delete_addr(
++	struct multipath_mount_options *enfs_option,
++	struct sockaddr *dstaddr, struct sockaddr *srcaddr)
++{
++	int i;
++	bool find_same_ip = false;
++	int32_t local_total;
++	int32_t remote_total;
++
++	local_total = enfs_option->local_ip_list->count;
++	remote_total = enfs_option->remote_ip_list->count;
++	if (local_total == 0 || remote_total == 0) {
++		pr_err("no ip list is present.\n");
++		return false;
++	}
++
++	for (i = 0; i < local_total; i++) {
++		find_same_ip =
++		rpc_cmp_addr((struct sockaddr *)
++		&enfs_option->local_ip_list->address[i],
++		srcaddr);
++		if (find_same_ip)
++			break;
++	}
++
++	if (find_same_ip == false)
++		return true;
++
++	find_same_ip = false;
++	for (i = 0; i < remote_total; i++) {
++		find_same_ip =
++		rpc_cmp_addr((struct sockaddr *)
++		&enfs_option->remote_ip_list->address[i],
++		dstaddr);
++		if (find_same_ip)
++			break;
++	}
++
++	if (find_same_ip == false)
++		return true;
++
++	return false;
++}
++
++// Used in rcu_lock
++static bool enfs_delete_xprt_from_switch(struct rpc_xprt *xprt,
++			void *enfs_option,
++			struct rpc_xprt_switch *xps)
++{
++	struct enfs_xprt_context *ctx = NULL;
++	struct multipath_mount_options *mopt =
++	(struct multipath_mount_options *)enfs_option;
++
++	if (enfs_is_main_xprt(xprt))
++		return true;
++
++	ctx = (struct enfs_xprt_context *)xprt->multipath_context;
++	if (enfs_rpc_xprt_switch_need_delete_addr(mopt,
++		(struct sockaddr *)&xprt->addr,
++		(struct sockaddr *)&ctx->srcaddr)) {
++
++		print_enfs_multipath_addr((struct sockaddr *)&ctx->srcaddr,
++					(struct sockaddr *)&xprt->addr);
++		rpc_xprt_switch_remove_xprt(xps, xprt);
++		return true;
++	}
++
++	return false;
++}
++
++void enfs_clnt_delete_obsolete_xprts(struct nfs_client *nfs_client,
++			void *enfs_option)
++{
++	int xprt_count = 0;
++	struct rpc_xprt *pos = NULL;
++	struct rpc_xprt_switch *xps = NULL;
++
++	rcu_read_lock();
++	xps = xprt_switch_get(
++		rcu_dereference(
++		nfs_client->cl_rpcclient->cl_xpi.xpi_xpswitch));
++	if (xps == NULL) {
++		rcu_read_unlock();
++		xprt_switch_put(xps);
++		return;
++	}
++	list_for_each_entry_rcu(pos, &xps->xps_xprt_list, xprt_switch) {
++		if (xprt_count < MAX_XPRT_NUM_PER_CLIENT) {
++			if (enfs_delete_xprt_from_switch(
++				pos, enfs_option, xps) == false)
++				xprt_count++;
++		} else
++			rpc_xprt_switch_remove_xprt(xps, pos);
++	}
++	rcu_read_unlock();
++	xprt_switch_put(xps);
++}
++
++int enfs_remount_iplist(struct nfs_client *nfs_client, void *enfs_option)
++{
++	int errno = 0;
++	char servername[48];
++	struct multipath_mount_options *remount_lists =
++	(struct multipath_mount_options *)enfs_option;
++	struct multipath_client_info *client_info =
++	(struct multipath_client_info *)nfs_client->cl_multipath_data;
++	struct xprt_create xprtargs;
++	struct rpc_create_args args = {
++		.protocol = nfs_client->cl_proto,
++		.net = nfs_client->cl_net,
++		.addrsize = nfs_client->cl_addrlen,
++		.servername = nfs_client->cl_hostname,
++	};
++
++	memset(&xprtargs, 0, sizeof(struct xprt_create));
++
++	//mount is not use multipath
++	if (client_info == NULL || enfs_option == NULL) {
++		enfs_log_error(
++		"mount information or remount information is empty.\n");
++		return -EINVAL;
++	}
++
++	//remount : localaddrs and remoteaddrs are empty
++	if (remount_lists->local_ip_list->count == 0 &&
++		remount_lists->remote_ip_list->count == 0) {
++		enfs_log_info("remount local_ip_list and remote_ip_list are NULL\n");
++		return 0;
++	}
++
++	errno = enfs_config_xprt_create_args(&xprtargs,
++		&args, servername, sizeof(servername));
++
++	if (errno) {
++		enfs_log_error("config_xprt_create failed! errno:%d\n", errno);
++		return errno;
++	}
++
++	if (remount_lists->local_ip_list->count == 0) {
++		if (client_info->local_ip_list->count == 0) {
++			errno = rpc_localaddr(nfs_client->cl_rpcclient,
++				(struct sockaddr *)
++				&remount_lists->local_ip_list->address[0],
++				sizeof(struct sockaddr_storage));
++			if (errno) {
++				enfs_log_error("get clnt srcaddr errno:%d\n",
++				errno);
++				return errno;
++			}
++			remount_lists->local_ip_list->count = 1;
++		} else
++			memcpy(remount_lists->local_ip_list,
++			client_info->local_ip_list,
++			sizeof(struct nfs_ip_list));
++	}
++
++	if (remount_lists->remote_ip_list->count == 0) {
++		if (client_info->remote_ip_list->count == 0) {
++			errno = rpc_peeraddr(nfs_client->cl_rpcclient,
++				(struct sockaddr *)
++				&remount_lists->remote_ip_list->address[0],
++				sizeof(struct sockaddr_storage));
++			if (errno == 0) {
++				enfs_log_error("get clnt dstaddr errno:%d\n",
++				errno);
++				return errno;
++			}
++			remount_lists->remote_ip_list->count = 1;
++		} else
++			memcpy(remount_lists->remote_ip_list,
++				client_info->remote_ip_list,
++				sizeof(struct nfs_ip_list));
++	}
++
++	enfs_log_info("Remount creating new links...\n");
++	enfs_xprt_ippair_create(&xprtargs,
++				nfs_client->cl_rpcclient,
++				remount_lists);
++
++	enfs_log_info("Remount deleting obsolete links...\n");
++	enfs_clnt_delete_obsolete_xprts(nfs_client, remount_lists);
++
++	memcpy(client_info->local_ip_list,
++		remount_lists->local_ip_list,
++		sizeof(struct nfs_ip_list));
++	memcpy(client_info->remote_ip_list,
++		remount_lists->remote_ip_list,
++		sizeof(struct nfs_ip_list));
++
++	return 0;
++}
+diff --git a/fs/nfs/enfs/enfs_remount.h b/fs/nfs/enfs/enfs_remount.h
+new file mode 100644
+index 000000000..c7a1dcbb6
+--- /dev/null
++++ b/fs/nfs/enfs/enfs_remount.h
+@@ -0,0 +1,14 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ * Description: remount ip header file
++ * Create: 2023-08-12
++ */
++#ifndef _ENFS_REMOUNT_
++#define _ENFS_REMOUNT_
++#include <linux/string.h>
++#include "enfs.h"
++
++int enfs_remount_iplist(struct nfs_client *nfs_client, void *enfs_option);
++
++#endif
+diff --git a/fs/nfs/enfs/enfs_roundrobin.c b/fs/nfs/enfs/enfs_roundrobin.c
+new file mode 100644
+index 000000000..4e4eda784
+--- /dev/null
++++ b/fs/nfs/enfs/enfs_roundrobin.c
+@@ -0,0 +1,255 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ */
++#include <linux/spinlock.h>
++#include <linux/module.h>
++#include <linux/printk.h>
++#include <linux/kref.h>
++#include <linux/rculist.h>
++#include <linux/types.h>
++#include <linux/sunrpc/xprt.h>
++#include <linux/sunrpc/clnt.h>
++#include <linux/sunrpc/xprtmultipath.h>
++#include "enfs_roundrobin.h"
++
++#include "enfs.h"
++#include "enfs_config.h"
++#include "pm_state.h"
++
++typedef struct rpc_xprt *(*enfs_xprt_switch_find_xprt_t)(
++	struct rpc_xprt_switch *xps, const struct rpc_xprt *cur);
++static const struct rpc_xprt_iter_ops enfs_xprt_iter_roundrobin;
++static const struct rpc_xprt_iter_ops enfs_xprt_iter_singular;
++
++static bool enfs_xprt_is_active(struct rpc_xprt *xprt)
++{
++	enum pm_path_state state;
++
++	if (kref_read(&xprt->kref) <= 0)
++		return false;
++
++	state = pm_get_path_state(xprt);
++	if (state == PM_STATE_NORMAL)
++		return true;
++
++	return false;
++}
++
++static struct rpc_xprt *enfs_lb_set_cursor_xprt(
++	struct rpc_xprt_switch *xps, struct rpc_xprt **cursor,
++	enfs_xprt_switch_find_xprt_t find_next)
++{
++	struct rpc_xprt *pos;
++	struct rpc_xprt *old;
++
++	old = smp_load_acquire(cursor); /* read latest cursor */
++	pos = find_next(xps, old);
++	smp_store_release(cursor, pos); /* let cursor point to pos */
++	return pos;
++}
++
++static
++struct rpc_xprt *enfs_lb_find_next_entry_roundrobin(
++		struct rpc_xprt_switch *xps, const struct rpc_xprt *cur)
++{
++	struct rpc_xprt *pos;
++	struct rpc_xprt *prev = NULL;
++	bool found = false;
++	struct rpc_xprt *min_queuelen_xprt = NULL;
++	unsigned long pos_xprt_queuelen;
++	unsigned long min_xprt_queuelen = 0;
++
++	unsigned long xps_queuelen = atomic_long_read(&xps->xps_queuelen);
++	// delete origin xprt
++	unsigned int multipath_nactive = READ_ONCE(xps->xps_nactive) - 1;
++
++	list_for_each_entry_rcu(pos, &xps->xps_xprt_list, xprt_switch) {
++		if (enfs_is_main_xprt(pos) || !enfs_xprt_is_active(pos)) {
++			prev = pos;
++			continue;
++		}
++
++		pos_xprt_queuelen = atomic_long_read(&pos->queuelen);
++		if (min_queuelen_xprt == NULL ||
++			pos_xprt_queuelen < min_xprt_queuelen) {
++
++			min_queuelen_xprt = pos;
++			min_xprt_queuelen = pos_xprt_queuelen;
++		}
++
++		if (cur == prev)
++			found = true;
++
++		if (found && pos_xprt_queuelen *
++			multipath_nactive <= xps_queuelen)
++			return pos;
++		prev = pos;
++	};
++
++	return min_queuelen_xprt;
++}
++
++struct rpc_xprt *enfs_lb_switch_find_first_active_xprt(
++			struct rpc_xprt_switch *xps)
++{
++	struct rpc_xprt *pos;
++
++	list_for_each_entry_rcu(pos, &xps->xps_xprt_list, xprt_switch) {
++		if (enfs_xprt_is_active(pos))
++			return pos;
++	};
++	return NULL;
++}
++
++struct rpc_xprt *enfs_lb_switch_get_main_xprt(struct rpc_xprt_switch *xps)
++{
++	return list_first_or_null_rcu(&xps->xps_xprt_list,
++				struct rpc_xprt, xprt_switch);
++}
++
++static struct rpc_xprt *enfs_lb_switch_get_next_xprt_roundrobin(
++			struct rpc_xprt_switch *xps, const struct rpc_xprt *cur)
++{
++	struct rpc_xprt *xprt;
++
++	// disable multipath
++	if (enfs_get_config_multipath_state())
++		return enfs_lb_switch_get_main_xprt(xps);
++
++	xprt = enfs_lb_find_next_entry_roundrobin(xps, cur);
++	if (xprt != NULL)
++		return xprt;
++
++	return enfs_lb_switch_get_main_xprt(xps);
++}
++
++static
++struct rpc_xprt *enfs_lb_iter_next_entry_roundrobin(struct rpc_xprt_iter *xpi)
++{
++	struct rpc_xprt_switch *xps = rcu_dereference(xpi->xpi_xpswitch);
++
++	if (xps == NULL)
++		return NULL;
++
++	return enfs_lb_set_cursor_xprt(xps, &xpi->xpi_cursor,
++				enfs_lb_switch_get_next_xprt_roundrobin);
++}
++
++static
++struct rpc_xprt *enfs_lb_switch_find_singular_entry(
++			struct rpc_xprt_switch *xps, const struct rpc_xprt *cur)
++{
++	struct rpc_xprt *pos;
++	bool found = false;
++
++	list_for_each_entry_rcu(pos, &xps->xps_xprt_list, xprt_switch) {
++		if (cur == pos)
++			found = true;
++
++		if (found && enfs_xprt_is_active(pos))
++			return pos;
++	}
++	return NULL;
++}
++
++struct rpc_xprt *enfs_lb_get_singular_xprt(
++			struct rpc_xprt_switch *xps, const struct rpc_xprt *cur)
++{
++	struct rpc_xprt *xprt;
++
++	if (xps == NULL)
++		return NULL;
++
++	// disable multipath
++	if (enfs_get_config_multipath_state())
++		return enfs_lb_switch_get_main_xprt(xps);
++
++	if (cur == NULL || xps->xps_nxprts < 2)
++		return enfs_lb_switch_find_first_active_xprt(xps);
++
++	xprt = enfs_lb_switch_find_singular_entry(xps, cur);
++	if (!xprt)
++		return enfs_lb_switch_get_main_xprt(xps);
++
++	return xprt;
++}
++
++static
++struct rpc_xprt *enfs_lb_iter_next_entry_sigular(struct rpc_xprt_iter *xpi)
++{
++	struct rpc_xprt_switch *xps = rcu_dereference(xpi->xpi_xpswitch);
++
++	if (xps == NULL)
++		return NULL;
++
++	return enfs_lb_set_cursor_xprt(xps, &xpi->xpi_cursor,
++				enfs_lb_get_singular_xprt);
++}
++
++static void enfs_lb_iter_default_rewind(struct rpc_xprt_iter *xpi)
++{
++	WRITE_ONCE(xpi->xpi_cursor, NULL);
++}
++
++static void enfs_lb_switch_set_roundrobin(struct rpc_clnt *clnt)
++{
++	struct rpc_xprt_switch *xps;
++
++	rcu_read_lock();
++	xps = rcu_dereference(clnt->cl_xpi.xpi_xpswitch);
++	rcu_read_unlock();
++	if (clnt->cl_vers == 3) {
++
++		if (READ_ONCE(xps->xps_iter_ops) != &enfs_xprt_iter_roundrobin)
++			WRITE_ONCE(xps->xps_iter_ops,
++			&enfs_xprt_iter_roundrobin);
++
++		return;
++	}
++	if (READ_ONCE(xps->xps_iter_ops) != &enfs_xprt_iter_singular)
++		WRITE_ONCE(xps->xps_iter_ops, &enfs_xprt_iter_singular);
++}
++
++static
++struct rpc_xprt *enfs_lb_switch_find_current(struct list_head *head,
++			const struct rpc_xprt *cur)
++{
++	struct rpc_xprt *pos;
++
++	list_for_each_entry_rcu(pos, head, xprt_switch) {
++		if (cur == pos)
++			return pos;
++	}
++	return NULL;
++}
++
++static struct rpc_xprt *enfs_lb_iter_current_entry(struct rpc_xprt_iter *xpi)
++{
++	struct rpc_xprt_switch *xps = rcu_dereference(xpi->xpi_xpswitch);
++	struct list_head *head;
++
++	if (xps == NULL)
++		return NULL;
++	head = &xps->xps_xprt_list;
++	if (xpi->xpi_cursor == NULL || xps->xps_nxprts < 2)
++		return enfs_lb_switch_get_main_xprt(xps);
++	return enfs_lb_switch_find_current(head, xpi->xpi_cursor);
++}
++
++void enfs_lb_set_policy(struct rpc_clnt *clnt)
++{
++	enfs_lb_switch_set_roundrobin(clnt);
++}
++
++static const struct rpc_xprt_iter_ops enfs_xprt_iter_roundrobin = {
++	.xpi_rewind = enfs_lb_iter_default_rewind,
++	.xpi_xprt = enfs_lb_iter_current_entry,
++	.xpi_next = enfs_lb_iter_next_entry_roundrobin,
++};
++
++static const struct rpc_xprt_iter_ops enfs_xprt_iter_singular = {
++	.xpi_rewind = enfs_lb_iter_default_rewind,
++	.xpi_xprt = enfs_lb_iter_current_entry,
++	.xpi_next = enfs_lb_iter_next_entry_sigular,
++};
+diff --git a/fs/nfs/enfs/enfs_roundrobin.h b/fs/nfs/enfs/enfs_roundrobin.h
+new file mode 100644
+index 000000000..b72b088a6
+--- /dev/null
++++ b/fs/nfs/enfs/enfs_roundrobin.h
+@@ -0,0 +1,9 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) Huawei Technologies Co., Ltd. 2023-2023. All rights reserved.
++ */
++#ifndef ENFS_ROUNDROBIN_H
++#define ENFS_ROUNDROBIN_H
++
++void enfs_lb_set_policy(struct rpc_clnt *clnt);
++#endif
