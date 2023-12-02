@@ -6800,6 +6800,30 @@ static int select_idle_core(struct task_struct *p, struct sched_domain *sd, int 
 	cpumask_and(cpus, sched_domain_span(sd), &p->cpus_allowed);
 #endif
 
+	if (static_branch_unlikely(&sched_cluster_active)) {
+		struct sched_domain *sdc =
+			rcu_dereference(per_cpu(sd_cluster, target));
+
+		if (sdc) {
+			for_each_cpu_wrap(cpu, sched_domain_span(sdc), target) {
+				bool idle = true;
+
+				if (!cpumask_test_cpu(cpu, cpus))
+					continue;
+
+				for_each_cpu(cpu, cpu_smt_mask(core)) {
+					cpumask_clear_cpu(cpu, cpus);
+					if (!available_idle_cpu(cpu))
+						idle = false;
+				}
+
+				if (idle)
+					return core;
+			}
+			cpumask_andnot(cpus, cpus, sched_domain_span(sdc));
+		}
+	}
+
 	for_each_cpu_wrap(core, cpus, target) {
 		bool idle = true;
 
@@ -6905,8 +6929,26 @@ static int select_idle_cpu(struct task_struct *p, struct sched_domain *sd, int t
 	cpumask_and(cpus, sched_domain_span(sd), &p->cpus_allowed);
 #endif
 
+	if (static_branch_unlikely(&sched_cluster_active)) {
+		struct sched_domain *sdc =
+			rcu_dereference(per_cpu(sd_cluster, target));
+
+		if (sdc) {
+			for_each_cpu_wrap(cpu, sched_domain_span(sdc), target) {
+				if (!cpumask_test_cpu(cpu, cpus))
+					continue;
+				if (--nr <= 0)
+					return -1;
+				if (available_idle_cpu(cpu) ||
+					sched_idle_cpu(cpu))
+					return cpu;
+			}
+			cpumask_andnot(cpus, cpus, sched_domain_span(sdc));
+		}
+	}
+
 	for_each_cpu_wrap(cpu, cpus, target) {
-		if (!--nr)
+		if (--nr <= 0)
 			return -1;
 		if (available_idle_cpu(cpu) || sched_idle_cpu(cpu))
 			break;
@@ -6956,11 +6998,11 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
 	 * If the previous CPU is cache affine and idle, don't be stupid:
 	 */
 #ifdef CONFIG_QOS_SCHED_DYNAMIC_AFFINITY
-	if (prev != target && cpus_share_cache(prev, target) &&
+	if (prev != target && cpus_share_lowest_cache(prev, target) &&
 	    cpumask_test_cpu(prev, p->select_cpus) &&
 	    (available_idle_cpu(prev) || sched_idle_cpu(prev))) {
 #else
-	if (prev != target && cpus_share_cache(prev, target) &&
+	if (prev != target && cpus_share_lowest_cache(prev, target) &&
 	    (available_idle_cpu(prev) || sched_idle_cpu(prev))) {
 #endif
 		SET_STAT(found_idle_cpu_easy);
@@ -6971,7 +7013,7 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
 	recent_used_cpu = p->recent_used_cpu;
 	if (recent_used_cpu != prev &&
 	    recent_used_cpu != target &&
-	    cpus_share_cache(recent_used_cpu, target) &&
+	    cpus_share_lowest_cache(recent_used_cpu, target) &&
 	    (available_idle_cpu(recent_used_cpu) || sched_idle_cpu(recent_used_cpu)) &&
 #ifdef CONFIG_QOS_SCHED_DYNAMIC_AFFINITY
 	    cpumask_test_cpu(p->recent_used_cpu, p->select_cpus)) {

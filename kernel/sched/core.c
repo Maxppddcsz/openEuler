@@ -1851,6 +1851,20 @@ bool cpus_share_cache(int this_cpu, int that_cpu)
 
 	return per_cpu(sd_llc_id, this_cpu) == per_cpu(sd_llc_id, that_cpu);
 }
+
+/*
+ * Whether CPUs are share lowest cache, which means LLC on non-cluster
+ * machines and LLC tag or L2 on machines with clusters.
+ */
+bool cpus_share_lowest_cache(int this_cpu, int that_cpu)
+{
+	if (this_cpu == that_cpu)
+		return true;
+
+	return per_cpu(sd_lowest_cache_id, this_cpu) ==
+		per_cpu(sd_lowest_cache_id, that_cpu);
+}
+
 #endif /* CONFIG_SMP */
 
 static void ttwu_queue(struct task_struct *p, int cpu, int wake_flags)
@@ -5954,6 +5968,7 @@ int sched_cpu_dying(unsigned int cpu)
 void __init sched_init_smp(void)
 {
 	sched_init_numa();
+	set_sched_cluster();
 
 	/*
 	 * There's no userspace yet to cause hotplug operations; hence all the

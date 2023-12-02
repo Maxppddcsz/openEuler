@@ -25,18 +25,26 @@
 #define SD_WAKE_AFFINE		0x0020	/* Wake task to waking CPU */
 #define SD_ASYM_CPUCAPACITY	0x0040  /* Groups have different max cpu capacities */
 #define SD_SHARE_CPUCAPACITY	0x0080	/* Domain members share cpu capacity */
-#define SD_SHARE_POWERDOMAIN	0x0100	/* Domain members share power domain */
-#define SD_SHARE_PKG_RESOURCES	0x0200	/* Domain members share cpu pkg resources */
-#define SD_SERIALIZE		0x0400	/* Only a single load balancing instance */
-#define SD_ASYM_PACKING		0x0800  /* Place busy groups earlier in the domain */
-#define SD_PREFER_SIBLING	0x1000	/* Prefer to place tasks in a sibling domain */
-#define SD_OVERLAP		0x2000	/* sched_domains of this level overlap */
-#define SD_NUMA			0x4000	/* cross-node balancing */
+#define SD_CLUSTER              0x0100  /* Domain members share CPU cluster */
+#define SD_SHARE_POWERDOMAIN	0x0200	/* Domain members share power domain */
+#define SD_SHARE_PKG_RESOURCES	0x0400	/* Domain members share cpu pkg resources */
+#define SD_SERIALIZE		0x0800	/* Only a single load balancing instance */
+#define SD_ASYM_PACKING		0x1000  /* Place busy groups earlier in the domain */
+#define SD_PREFER_SIBLING	0x2000	/* Prefer to place tasks in a sibling domain */
+#define SD_OVERLAP		0x4000	/* sched_domains of this level overlap */
+#define SD_NUMA			0x8000	/* cross-node balancing */
 
 #ifdef CONFIG_SCHED_SMT
 static inline int cpu_smt_flags(void)
 {
 	return SD_SHARE_CPUCAPACITY | SD_SHARE_PKG_RESOURCES;
+}
+#endif
+
+#ifdef CONFIG_SCHED_CLUSTER
+static inline int cpu_cluster_flags(void)
+{
+	return SD_CLUSTER | SD_SHARE_PKG_RESOURCES;
 }
 #endif
 
@@ -173,11 +181,13 @@ cpumask_var_t *alloc_sched_domains(unsigned int ndoms);
 void free_sched_domains(cpumask_var_t doms[], unsigned int ndoms);
 
 bool cpus_share_cache(int this_cpu, int that_cpu);
+bool cpus_share_lowest_cache(int this_cpu, int that_cpu);
 
 typedef const struct cpumask *(*sched_domain_mask_f)(int cpu);
 typedef int (*sched_domain_flags_f)(void);
 
 #define SDTL_OVERLAP	0x01
+#define SDTL_SKIP	0x02
 
 struct sd_data {
 	struct sched_domain *__percpu *sd;
@@ -216,6 +226,11 @@ partition_sched_domains(int ndoms_new, cpumask_var_t doms_new[],
 }
 
 static inline bool cpus_share_cache(int this_cpu, int that_cpu)
+{
+	return true;
+}
+
+static inline bool cpus_share_lowest_cache(int this_cpu, int that_cpu)
 {
 	return true;
 }

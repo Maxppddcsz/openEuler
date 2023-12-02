@@ -104,4 +104,11 @@ extern int sysctl_schedstats(struct ctl_table *table, int write,
 				 loff_t *ppos);
 
 extern int sysctl_umh_affinity;
+
+#ifdef CONFIG_SCHED_CLUSTER
+extern unsigned int sysctl_sched_cluster;
+int sched_cluster_handler(struct ctl_table *table, int write,
+			  void *buffer, size_t *lenp, loff_t *ppos);
+#endif
+
 #endif /* _LINUX_SCHED_SYSCTL_H */

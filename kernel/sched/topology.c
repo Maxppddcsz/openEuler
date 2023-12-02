@@ -412,9 +412,13 @@ static void destroy_sched_domains(struct sched_domain *sd)
 DEFINE_PER_CPU(struct sched_domain *, sd_llc);
 DEFINE_PER_CPU(int, sd_llc_size);
 DEFINE_PER_CPU(int, sd_llc_id);
+DEFINE_PER_CPU(int, sd_lowest_cache_id);
+DEFINE_PER_CPU(struct sched_domain __rcu *, sd_cluster);
 DEFINE_PER_CPU(struct sched_domain_shared *, sd_llc_shared);
 DEFINE_PER_CPU(struct sched_domain *, sd_numa);
 DEFINE_PER_CPU(struct sched_domain *, sd_asym);
+
+DEFINE_STATIC_KEY_FALSE(sched_cluster_active);
 
 static void update_top_cache_domain(int cpu)
 {
@@ -444,6 +448,18 @@ static void update_top_cache_domain(int cpu)
 	per_cpu(sd_llc_size, cpu) = size;
 	per_cpu(sd_llc_id, cpu) = id;
 	rcu_assign_pointer(per_cpu(sd_llc_shared, cpu), sds);
+
+	sd = lowest_flag_domain(cpu, SD_CLUSTER);
+	if (sd)
+		id = cpumask_first(sched_domain_span(sd));
+	rcu_assign_pointer(per_cpu(sd_cluster, cpu), sd);
+
+	/*
+	 * This assignment should be placed after the sd_llc_id as
+	 * we want this id equals to cluster id on cluster machines
+	 * but equals to LLC id on non-Cluster machines.
+	 */
+	per_cpu(sd_lowest_cache_id, cpu) = id;
 
 	sd = lowest_flag_domain(cpu, SD_NUMA);
 	rcu_assign_pointer(per_cpu(sd_numa, cpu), sd);
@@ -1162,6 +1178,7 @@ static struct cpumask		***sched_domains_numa_masks;
  */
 #define TOPOLOGY_SD_FLAGS		\
 	(SD_SHARE_CPUCAPACITY	|	\
+	 SD_CLUSTER		|	\
 	 SD_SHARE_PKG_RESOURCES |	\
 	 SD_NUMA		|	\
 	 SD_ASYM_PACKING	|	\
@@ -1298,6 +1315,11 @@ static struct sched_domain_topology_level default_topology[] = {
 #ifdef CONFIG_SCHED_SMT
 	{ cpu_smt_mask, cpu_smt_flags, SD_INIT_NAME(SMT) },
 #endif
+
+#ifdef CONFIG_SCHED_CLUSTER
+	{ cpu_clustergroup_mask, cpu_cluster_flags, SD_INIT_NAME(CLS) },
+#endif
+
 #ifdef CONFIG_SCHED_MC
 	{ cpu_coregroup_mask, cpu_core_flags, SD_INIT_NAME(MC) },
 #endif
@@ -1308,8 +1330,99 @@ static struct sched_domain_topology_level default_topology[] = {
 static struct sched_domain_topology_level *sched_domain_topology =
 	default_topology;
 
+#ifdef CONFIG_SCHED_CLUSTER
+void set_sched_cluster(void)
+{
+	struct sched_domain_topology_level *tl;
+
+	for (tl = sched_domain_topology; tl->mask; tl++) {
+		if (tl->sd_flags && (tl->sd_flags() & SD_CLUSTER)) {
+			if (!sysctl_sched_cluster)
+				tl->flags |= SDTL_SKIP;
+			else
+				tl->flags &= ~SDTL_SKIP;
+			break;
+		}
+	}
+}
+
+/* set via /proc/sys/kernel/sched_cluster */
+unsigned int __read_mostly sysctl_sched_cluster;
+
+static DEFINE_MUTEX(sched_cluster_mutex);
+int sched_cluster_handler(struct ctl_table *table, int write,
+		void *buffer, size_t *lenp, loff_t *ppos)
+{
+	int ret;
+	unsigned int oldval;
+
+	if (write && !capable(CAP_SYS_ADMIN))
+		return -EPERM;
+
+	mutex_lock(&sched_cluster_mutex);
+	oldval = sysctl_sched_cluster;
+	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	if (!ret && write) {
+		if (oldval != sysctl_sched_cluster) {
+			set_sched_cluster();
+			arch_rebuild_cpu_topology();
+		}
+	}
+	mutex_unlock(&sched_cluster_mutex);
+
+	return ret;
+}
+
+static int zero;
+static int one = 1;
+
+static struct ctl_table sched_cluster_sysctls[] = {
+	{
+		.procname       = "sched_cluster",
+		.data           = &sysctl_sched_cluster,
+		.maxlen         = sizeof(unsigned int),
+		.mode           = 0644,
+		.proc_handler   = sched_cluster_handler,
+		.extra1         = (void *)&zero,
+		.extra2         = (void *)&one,
+	},
+	{}
+};
+
+static int __init sched_cluster_sysctl_init(void)
+{
+	register_sysctl_init("kernel", sched_cluster_sysctls);
+	return 0;
+}
+late_initcall(sched_cluster_sysctl_init);
+
+static int __init sched_cluster_option(char *str)
+{
+	int enable;
+
+	if (get_option(&str, &enable)) {
+		if (enable != 0 && enable != 1)
+			return -EINVAL;
+
+		sysctl_sched_cluster = enable;
+		return 0;
+	}
+
+	return -EINVAL;
+}
+early_param("sched_cluster", sched_cluster_option);
+#endif
+
+static struct sched_domain_topology_level *
+next_tl(struct sched_domain_topology_level *tl)
+{
+	while (tl->mask && tl->flags & SDTL_SKIP)
+		++tl;
+	return tl;
+}
+
 #define for_each_sd_topology(tl)			\
-	for (tl = sched_domain_topology; tl->mask; tl++)
+	for (tl = next_tl(sched_domain_topology); tl->mask; tl = next_tl(++tl))
 
 void set_sched_topology(struct sched_domain_topology_level *tl)
 {
@@ -1836,6 +1949,7 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 	struct s_data d;
 	struct rq *rq = NULL;
 	int i, ret = -ENOMEM;
+	bool has_cluster = false;
 
 	alloc_state = __visit_domain_allocation_hell(&d, cpu_map);
 	if (alloc_state != sa_rootdomain)
@@ -1848,7 +1962,8 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 		sd = NULL;
 		for_each_sd_topology(tl) {
 			sd = build_sched_domain(tl, cpu_map, attr, sd, i);
-			if (tl == sched_domain_topology)
+			has_cluster |= sd->flags & SD_CLUSTER;
+			if (tl == next_tl(sched_domain_topology))
 				*per_cpu_ptr(d.sd, i) = sd;
 			if (tl->flags & SDTL_OVERLAP)
 				sd->flags |= SD_OVERLAP;
@@ -1903,6 +2018,9 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 		cpu_attach_domain(sd, d.rd, i);
 	}
 	rcu_read_unlock();
+
+	if (has_cluster)
+		static_branch_inc_cpuslocked(&sched_cluster_active);
 
 	if (rq && sched_debug_enabled) {
 		pr_info("root domain span: %*pbl (max cpu_capacity = %lu)\n",
@@ -1998,7 +2116,11 @@ int sched_init_domains(const struct cpumask *cpu_map)
  */
 static void detach_destroy_domains(const struct cpumask *cpu_map)
 {
+	unsigned int cpu = cpumask_any(cpu_map);
 	int i;
+
+	if (rcu_access_pointer(per_cpu(sd_cluster, cpu)))
+		static_branch_dec_cpuslocked(&sched_cluster_active);
 
 	rcu_read_lock();
 	for_each_cpu(i, cpu_map)
