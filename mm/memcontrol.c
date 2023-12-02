@@ -5196,6 +5196,35 @@ static int memcg_events_local_show(struct seq_file *m, void *v)
 	return 0;
 }
 
+static int memcg_high_async_ratio_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "%d\n",
+		   READ_ONCE(mem_cgroup_from_seq(m)->high_async_ratio));
+	return 0;
+}
+
+static ssize_t memcg_high_async_ratio_write(struct kernfs_open_file *of,
+					    char *buf, size_t nbytes, loff_t off)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
+	int ret, high_async_ratio;
+
+	buf = strstrip(buf);
+	if (!buf)
+		return -EINVAL;
+
+	ret = kstrtoint(buf, 0, &high_async_ratio);
+	if (ret)
+		return ret;
+
+	if (high_async_ratio > HIGH_ASYNC_RATIO_BASE ||
+	    high_async_ratio <= HIGH_ASYNC_RATIO_GAP)
+		return -EINVAL;
+
+	WRITE_ONCE(memcg->high_async_ratio, high_async_ratio);
+
+	return nbytes;
+}
 
 static int memory_stat_show(struct seq_file *m, void *v);
 
@@ -5355,6 +5384,13 @@ static struct cftype mem_cgroup_legacy_files[] = {
 		.file_offset = offsetof(struct mem_cgroup, events_local_file),
 		.seq_show = memcg_events_local_show,
 	},
+	{
+		.name = "high_async_ratio",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.seq_show = memcg_high_async_ratio_show,
+		.write = memcg_high_async_ratio_write,
+	},
+
 	{ },	/* terminate */
 };
 
