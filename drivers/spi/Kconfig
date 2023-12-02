@@ -251,6 +251,16 @@ config SPI_FSL_LPSPI
 	help
 	  This enables Freescale i.MX LPSPI controllers in master mode.
 
+config SPI_HISI_KUNPENG
+	tristate "HiSilicon SPI Controller for Kunpeng SoCs"
+	depends on (ARM64 && ACPI) || COMPILE_TEST
+	help
+	  This enables support for HiSilicon SPI controller found on
+	  Kunpeng SoCs.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called hisi-kunpeng-spi.
+
 config SPI_GPIO
 	tristate "GPIO-based bitbanging SPI Master"
 	depends on GPIOLIB || COMPILE_TEST
