@@ -25,6 +25,7 @@
 #include <linux/uuid.h>
 #include <linux/xarray.h>
 
+extern bool precise_iostat;
 struct module;
 struct request_queue;
 struct elevator_queue;
@@ -832,6 +833,7 @@ dev_t part_devt(struct gendisk *disk, u8 partno);
 void inc_diskseq(struct gendisk *disk);
 void blk_request_module(dev_t devt);
 
+extern unsigned int part_in_flight(struct block_device *part);
 extern int blk_register_queue(struct gendisk *disk);
 extern void blk_unregister_queue(struct gendisk *disk);
 void submit_bio_noacct(struct bio *bio);
