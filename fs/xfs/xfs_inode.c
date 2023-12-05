@@ -168,6 +168,10 @@ xfs_ilock(
 	xfs_inode_t		*ip,
 	uint			lock_flags)
 {
+#ifdef CONFIG_NODE_CACHE_THRASH_OPTIMIZATION
+	extern void update_access_stat(u64 *ptr, int kind);
+	update_access_stat(&((&VFS_I(ip)->i_rwsem)->stat), 1);
+#endif
 	trace_xfs_ilock(ip, lock_flags, _RET_IP_);
 
 	/*

@@ -1186,6 +1186,12 @@ struct task_struct {
 	u64				node_stamp;
 	u64				last_task_numa_placement;
 	u64				last_sum_exec_runtime;
+#ifdef CONFIG_NODE_CACHE_THRASH_OPTIMIZATION
+	u64             fixed_stamp, stat;
+	short           pinned, init_pin;
+	atomic_t        in_progress;
+	struct callback_head affinity_work;
+#endif
 	struct callback_head		numa_work;
 
 	/*

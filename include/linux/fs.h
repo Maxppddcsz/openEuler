@@ -799,6 +799,10 @@ enum inode_i_mutex_lock_class
 
 static inline void inode_lock(struct inode *inode)
 {
+#ifdef CONFIG_NODE_CACHE_THRASH_OPTIMIZATION
+	extern void update_access_stat(u64 *ptr, int kind);
+	update_access_stat(&inode->i_rwsem.stat, 1);
+#endif
 	down_write(&inode->i_rwsem);
 }
 

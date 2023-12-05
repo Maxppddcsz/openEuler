@@ -987,6 +987,13 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 #ifdef CONFIG_MEMCG
 	tsk->active_memcg = NULL;
 #endif
+#ifdef CONFIG_NODE_CACHE_THRASH_OPTIMIZATION
+	tsk->fixed_stamp = jiffies;
+	tsk->pinned = -1;
+	tsk->init_pin = -1;
+	tsk->stat = 0;
+	atomic_set(&tsk->in_progress, 0);
+#endif
 	return tsk;
 
 free_stack:
