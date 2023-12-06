@@ -3843,6 +3843,8 @@ extern int unpoison_memory(unsigned long pfn);
 extern void shake_page(struct page *p);
 extern atomic_long_t num_poisoned_pages __read_mostly;
 extern int soft_offline_page(unsigned long pfn, int flags);
+extern void collect_procs(struct page *page, struct list_head *tokill,
+				int force_early);
 #ifdef CONFIG_MEMORY_FAILURE
 /*
  * Sysfs entries for memory failure handling statistics.
