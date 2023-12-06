@@ -119,12 +119,34 @@ struct its_node {
 	int			numa_node;
 	unsigned int		msi_domain_flags;
 	u32			pre_its_base; /* for Socionext Synquacer */
+	/**
+	 * Hisilicon implement reg used for indicating
+	 * direct vPPI injection capability.
+	 */
+	u32			version;
 	int			vlpi_redist_offset;
 };
 
-#define is_v4(its)		(!!((its)->typer & GITS_TYPER_VLPIS))
-#define is_v4_1(its)		(!!((its)->typer & GITS_TYPER_VMAPP))
-#define device_ids(its)		(FIELD_GET(GITS_TYPER_DEVBITS, (its)->typer) + 1)
+#define is_v4(its)			(!!((its)->typer & GITS_TYPER_VLPIS))
+#define is_v4_1(its)			(!!((its)->typer & GITS_TYPER_VMAPP))
+#define device_ids(its)			(FIELD_GET(GITS_TYPER_DEVBITS, (its)->typer) + 1)
+
+#define is_vtimer_irqbypass(its)	(!!((its)->version & GITS_VERSION_VTIMER))
+
+/* Fetch it from gtdt->virtual_timer_interrupt. */
+#define is_vtimer_irq(irq)	((irq) == 27)
+
+static inline bool is_its_vsgi_cmd_valid(struct its_node *its, u8 hwirq)
+{
+	if (__get_intid_range(hwirq) == SGI_RANGE)
+		return true;
+
+	/* For PPI range, only vtimer interrupt is supported atm. */
+	if (is_vtimer_irq(hwirq) && is_vtimer_irqbypass(its))
+		return true;
+
+	return false;
+}
 
 #define ITS_ITT_ALIGN		SZ_256
 
@@ -571,6 +593,16 @@ static void its_encode_sgi_intid(struct its_cmd_block *cmd, u8 sgi)
 	its_mask_encode(&cmd->raw_cmd[0], sgi, 35, 32);
 }
 
+static void its_encode_sgi_intid_extension(struct its_cmd_block *cmd, u8 sgi)
+{
+	/*
+	 * We reuse the VSGI command in this implementation to configure
+	 * the vPPI or clear its pending state. The vINTID field has been
+	 * therefore extended to [36:32].
+	 */
+	its_mask_encode(&cmd->raw_cmd[0], sgi, 36, 32);
+}
+
 static void its_encode_sgi_priority(struct its_cmd_block *cmd, u8 prio)
 {
 	its_mask_encode(&cmd->raw_cmd[0], prio >> 4, 23, 20);
@@ -970,7 +1002,10 @@ static struct its_vpe *its_build_vsgi_cmd(struct its_node *its,
 
 	its_encode_cmd(cmd, GITS_CMD_VSGI);
 	its_encode_vpeid(cmd, desc->its_vsgi_cmd.vpe->vpe_id);
-	its_encode_sgi_intid(cmd, desc->its_vsgi_cmd.sgi);
+	if (!is_vtimer_irqbypass(its))
+		its_encode_sgi_intid(cmd, desc->its_vsgi_cmd.sgi);
+	else
+		its_encode_sgi_intid_extension(cmd, desc->its_vsgi_cmd.sgi);
 	its_encode_sgi_priority(cmd, desc->its_vsgi_cmd.priority);
 	its_encode_sgi_group(cmd, desc->its_vsgi_cmd.group);
 	its_encode_sgi_clear(cmd, desc->its_vsgi_cmd.clear);
@@ -4436,7 +4471,13 @@ static struct irq_chip its_vpe_4_1_irq_chip = {
 static void its_configure_sgi(struct irq_data *d, bool clear)
 {
 	struct its_vpe *vpe = irq_data_get_irq_chip_data(d);
+	struct its_node *its = find_4_1_its();
 	struct its_cmd_desc desc;
+
+	if (!its || !is_its_vsgi_cmd_valid(its, d->hwirq)) {
+		pr_err("ITS: its_configure_sgi failed\n");
+		return;
+	}
 
 	desc.its_vsgi_cmd.vpe = vpe;
 	desc.its_vsgi_cmd.sgi = d->hwirq;
@@ -4450,7 +4491,7 @@ static void its_configure_sgi(struct irq_data *d, bool clear)
 	 * destination VPE is mapped there. Since we map them eagerly at
 	 * activation time, we're pretty sure the first GICv4.1 ITS will do.
 	 */
-	its_send_single_vcommand(find_4_1_its(), its_build_vsgi_cmd, &desc);
+	its_send_single_vcommand(its, its_build_vsgi_cmd, &desc);
 }
 
 static void its_sgi_mask_irq(struct irq_data *d)
@@ -4492,11 +4533,15 @@ static int its_sgi_set_irqchip_state(struct irq_data *d,
 	if (state) {
 		struct its_vpe *vpe = irq_data_get_irq_chip_data(d);
 		struct its_node *its = find_4_1_its();
+		u64 offset = GITS_SGIR;
 		u64 val;
+
+		if (__get_intid_range(d->hwirq) == PPI_RANGE)
+			offset = GITS_PPIR;
 
 		val  = FIELD_PREP(GITS_SGIR_VPEID, vpe->vpe_id);
 		val |= FIELD_PREP(GITS_SGIR_VINTID, d->hwirq);
-		writeq_relaxed(val, its->sgir_base + GITS_SGIR - SZ_128K);
+		writeq_relaxed(val, its->sgir_base + offset - SZ_128K);
 	} else {
 		its_configure_sgi(d, true);
 	}
@@ -4508,6 +4553,7 @@ static int its_sgi_get_irqchip_state(struct irq_data *d,
 				     enum irqchip_irq_state which, bool *val)
 {
 	struct its_vpe *vpe = irq_data_get_irq_chip_data(d);
+	enum gic_intid_range type;
 	void __iomem *base;
 	unsigned long flags;
 	u32 count = 1000000;	/* 1s! */
@@ -4516,6 +4562,17 @@ static int its_sgi_get_irqchip_state(struct irq_data *d,
 
 	if (which != IRQCHIP_STATE_PENDING)
 		return -EINVAL;
+
+	/*
+	 * Plug the HiSilicon implementation details in comment!
+	 *
+	 * For vPPI, we re-use the GICR_VSGIR and GICR_VSGIPENDR in the
+	 * implementation which allows reads to GICR_I{S,C}PENDR to be
+	 * emulated. And note that the pending state of the vtimer
+	 * interrupt is stored at bit[16] of GICR_VSGIPENDR.
+	 */
+	type = __get_intid_range(d->hwirq);
+	WARN_ON(type == PPI_RANGE && !is_vtimer_irq(d->hwirq));
 
 	/*
 	 * Locking galore! We can race against two different events:
@@ -4552,7 +4609,10 @@ out:
 	if (!count)
 		return -ENXIO;
 
-	*val = !!(status & (1 << d->hwirq));
+	if (is_vtimer_irq(d->hwirq))
+		*val = !!(status & (1 << 16));
+	else
+		*val = !!(status & (1 << d->hwirq));
 
 	return 0;
 }
@@ -4591,10 +4651,10 @@ static int its_sgi_irq_domain_alloc(struct irq_domain *domain,
 	struct its_vpe *vpe = args;
 	int i;
 
-	/* Yes, we do want 16 SGIs */
-	WARN_ON(nr_irqs != 16);
+	/* We may want 32 IRQs if vtimer irqbypass is supported. */
+	WARN_ON(nr_irqs != 16 && nr_irqs != 32);
 
-	for (i = 0; i < 16; i++) {
+	for (i = 0; i < nr_irqs; i++) {
 		vpe->sgi_config[i].priority = 0;
 		vpe->sgi_config[i].enabled = false;
 		vpe->sgi_config[i].group = false;
@@ -5292,6 +5352,7 @@ static int __init its_probe_one(struct resource *res,
 	INIT_LIST_HEAD(&its->its_device_list);
 	typer = gic_read_typer(its_base + GITS_TYPER);
 	its->typer = typer;
+	its->version = readl_relaxed(its_base + GITS_VERSION);
 	its->base = its_base;
 	its->phys_base = res->start;
 	if (is_v4(its)) {
@@ -5686,6 +5747,7 @@ int __init its_init(struct fwnode_handle *handle, struct rdists *rdists,
 	struct its_node *its;
 	bool has_v4 = false;
 	bool has_v4_1 = false;
+	bool has_vtimer_irqbypass = false;
 	int err;
 
 	gic_rdists = rdists;
@@ -5709,11 +5771,20 @@ int __init its_init(struct fwnode_handle *handle, struct rdists *rdists,
 	list_for_each_entry(its, &its_nodes, entry) {
 		has_v4 |= is_v4(its);
 		has_v4_1 |= is_v4_1(its);
+		has_vtimer_irqbypass |= is_vtimer_irqbypass(its);
 	}
 
 	/* Don't bother with inconsistent systems */
 	if (WARN_ON(!has_v4_1 && rdists->has_rvpeid))
 		rdists->has_rvpeid = false;
+
+	/* vtimer irqbypass depends on rvpeid support */
+	if (WARN_ON(!has_v4_1 && has_vtimer_irqbypass)) {
+		has_vtimer_irqbypass = false;
+		rdists->has_vtimer = false;
+	}
+	pr_info("ITS: vtimer-irqbypass %sabled\n",
+		has_vtimer_irqbypass ? "en" : "dis");
 
 	if (has_v4 & rdists->has_vlpis) {
 		const struct irq_domain_ops *sgi_ops;
@@ -5724,7 +5795,8 @@ int __init its_init(struct fwnode_handle *handle, struct rdists *rdists,
 			sgi_ops = NULL;
 
 		if (its_init_vpe_domain() ||
-		    its_init_v4(parent_domain, &its_vpe_domain_ops, sgi_ops)) {
+		    its_init_v4(parent_domain, &its_vpe_domain_ops,
+				sgi_ops, has_vtimer_irqbypass)) {
 			rdists->has_vlpis = false;
 			pr_err("ITS: Disabling GICv4 support\n");
 		}
