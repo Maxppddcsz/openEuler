@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .118.0
-%global pkg_release         .145
+%global maintenance_release .119.0
+%global pkg_release         .146
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,43 @@ fi
 %endif
 
 %changelog
+* Tue Dec 05 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.119.0.146
+- !3193 [sync] PR-3128:  fix ksmbd to release the ones allocated for async work
+- ksmbd: delete asynchronous work from list
+- ksmbd: fix typo, syncronous->synchronous
+- ksmbd: fix possible memory leak in smb2_lock()
+- ksmbd: replace usage of found with dedicated list iterator variable
+- !3103 [sync] PR-3082:  fs/dirty_pages: add last read check in seq_read_dirty()
+- !3185 [sync] PR-3152:  scsi: scsi_device_gets returns failure
+- scsi: fix kabi broken in struct Scsi_Host
+- scsi: don't fail if hostt->module is NULL
+- scsi: scsi_device_gets returns failure when the module is NULL.
+- !2970  Add error handle for add_disk
+- !1394 [sync] PR-1355:  etmem: fix the div 0 problem in swapcache reclaim process
+- fs/dirty_pages: add last read check in seq_read_dirty()
+- !3078 [sync] PR-3022:  fs/dirty_pages: fix some errors in seq_read_dirty()
+- !3075 [sync] PR-3020:  fs/dirty_pages: fix inode reference count leakage error in dump_dirtypages_sb()
+- fs/dirty_pages: fix some errors in seq_read_dirty()
+- fs/dirty_pages: fix inode reference count leakage error in dump_dirtypages_sb()
+- block: Set memalloc_noio to false in the error path
+- block: Fix minor range check in device_add_disk()
+- block: clear ->slave_dir when dropping the main slave_dir reference
+- block: call blk_get_queue earlier in __device_add_disk
+- block: check minor range in device_add_disk()
+- block: fix memory leak for elevator on add_disk failure
+- block: Fix the kabi change on blk_register_region
+- block: Fix the kabi change in device_add_disk
+- block: fix error unwinding in device_add_disk
+- block: fix device_add_disk() kobject_create_and_add() error handling
+- block: add error handling for device_add_disk / add_disk
+- block: return errors from blk_register_region
+- block: add the events* attributes to disk_attrs
+- block: return errors from disk_alloc_events
+- block: return errors from blk_integrity_add
+- block: call blk_integrity_add earlier in device_add_disk
+- block: fold register_disk into device_add_disk
+- etmem: fix the div 0 problem in swapcache reclaim process
+
 * Wed Nov 29 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.118.0.145
 - !2997 [sync] PR-2902:  net/tls: do not free tls_rec on async operation in bpf_exec_tx_verdict()
 - !829 [sync] PR-739: Fix kvm-unit-tests  vmx_cr4_osxsave_test  case failed
