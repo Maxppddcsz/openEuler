@@ -312,6 +312,7 @@ extern unsigned int kobjsize(const void *objp);
 #define VM_HUGEPAGE	0x20000000	/* MADV_HUGEPAGE marked this vma */
 #define VM_NOHUGEPAGE	0x40000000	/* MADV_NOHUGEPAGE marked this vma */
 #define VM_MERGEABLE	0x80000000	/* KSM may merge identical pages */
+#define VM_PA32BIT	0x400000000     /* Physical address is within 4G */
 
 #ifdef CONFIG_ARCH_USES_HIGH_VMA_FLAGS
 #define VM_HIGH_ARCH_BIT_0	32	/* bit only usable on 64-bit architectures */
@@ -3842,6 +3843,8 @@ extern int unpoison_memory(unsigned long pfn);
 extern void shake_page(struct page *p);
 extern atomic_long_t num_poisoned_pages __read_mostly;
 extern int soft_offline_page(unsigned long pfn, int flags);
+extern void collect_procs(struct page *page, struct list_head *tokill,
+				int force_early);
 #ifdef CONFIG_MEMORY_FAILURE
 /*
  * Sysfs entries for memory failure handling statistics.

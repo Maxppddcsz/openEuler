@@ -196,6 +196,10 @@ hugetlb_get_unmapped_area_bottomup(struct file *file, unsigned long addr,
 	info.high_limit = arch_get_mmap_end(addr, len, flags);
 	info.align_mask = PAGE_MASK & ~huge_page_mask(h);
 	info.align_offset = 0;
+
+	if (enable_mmap_dvpp)
+		dvpp_mmap_get_area(&info, flags);
+
 	return vm_unmapped_area(&info);
 }
 
@@ -212,6 +216,10 @@ hugetlb_get_unmapped_area_topdown(struct file *file, unsigned long addr,
 	info.high_limit = arch_get_mmap_base(addr, current->mm->mmap_base);
 	info.align_mask = PAGE_MASK & ~huge_page_mask(h);
 	info.align_offset = 0;
+
+	if (enable_mmap_dvpp)
+		dvpp_mmap_get_area(&info, flags);
+
 	addr = vm_unmapped_area(&info);
 
 	/*
@@ -225,6 +233,10 @@ hugetlb_get_unmapped_area_topdown(struct file *file, unsigned long addr,
 		info.flags = 0;
 		info.low_limit = current->mm->mmap_base;
 		info.high_limit = arch_get_mmap_end(addr, len, flags);
+
+		if (enable_mmap_dvpp)
+			dvpp_mmap_get_area(&info, flags);
+
 		addr = vm_unmapped_area(&info);
 	}
 
@@ -254,6 +266,10 @@ generic_hugetlb_get_unmapped_area(struct file *file, unsigned long addr,
 
 	if (addr) {
 		addr = ALIGN(addr, huge_page_size(h));
+
+		if (dvpp_mmap_check(addr, len, flags))
+			return -ENOMEM;
+
 		vma = find_vma(mm, addr);
 		if (mmap_end - len >= addr &&
 		    (!vma || addr + len <= vm_start_gap(vma)))
