@@ -5064,7 +5064,7 @@ static ssize_t wb_blkio_write(struct kernfs_open_file *of, char *buf,
 
 	mutex_lock(&cgroup_mutex);
 	root = blkcg_root_css->cgroup->root;
-	blk_cgroup = cgroup1_get_from_id(root, cgrp_id);
+	blk_cgroup = __cgroup_get_from_id(root, cgrp_id);
 	if (IS_ERR(blk_cgroup)) {
 		mutex_unlock(&cgroup_mutex);
 		return -EINVAL;
