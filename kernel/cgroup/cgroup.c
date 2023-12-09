@@ -3632,7 +3632,6 @@ static int cgroup_stat_show(struct seq_file *seq, void *v)
 	return 0;
 }
 
-#ifdef CONFIG_CGROUP_SCHED
 /**
  * cgroup_tryget_css - try to get a cgroup's css for the specified subsystem
  * @cgrp: the cgroup of interest
@@ -3641,7 +3640,7 @@ static int cgroup_stat_show(struct seq_file *seq, void *v)
  * Find and get @cgrp's css associated with @ss.  If the css doesn't exist
  * or is offline, %NULL is returned.
  */
-static struct cgroup_subsys_state *cgroup_tryget_css(struct cgroup *cgrp,
+struct cgroup_subsys_state *cgroup_tryget_css(struct cgroup *cgrp,
 						     struct cgroup_subsys *ss)
 {
 	struct cgroup_subsys_state *css;
@@ -3655,6 +3654,7 @@ static struct cgroup_subsys_state *cgroup_tryget_css(struct cgroup *cgrp,
 	return css;
 }
 
+#ifdef CONFIG_CGROUP_SCHED
 static int cgroup_extra_stat_show(struct seq_file *seq, int ssid)
 {
 	struct cgroup *cgrp = seq_css(seq)->cgroup;
@@ -6300,6 +6300,43 @@ out_unlock:
 	kfree(buf);
 out:
 	return retval;
+}
+
+struct cgroup *cgroup1_get_from_id(struct cgroup_root *root, u64 id)
+{
+	struct kernfs_node *kn;
+	struct cgroup *cgrp, *root_cgrp;
+
+	kn = kernfs_find_and_get_node_by_id(root->kf_root, id);
+	if (!kn)
+		return ERR_PTR(-ENOENT);
+
+	if (kernfs_type(kn) != KERNFS_DIR) {
+		kernfs_put(kn);
+		return ERR_PTR(-ENOENT);
+	}
+
+	rcu_read_lock();
+
+	cgrp = rcu_dereference(*(void __rcu __force **)&kn->priv);
+	if (cgrp && !cgroup_tryget(cgrp))
+		cgrp = NULL;
+
+	rcu_read_unlock();
+	kernfs_put(kn);
+
+	if (!cgrp)
+		return ERR_PTR(-ENOENT);
+
+	spin_lock_irq(&css_set_lock);
+	root_cgrp = current_cgns_cgroup_from_root(root);
+	spin_unlock_irq(&css_set_lock);
+	if (!cgroup_is_descendant(cgrp, root_cgrp)) {
+		cgroup_put(cgrp);
+		return ERR_PTR(-ENOENT);
+	}
+
+	return cgrp;
 }
 
 /**
