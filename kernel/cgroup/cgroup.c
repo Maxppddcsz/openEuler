@@ -60,6 +60,7 @@
 #include <linux/sched/deadline.h>
 #include <linux/psi.h>
 #include <net/sock.h>
+#include <linux/backing-dev.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/cgroup.h>
@@ -3632,7 +3633,6 @@ static int cgroup_stat_show(struct seq_file *seq, void *v)
 	return 0;
 }
 
-#ifdef CONFIG_CGROUP_SCHED
 /**
  * cgroup_tryget_css - try to get a cgroup's css for the specified subsystem
  * @cgrp: the cgroup of interest
@@ -3641,7 +3641,7 @@ static int cgroup_stat_show(struct seq_file *seq, void *v)
  * Find and get @cgrp's css associated with @ss.  If the css doesn't exist
  * or is offline, %NULL is returned.
  */
-static struct cgroup_subsys_state *cgroup_tryget_css(struct cgroup *cgrp,
+struct cgroup_subsys_state *cgroup_tryget_css(struct cgroup *cgrp,
 						     struct cgroup_subsys *ss)
 {
 	struct cgroup_subsys_state *css;
@@ -3655,6 +3655,7 @@ static struct cgroup_subsys_state *cgroup_tryget_css(struct cgroup *cgrp,
 	return css;
 }
 
+#ifdef CONFIG_CGROUP_SCHED
 static int cgroup_extra_stat_show(struct seq_file *seq, int ssid)
 {
 	struct cgroup *cgrp = seq_css(seq)->cgroup;
@@ -5560,6 +5561,7 @@ err_list_del:
 	list_del_rcu(&css->sibling);
 err_free_css:
 	list_del_rcu(&css->rstat_css_node);
+	wb_kill_memcg_blkcg(css);
 	INIT_RCU_WORK(&css->destroy_rwork, css_free_rwork_fn);
 	queue_rcu_work(cgroup_destroy_wq, &css->destroy_rwork);
 	return ERR_PTR(err);
@@ -5828,6 +5830,7 @@ static void kill_css(struct cgroup_subsys_state *css)
 	 */
 	css_get(css);
 
+	wb_kill_memcg_blkcg(css);
 	/*
 	 * cgroup core guarantees that, by the time ->css_offline() is
 	 * invoked, no new css reference will be given out via
@@ -6183,17 +6186,26 @@ void cgroup_path_from_kernfs_id(u64 id, char *buf, size_t buflen)
 }
 
 /*
- * cgroup_get_from_id : get the cgroup associated with cgroup id
+* cgroup_get_from_id:get cgrp_dfl_root's cgroup with cgroup id
+*/
+struct cgroup *cgroup_get_from_id(u64 id)
+{
+	return __cgroup_get_from_id(&cgrp_dfl_root, id);
+}
+EXPORT_SYMBOL_GPL(cgroup_get_from_id);
+
+/*
+ * __cgroup_get_from_id : get the cgroup associated with cgroup id
  * @id: cgroup id
  * On success return the cgrp or ERR_PTR on failure
  * Only cgroups within current task's cgroup NS are valid.
  */
-struct cgroup *cgroup_get_from_id(u64 id)
+struct cgroup *__cgroup_get_from_id(struct cgroup_root *root, u64 id)
 {
 	struct kernfs_node *kn;
 	struct cgroup *cgrp, *root_cgrp;
 
-	kn = kernfs_find_and_get_node_by_id(cgrp_dfl_root.kf_root, id);
+	kn = kernfs_find_and_get_node_by_id(root->kf_root, id);
 	if (!kn)
 		return ERR_PTR(-ENOENT);
 
@@ -6214,7 +6226,9 @@ struct cgroup *cgroup_get_from_id(u64 id)
 	if (!cgrp)
 		return ERR_PTR(-ENOENT);
 
-	root_cgrp = current_cgns_cgroup_dfl();
+	spin_lock_irq(&css_set_lock);
+	root_cgrp = current_cgns_cgroup_from_root(root);
+	spin_unlock_irq(&css_set_lock);
 	if (!cgroup_is_descendant(cgrp, root_cgrp)) {
 		cgroup_put(cgrp);
 		return ERR_PTR(-ENOENT);
@@ -6222,7 +6236,7 @@ struct cgroup *cgroup_get_from_id(u64 id)
 
 	return cgrp;
 }
-EXPORT_SYMBOL_GPL(cgroup_get_from_id);
+EXPORT_SYMBOL_GPL(__cgroup_get_from_id);
 
 /*
  * proc_cgroup_show()
