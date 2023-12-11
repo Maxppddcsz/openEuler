@@ -5087,6 +5087,8 @@ static ssize_t memory_low_write(struct kernfs_open_file *of,
 static int memory_high_show(struct seq_file *m, void *v);
 static ssize_t memory_high_write(struct kernfs_open_file *of,
 				 char *buf, size_t nbytes, loff_t off);
+static ssize_t memory_reclaim(struct kernfs_open_file *of, char *buf,
+			      size_t nbytes, loff_t off);
 static void __memcg_events_show(struct seq_file *m, atomic_long_t *events)
 {
 	seq_printf(m, "low %lu\n", atomic_long_read(&events[MEMCG_LOW]));
@@ -5305,6 +5307,10 @@ static struct cftype mem_cgroup_legacy_files[] = {
 		.flags = CFTYPE_NOT_ON_ROOT,
 		.seq_show = memcg_high_async_ratio_show,
 		.write = memcg_high_async_ratio_write,
+	},
+	{
+		.name = "reclaim",
+		.write = memory_reclaim,
 	},
 #endif
 	{ },	/* terminate */
