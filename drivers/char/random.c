@@ -1100,8 +1100,12 @@ void add_interrupt_randomness(int irq)
 	if (new_count & MIX_INFLIGHT)
 		return;
 
+#ifdef CONFIG_RANDOM_BOOT_OPTIMIZATION
 	if (new_count < 1024 && !time_is_before_jiffies(fast_pool->last + HZ) &&
 			crng_ready())
+#else
+	if (new_count < 1024 && !time_is_before_jiffies(fast_pool->last + HZ))
+#endif
 		return;
 
 	fast_pool->count |= MIX_INFLIGHT;
