@@ -463,6 +463,9 @@ static struct fdtable *close_files(struct files_struct * files)
 			set >>= 1;
 		}
 	}
+#ifdef CONFIG_CGROUP_FILES
+	files_cgroup_remove(files);
+#endif
 
 	return fdt;
 }
