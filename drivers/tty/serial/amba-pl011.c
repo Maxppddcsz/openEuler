@@ -2815,10 +2815,20 @@ static int pl011_probe(struct amba_device *dev, const struct amba_id *id)
 	uap->vendor = vendor;
 	uap->fifosize = vendor->get_fifosize(dev);
 	uap->port.iotype = vendor->access_32b ? UPIO_MEM32 : UPIO_MEM;
-	uap->port.irq = dev->irq[0];
 	uap->port.ops = &amba_pl011_pops;
 	uap->port.rs485_config = pl011_rs485_config;
 	uap->port.rs485_supported = pl011_rs485_supported;
+
+	/* if no irq domain found, irq number is 0, try again */
+	if (!dev->irq[0] && dev->dev.of_node) {
+		ret = of_irq_get(dev->dev.of_node, 0);
+		if (ret < 0) 
+			return ret; 
+		dev->irq[0] = ret; 
+	}
+
+	uap->port.irq = dev->irq[0];
+
 	snprintf(uap->type, sizeof(uap->type), "PL011 rev%u", amba_rev(dev));
 
 	if (device_property_read_u32(&dev->dev, "reg-io-width", &val) == 0) {
