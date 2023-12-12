@@ -44,4 +44,14 @@ config KUNPENG_HCCS
 	  Say M here if you want to include support for querying the
 	  health status and port information of HCCS on Kunpeng SoC.
 
+config HISI_HBMDEV_ACLS
+	bool "Add support for HISI ACLS repair"
+	depends on HISI_HBMDEV
+	help
+	  Add ACLS support for hbm device, which can be used to query and
+	  repair hardware error in HBM devices. This feature need to work with
+	  hardware firmwares.
+
+	  If not sure say no.
+
 endmenu
