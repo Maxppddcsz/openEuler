@@ -2000,3 +2000,14 @@ config ARCH_HAS_SYNC_CORE_BEFORE_USERMODE
 # <asm/syscall_wrapper.h>.
 config ARCH_HAS_SYSCALL_WRAPPER
 	def_bool n
+
+config RANDOM_BOOT_OPTIMIZATION
+	bool "Random initialization optimization during bootup"
+	default n
+	help
+	  Enable optimization on random bootup initialization. It is tested
+	  to provide an optimization of up to 60%.
+
+	  It works by disabling batching of interrupt randomness events
+	  during boot time, allowing interrupt related entropy to flow in
+	  at a higher rate.
