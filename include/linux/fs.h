@@ -185,6 +185,12 @@ typedef int (dio_iodone_t)(struct kiocb *iocb, loff_t offset,
 /* File supports async nowait buffered writes */
 #define FMODE_BUF_WASYNC	((__force fmode_t)0x80000000)
 
+/* File mode control flag, expect random access pattern */
+#define FMODE_CTL_RANDOM	((__force fmode_t)0x1)
+
+/* File mode control flag, will try to read head of the file into pagecache */
+#define FMODE_CTL_WILLNEED	((__force fmode_t)0x2)
+
 /*
  * Attribute flags.  These should be or-ed together to figure out what
  * has been changed!
@@ -1002,6 +1008,7 @@ struct file {
 	 */
 	spinlock_t		f_lock;
 	fmode_t			f_mode;
+	fmode_t			f_ctl_mode;
 	atomic_long_t		f_count;
 	struct mutex		f_pos_lock;
 	loff_t			f_pos;
