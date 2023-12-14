@@ -2489,6 +2489,13 @@ struct sched_migrate_ctx {
 	int new_cpu;
 };
 
+struct sched_migrate_node {
+	int src_cpu;
+	int src_node;
+	int dst_cpu;
+	int dst_node;
+};
+
 #endif
 
 #endif
