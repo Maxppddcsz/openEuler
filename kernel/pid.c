@@ -44,6 +44,7 @@
 #include <linux/idr.h>
 #include <net/sock.h>
 #include <uapi/linux/pidfd.h>
+#include <linux/pin_mem.h>
 
 struct pid init_struct_pid = {
 	.count		= REFCOUNT_INIT(1),
@@ -212,6 +213,7 @@ struct pid *alloc_pid(struct pid_namespace *ns, pid_t *set_tid,
 		spin_lock_irq(&pidmap_lock);
 
 		if (tid) {
+			free_reserved_pid(&tmp->idr, tid);
 			nr = idr_alloc(&tmp->idr, NULL, tid,
 				       tid + 1, GFP_ATOMIC);
 			/*
@@ -664,6 +666,8 @@ void __init pid_idr_init(void)
 			__alignof__(struct pid),
 			SLAB_HWCACHE_ALIGN | SLAB_PANIC | SLAB_ACCOUNT,
 			NULL);
+
+	reserve_pids(&init_pid_ns.idr, pid_max);
 }
 
 static struct file *__pidfd_fget(struct task_struct *task, int fd)

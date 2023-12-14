@@ -99,4 +99,19 @@ static inline void request_pin_mem_res(struct resource *res) {}
 static inline void init_reserve_page_map(void) {}
 
 #endif /* CONFIG_PIN_MEMORY */
+
+#ifdef CONFIG_PID_RESERVE
+
+extern void free_reserved_pid(struct idr *idr, int pid);
+
+extern void reserve_pids(struct idr *idr, int pid_max);
+
+#else
+
+static inline void free_reserved_pid(struct idr *idr, int pid) {}
+
+static inline void reserve_pids(struct idr *idr, int pid_max) {}
+
+#endif /* CONFIG_PID_RESERVE */
+
 #endif /* _LINUX_PIN_MEMORY_H */
