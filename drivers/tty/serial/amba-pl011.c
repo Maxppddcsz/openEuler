@@ -1548,6 +1548,18 @@ static void check_apply_cts_event_workaround(struct uart_amba_port *uap)
 	pl011_read(uap, REG_ICR);
 }
 
+#ifdef CONFIG_SERIAL_ATTACHED_MBIGEN
+static bool pl011_enable_hisi_wkrd;
+static int __init pl011_check_hisi_workaround_setup(char *str)
+{
+	pl011_enable_hisi_wkrd = 1;
+	return 0;
+}
+__setup("pl011_hisi_wkrd", pl011_check_hisi_workaround_setup);
+#else
+#define pl011_enable_hisi_wkrd 0
+#endif
+
 static irqreturn_t pl011_int(int irq, void *dev_id)
 {
 	struct uart_amba_port *uap = dev_id;
@@ -1583,6 +1595,11 @@ static irqreturn_t pl011_int(int irq, void *dev_id)
 			status = pl011_read(uap, REG_RIS) & uap->im;
 		} while (status != 0);
 		handled = 1;
+	}
+
+	if (pl011_enable_hisi_wkrd) {
+		pl011_write(0, uap, REG_IMSC);
+		pl011_write(uap->im, uap, REG_IMSC);
 	}
 
 	spin_unlock_irqrestore(&uap->port.lock, flags);
