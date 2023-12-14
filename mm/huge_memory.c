@@ -3293,3 +3293,67 @@ void remove_migration_pmd(struct page_vma_mapped_walk *pvmw, struct page *new)
 	trace_remove_migration_pmd(address, pmd_val(pmde));
 }
 #endif
+
+#ifdef CONFIG_PIN_MEMORY
+vm_fault_t do_anon_huge_page_remap(struct vm_area_struct *vma, unsigned long address,
+		pmd_t *pmd, struct page *page)
+{
+	struct folio *folio = page_folio(page);
+	gfp_t gfp;
+	pgtable_t pgtable;
+	spinlock_t *ptl;
+	pmd_t entry;
+	vm_fault_t ret = 0;
+
+	if (unlikely(anon_vma_prepare(vma)))
+		return VM_FAULT_OOM;
+
+	khugepaged_enter_vma(vma, vma->vm_flags);
+	gfp = vma_thp_gfp_mask(vma);
+
+	folio_prep_large_rmappable(folio);
+	if (mem_cgroup_charge(folio, vma->vm_mm, gfp)) {
+		folio_put(folio);
+		count_vm_event(THP_FAULT_FALLBACK);
+		count_vm_event(THP_FAULT_FALLBACK_CHARGE);
+		return VM_FAULT_FALLBACK;
+	}
+	folio_throttle_swaprate(folio, gfp);
+
+	pgtable = pte_alloc_one(vma->vm_mm);
+	if (unlikely(!pgtable)) {
+		ret = VM_FAULT_OOM;
+		goto release;
+	}
+	__folio_mark_uptodate(folio);
+	ptl = pmd_lock(vma->vm_mm, pmd);
+	if (unlikely(!pmd_none(*pmd))) {
+		goto unlock_release;
+	} else {
+		ret = check_stable_address_space(vma->vm_mm);
+		if (ret)
+			goto unlock_release;
+		entry = mk_huge_pmd(page, vma->vm_page_prot);
+		entry = maybe_pmd_mkwrite(pmd_mkdirty(entry), vma);
+		folio_add_new_anon_rmap(folio, vma, address);
+		folio_add_lru_vma(folio, vma);
+		pgtable_trans_huge_deposit(vma->vm_mm, pmd, pgtable);
+		set_pmd_at(vma->vm_mm, address, pmd, entry);
+		add_mm_counter(vma->vm_mm, MM_ANONPAGES, HPAGE_PMD_NR);
+		mm_inc_nr_ptes(vma->vm_mm);
+		spin_unlock(ptl);
+		count_vm_event(THP_FAULT_ALLOC);
+		count_memcg_event_mm(vma->vm_mm, THP_FAULT_ALLOC);
+	}
+
+	return 0;
+
+unlock_release:
+	spin_unlock(ptl);
+release:
+	if (pgtable)
+		pte_free(vma->vm_mm, pgtable);
+	folio_put(folio);
+	return ret;
+}
+#endif

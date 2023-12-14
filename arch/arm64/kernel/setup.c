@@ -32,6 +32,7 @@
 #include <linux/sched/task.h>
 #include <linux/scs.h>
 #include <linux/mm.h>
+#include <linux/pin_mem.h>
 
 #include <asm/acpi.h>
 #include <asm/fixmap.h>
@@ -252,6 +253,7 @@ static void __init request_standard_resources(void)
 		}
 
 		insert_resource(&iomem_resource, res);
+		request_pin_mem_res(res);
 	}
 }
 

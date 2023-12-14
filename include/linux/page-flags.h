@@ -136,6 +136,9 @@ enum pageflags {
 	PG_arch_2,
 	PG_arch_3,
 #endif
+#ifdef CONFIG_PIN_MEMORY
+	PG_hotreplace,
+#endif
 	__NR_PAGEFLAGS,
 
 	PG_readahead = PG_reclaim,
@@ -560,6 +563,12 @@ PAGEFLAG(Mlocked, mlocked, PF_NO_TAIL)
 #else
 PAGEFLAG_FALSE(Mlocked, mlocked) __CLEARPAGEFLAG_NOOP(Mlocked, mlocked)
 	TESTSCFLAG_FALSE(Mlocked, mlocked)
+#endif
+
+#ifdef CONFIG_PIN_MEMORY
+PAGEFLAG(Hotreplace, hotreplace, PF_ANY)
+#else
+PAGEFLAG_FALSE(Hotreplace)
 #endif
 
 #ifdef CONFIG_ARCH_USES_PG_UNCACHED
