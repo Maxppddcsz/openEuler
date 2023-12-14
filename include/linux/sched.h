@@ -2477,6 +2477,18 @@ struct bpf_sched_cpu_stats {
 	unsigned int rr_nr_running;
 };
 
+struct sched_migrate_ctx {
+	struct task_struct *task;
+	struct cpumask *select_idle_mask;
+	int prev_cpu;
+	int curr_cpu;
+	int is_sync;
+	int want_affine;
+	int wake_flags;
+	int sd_flag;
+	int new_cpu;
+};
+
 #endif
 
 #endif
