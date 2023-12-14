@@ -57,6 +57,9 @@
 #include <asm/cacheflush.h>
 
 EXPORT_TRACEPOINT_SYMBOL(signal_generate);
+#ifdef CONFIG_SIGNAL_NOTIFIER_CHAIN
+ATOMIC_NOTIFIER_HEAD(send_sig_info_notifier_list);
+#endif
 
 /*
  * SLAB caches for signal bits.
@@ -1294,6 +1297,15 @@ int do_send_sig_info(int sig, struct kernel_siginfo *info, struct task_struct *p
 	unsigned long flags;
 	int ret = -ESRCH;
 
+#ifdef CONFIG_SIGNAL_NOTIFIER_CHAIN
+	struct send_sig_info_data notifier_call_data = {
+		.sig = sig,
+		.info = info,
+		.p = p,
+	};
+	atomic_notifier_call_chain(&send_sig_info_notifier_list, 0, (void *)(&notifier_call_data));
+#endif
+
 	if (lock_task_sighand(p, &flags)) {
 		ret = send_signal(sig, info, p, type);
 		unlock_task_sighand(p, &flags);
@@ -1301,6 +1313,35 @@ int do_send_sig_info(int sig, struct kernel_siginfo *info, struct task_struct *p
 
 	return ret;
 }
+
+#ifdef CONFIG_SIGNAL_NOTIFIER_CHAIN
+int register_signo_catch_notifier(struct notifier_block *nb)
+{
+	if (nb == NULL) {
+		pr_err("register signo catch notification failed. nb is NULL\n");
+		return -EINVAL;
+	}
+
+	if (nb->notifier_call == NULL) {
+		pr_err("register signo catch notification failed. notifier_call is NULL\n");
+		return -EINVAL;
+	}
+
+	return atomic_notifier_chain_register(&send_sig_info_notifier_list, nb);
+}
+EXPORT_SYMBOL(register_signo_catch_notifier);
+
+int unregister_signo_catch_notifier(struct notifier_block *nb)
+{
+	if (nb == NULL) {
+		pr_err("unregister signo catch notification failed. nb is NULL\n");
+		return -EINVAL;
+	}
+
+	return atomic_notifier_chain_unregister(&send_sig_info_notifier_list, nb);
+}
+EXPORT_SYMBOL(unregister_signo_catch_notifier);
+#endif
 
 /*
  * Force a signal that the process can't ignore: if necessary

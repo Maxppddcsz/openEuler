@@ -475,4 +475,10 @@ struct seq_file;
 extern void render_sigset_t(struct seq_file *, const char *, sigset_t *);
 #endif
 
+#ifdef CONFIG_SIGNAL_NOTIFIER_CHAIN
+struct notifier_block;
+extern int register_signo_catch_notifier(struct notifier_block *nb);
+extern int unregister_signo_catch_notifier(struct notifier_block *nb);
+#endif
+
 #endif /* _LINUX_SIGNAL_H */

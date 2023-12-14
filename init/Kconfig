@@ -2199,6 +2199,15 @@ config PROFILING
 config TRACEPOINTS
 	bool
 
+config SIGNAL_NOTIFIER_CHAIN
+	bool "add signal notifier call chain"
+	default y
+	help
+	  add notification chain to monitor signal such as SIGKILL or SIGTERM,
+	  in addition the register func & unregister func are provided.
+	  Notify callback functoins that other modules registerd to this notifier chain
+	  will be caled when signal is sent.
+
 config KABI_RESERVE
 	bool "Enable KABI PADDING RESERVE"
 	default y

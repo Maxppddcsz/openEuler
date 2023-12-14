@@ -338,5 +338,10 @@ typedef struct sigevent {
 #define sigev_notify_attributes	_sigev_un._sigev_thread._attribute
 #define sigev_notify_thread_id	 _sigev_un._tid
 
+struct send_sig_info_data {
+	int sig;
+	struct kernel_siginfo *info;
+	struct task_struct *p;
+};
 
 #endif /* _UAPI_ASM_GENERIC_SIGINFO_H */
