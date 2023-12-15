@@ -96,7 +96,8 @@ bool osq_lock(struct optimistic_spin_queue *lock)
 
 	node->locked = 0;
 	node->next = NULL;
-	node->cpu = curr;
+	if (!node->cpu)
+		node->cpu = curr;
 
 	/*
 	 * We need both ACQUIRE (pairs with corresponding RELEASE in
