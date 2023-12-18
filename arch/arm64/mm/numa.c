@@ -619,6 +619,46 @@ static int __init dummy_numa_init(void)
 	return 0;
 }
 
+#ifdef CONFIG_ARCH_CUSTOM_NUMA_DISTANCE
+static int arch_custom_numa_distance_flag = 1;
+static int __init arch_custom_numa_distance_flag_setup(char *str)
+{
+	int val;
+
+	if (kstrtoint(str, 0, &val))
+		pr_warn("Unable to set arch_custom_numa_distance\n");
+
+	if (val != 0 || val != 1)
+		return 1;
+
+	arch_custom_numa_distance_flag = val;
+	return 1;
+}
+early_param("arch_custom_numa_distance_flag=", arch_custom_numa_distance_flag_setup);
+
+bool arch_numa_distance_is_far(int distance, int numa_levels)
+{
+	unsigned int model = read_cpuid_id() & MIDR_CPU_MODEL_MASK;
+	int far_numa_distance = node_reclaim_distance;
+
+	if (arch_custom_numa_distance_flag == 0)
+		return distance > node_reclaim_distance;
+
+	switch (model) {
+		case MIDR_HISI_TSV200:
+			if (nr_node_ids != 4 || numa_levels <= 3)
+				break;
+
+			far_numa_distance = 40;
+			break;
+		default:
+			break;
+	}
+
+	return distance > far_numa_distance;
+}
+#endif
+
 /**
  * arm64_numa_init() - Initialize NUMA
  *
