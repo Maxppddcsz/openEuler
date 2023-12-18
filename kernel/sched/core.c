@@ -9749,7 +9749,7 @@ static int cpu_qos_write(struct cgroup_subsys_state *css,
 		goto done;
 
 #ifdef CONFIG_QOS_SCHED_MULTILEVEL
-	if (!is_normal_level(tg->qos_level))
+	if (is_offline_level(tg->qos_level) && !is_offline_level(qos_level))
 #else
 	if (tg->qos_level == -1 && qos_level == 0)
 #endif
@@ -9763,7 +9763,16 @@ static int cpu_qos_write(struct cgroup_subsys_state *css,
 	cpus_read_unlock();
 
 	rcu_read_lock();
+#ifdef CONFIG_QOS_SCHED_MULTILEVEL
+	if (is_offline_level(tg->qos_level) == is_offline_level(qos_level)) {
+		mutex_lock(tg->offline_mutex);
+		tg->qos_level = qos_level;
+		mutex_unlock(tg->offline_mutex);
+	} else
+		walk_tg_tree_from(tg, tg_change_scheduler, tg_nop, (void *)(&qos_level));
+#else
 	walk_tg_tree_from(tg, tg_change_scheduler, tg_nop, (void *)(&qos_level));
+#endif
 	rcu_read_unlock();
 done:
 	return 0;
