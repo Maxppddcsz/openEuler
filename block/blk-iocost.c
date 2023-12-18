@@ -3490,6 +3490,7 @@ err:
 	return ret;
 }
 
+#ifdef CONFIG_BLK_CGROUP_LEGACY_IOCOST
 static struct cftype ioc_legacy_files[] = {
 	{
 		.name = "cost.weight",
@@ -3511,6 +3512,7 @@ static struct cftype ioc_legacy_files[] = {
 	},
 	{}
 };
+#endif
 
 static struct cftype ioc_files[] = {
 	{
@@ -3536,7 +3538,9 @@ static struct cftype ioc_files[] = {
 
 static struct blkcg_policy blkcg_policy_iocost = {
 	.dfl_cftypes	= ioc_files,
+#ifdef CONFIG_BLK_CGROUP_LEGACY_IOCOST
 	.legacy_cftypes = ioc_legacy_files,
+#endif
 	.cpd_alloc_fn	= ioc_cpd_alloc,
 	.cpd_free_fn	= ioc_cpd_free,
 	.pd_alloc_fn	= ioc_pd_alloc,
