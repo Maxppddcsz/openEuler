@@ -43,6 +43,7 @@ void __init early_map_cpu_to_node(unsigned int cpu, int nid);
 void numa_store_cpu_info(unsigned int cpu);
 void numa_add_cpu(unsigned int cpu);
 void numa_remove_cpu(unsigned int cpu);
+bool arch_numa_distance_is_far(int distance, int numa_levels);
 
 #else	/* CONFIG_NUMA */
 

@@ -1529,6 +1529,12 @@ int				sched_max_numa_distance;
 static int			*sched_domains_numa_distance;
 static struct cpumask		***sched_domains_numa_masks;
 int __read_mostly		node_reclaim_distance = RECLAIM_DISTANCE;
+
+#ifndef CONFIG_ARCH_CUSTOM_NUMA_DISTANCE
+bool arch_numa_distance_is_far(int distance, int numa_levels) {
+	return distance > node_reclaim_distance;
+}
+#endif
 #endif
 
 /*
@@ -1640,7 +1646,8 @@ sd_init(struct sched_domain_topology_level *tl,
 
 		sd->flags &= ~SD_PREFER_SIBLING;
 		sd->flags |= SD_SERIALIZE;
-		if (sched_domains_numa_distance[tl->numa_level] > node_reclaim_distance) {
+		if (arch_numa_distance_is_far(tl->numa_level,
+					      sched_domains_numa_levels)) {
 			sd->flags &= ~(SD_BALANCE_EXEC |
 				       SD_BALANCE_FORK |
 				       SD_WAKE_AFFINE);
