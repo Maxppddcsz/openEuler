@@ -1967,6 +1967,7 @@ static bool mem_cgroup_oom(struct mem_cgroup *memcg, gfp_t mask, int order)
 			current->memcg_in_oom = memcg;
 			current->memcg_oom_gfp_mask = mask;
 			current->memcg_oom_order = order;
+			oom_type_notifier_call(OOM_TYPE_CGROUP, NULL);
 		}
 		return false;
 	}
@@ -2030,6 +2031,9 @@ bool mem_cgroup_oom_synchronize(bool handle)
 
 	if (locked)
 		mem_cgroup_oom_notify(memcg);
+
+	if (!sysctl_enable_oom_killer)
+		oom_type_notifier_call(OOM_TYPE_CGROUP, NULL);
 
 	schedule();
 	mem_cgroup_unmark_under_oom(memcg);
@@ -3209,12 +3213,22 @@ void __memcg_kmem_uncharge_page(struct page *page, int order)
 	struct folio *folio = page_folio(page);
 	struct obj_cgroup *objcg;
 	unsigned int nr_pages = 1 << order;
+#ifdef CONFIG_ASCEND_OOM
+	struct mem_cgroup *memcg;
+#endif
 
 	if (!folio_memcg_kmem(folio))
 		return;
 
 	objcg = __folio_objcg(folio);
 	obj_cgroup_uncharge_pages(objcg, nr_pages);
+#ifdef CONFIG_ASCEND_OOM
+	memcg = get_mem_cgroup_from_objcg(objcg);
+	if (!mem_cgroup_is_root(memcg))
+		memcg_oom_recover(memcg);
+	css_put(&memcg->css);
+#endif
+
 	folio->memcg_data = 0;
 	obj_cgroup_put(objcg);
 }
