@@ -288,4 +288,5 @@ int hclge_tm_flush_cfg(struct hclge_dev *hdev, bool enable);
 int hclge_tm_set_tc_rate_limit(struct hclge_dev *hdev,
 			       struct hnae3_tc_info *tc_info);
 u32 hclge_tm_rate_2_port_rate(u64 rate);
+void hclge_reset_tc_config(struct hclge_dev *hdev);
 #endif
