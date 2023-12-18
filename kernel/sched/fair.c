@@ -8876,7 +8876,7 @@ again:
 	if (!prev || prev->sched_class != &fair_sched_class) {
 #ifdef CONFIG_QOS_SCHED
 		if (qos_sched_enabled() &&
-		    cfs_rq->idle_h_nr_running != 0 && rq->online)
+		    cfs_rq->qos_idle_h_nr_running != 0 && rq->online)
 			goto qos_simple;
 		else
 #endif
@@ -8930,8 +8930,8 @@ again:
 		if (check_qos_cfs_rq(cfs_rq)) {
 			cfs_rq = &rq->cfs;
 			WARN(cfs_rq->nr_running == 0,
-			    "rq->nr_running=%u, cfs_rq->idle_h_nr_running=%u\n",
-			    rq->nr_running, cfs_rq->idle_h_nr_running);
+			    "rq->nr_running=%u, cfs_rq->qos_idle_h_nr_running=%u\n",
+			    rq->nr_running, cfs_rq->qos_idle_h_nr_running);
 			if (unlikely(!cfs_rq->nr_running))
 				return NULL;
 		}
