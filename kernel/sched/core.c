@@ -9748,13 +9748,6 @@ static int cpu_qos_write(struct cgroup_subsys_state *css,
 	if (tg->qos_level == qos_level)
 		goto done;
 
-#ifdef CONFIG_QOS_SCHED_MULTILEVEL
-	if (!is_normal_level(tg->qos_level))
-#else
-	if (tg->qos_level == -1 && qos_level == 0)
-#endif
-		return -EINVAL;
-
 	cpus_read_lock();
 	if (is_offline_level(qos_level))
 		cfs_bandwidth_usage_inc();
