@@ -351,9 +351,12 @@ struct mem_cgroup {
 #ifdef CONFIG_MEMCG_OOM_PRIORITY
 #define MEMCG_LOW_OOM_PRIORITY -1
 #define MEMCG_HIGH_OOM_PRIORITY 0
+extern int sysctl_memcg_oom_prio;
+
 bool memcg_oom_prio_scan_tasks(int (*)(struct task_struct *, void *),
 				   void *);
 void memcg_print_bad_task(struct oom_control *oc);
+bool memcg_oom_prio_disabled(void);
 #else
 static inline void memcg_print_bad_task(struct oom_control *oc)
 {
