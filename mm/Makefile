@@ -7,6 +7,7 @@ KASAN_SANITIZE_slab_common.o := n
 KASAN_SANITIZE_slab.o := n
 KASAN_SANITIZE_slub.o := n
 KCSAN_SANITIZE_kmemleak.o := n
+KASAN_SANITIZE_clear_freelist_page.o := n
 
 # These produce frequent data race reports: most of them are due to races on
 # the same word but accesses to different bits of that word. Re-enable KCSAN
@@ -140,3 +141,4 @@ obj-$(CONFIG_HAVE_BOOTMEM_INFO_NODE) += bootmem_info.o
 obj-$(CONFIG_GENERIC_IOREMAP) += ioremap.o
 obj-$(CONFIG_SHRINKER_DEBUG) += shrinker_debug.o
 obj-$(CONFIG_SHARE_POOL) += share_pool.o
+obj-$(CONFIG_CLEAR_FREELIST_PAGE) += clear_freelist_page.o
