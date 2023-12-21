@@ -97,7 +97,12 @@ do {								\
 			     __func__, __LINE__, current->pid,	\
 			     ##__VA_ARGS__)
 
+#if defined(CONFIG_OPTIMIZE_INLINING)
 static inline void mlx5_printk(struct mlx5_core_dev *dev, int level, const char *format, ...)
+#else
+static inline __gnu_inline __inline_maybe_unused notrace void mlx5_printk(struct 
+			mlx5_core_dev *dev, int level, const char *format, ...)
+#endif
 {
 	struct device *device = dev->device;
 	struct va_format vaf;
