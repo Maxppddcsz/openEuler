@@ -772,6 +772,25 @@ static void bdev_unblock_writes(struct block_device *bdev)
 	bdev->bd_writers = 0;
 }
 
+static bool bdev_partition_writes_blocked(struct block_device *bdev)
+{
+	bool write_blocked = false;
+	struct block_device *part;
+	unsigned long idx;
+	struct gendisk *disk = bdev->bd_disk;
+
+	rcu_read_lock();
+	xa_for_each_start(&disk->part_tbl, idx, part, 1) {
+		if (bdev_writes_blocked(part)) {
+			write_blocked = true;
+			break;
+		}
+	}
+	rcu_read_unlock();
+
+	return write_blocked;
+}
+
 static void bdev_dump_info(struct block_device *bdev, blk_mode_t mode)
 {
 	if (!bdev_conflict_dump)
@@ -783,6 +802,18 @@ static void bdev_dump_info(struct block_device *bdev, blk_mode_t mode)
 	else if (mode & BLK_OPEN_RESTRICT_WRITES && bdev->bd_writers > 0)
 		blkdev_dump_conflict_opener(bdev, "Open a write opened device for"
 						  " restrict write(for mount)");
+
+	if (!bdev_is_partition(bdev) &&
+	    mode & BLK_OPEN_WRITE &&
+	    bdev_partition_writes_blocked(bdev))
+		blkdev_dump_conflict_opener(bdev, "Open a writes blocked device(whose"
+						  " partition has been mounted) for write");
+
+	if (bdev_is_partition(bdev) &&
+	    mode & BLK_OPEN_RESTRICT_WRITES &&
+	    bdev_whole(bdev)->bd_writers > 0)
+		blkdev_dump_conflict_opener(bdev, "Open a write opened device's partition"
+						  " for restrict write(for mount)");
 }
 
 static bool bdev_may_open(struct block_device *bdev, blk_mode_t mode)
