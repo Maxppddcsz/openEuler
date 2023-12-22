@@ -228,6 +228,13 @@ config BLK_INLINE_ENCRYPTION_FALLBACK
 	  by falling back to the kernel crypto API when inline
 	  encryption hardware is not present.
 
+config BLK_DEV_DUMPINFO
+	bool "Enable detecting conflict of opening block device"
+	default n
+	help
+	  Dump info when opening mounted block devices for write or
+	  trying to mount write opened block devices.
+
 source "block/partitions/Kconfig"
 
 config BLK_MQ_PCI

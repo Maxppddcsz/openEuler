@@ -33,6 +33,9 @@
 /* Should we allow writing to mounted block devices? */
 static bool bdev_allow_write_mounted = IS_ENABLED(CONFIG_BLK_DEV_WRITE_MOUNTED);
 
+/* Should we dump info when opening mounted block devices for write? */
+static bool bdev_conflict_dump = IS_ENABLED(CONFIG_BLK_DEV_DUMPINFO);
+
 struct bdev_inode {
 	struct block_device bdev;
 	struct inode vfs_inode;
@@ -733,6 +736,27 @@ void blkdev_put_no_open(struct block_device *bdev)
 	put_device(&bdev->bd_device);
 }
 
+static void blkdev_dump_conflict_opener(struct block_device *bdev, char *msg)
+{
+	char name[BDEVNAME_SIZE];
+	struct task_struct *p = NULL;
+	char comm_buf[TASK_COMM_LEN];
+	pid_t p_pid;
+
+	rcu_read_lock();
+	p = rcu_dereference(current->real_parent);
+	task_lock(p);
+	strncpy(comm_buf, p->comm, TASK_COMM_LEN);
+	p_pid = p->pid;
+	task_unlock(p);
+	rcu_read_unlock();
+
+	snprintf(name, sizeof(name), "%pg", bdev);
+	pr_info_ratelimited("%s [%s]. current [%d %s]. parent [%d %s]\n",
+	                    msg, name,
+			    current->pid, current->comm, p_pid, comm_buf);
+}
+
 static bool bdev_writes_blocked(struct block_device *bdev)
 {
 	return bdev->bd_writers == -1;
@@ -746,6 +770,19 @@ static void bdev_block_writes(struct block_device *bdev)
 static void bdev_unblock_writes(struct block_device *bdev)
 {
 	bdev->bd_writers = 0;
+}
+
+static void bdev_dump_info(struct block_device *bdev, blk_mode_t mode)
+{
+	if (!bdev_conflict_dump)
+		return;
+
+	if (mode & BLK_OPEN_WRITE && bdev_writes_blocked(bdev))
+		blkdev_dump_conflict_opener(bdev, "Open a writes blocked device(has"
+						  " been mounted) for write");
+	else if (mode & BLK_OPEN_RESTRICT_WRITES && bdev->bd_writers > 0)
+		blkdev_dump_conflict_opener(bdev, "Open a write opened device for"
+						  " restrict write(for mount)");
 }
 
 static bool bdev_may_open(struct block_device *bdev, blk_mode_t mode)
@@ -762,7 +799,11 @@ static bool bdev_may_open(struct block_device *bdev, blk_mode_t mode)
 
 static void bdev_claim_write_access(struct block_device *bdev, blk_mode_t mode)
 {
-	if (bdev_allow_write_mounted)
+	/*
+	 * Record bd_writers for dumping info even we
+	 * allow writing to mounted block devices
+	 */
+	if (bdev_allow_write_mounted && !bdev_conflict_dump)
 		return;
 
 	/* Claim exclusive or shared write access. */
@@ -774,7 +815,7 @@ static void bdev_claim_write_access(struct block_device *bdev, blk_mode_t mode)
 
 static void bdev_yield_write_access(struct block_device *bdev, blk_mode_t mode)
 {
-	if (bdev_allow_write_mounted)
+	if (bdev_allow_write_mounted && !bdev_conflict_dump)
 		return;
 
 	/* Yield exclusive or shared write access. */
@@ -860,6 +901,8 @@ struct bdev_handle *bdev_open_by_dev(dev_t dev, blk_mode_t mode, void *holder,
 	ret = -EBUSY;
 	if (!bdev_may_open(bdev, mode))
 		goto abort_claiming;
+	else
+		bdev_dump_info(bdev, mode);
 	if (bdev_is_partition(bdev))
 		ret = blkdev_get_part(bdev, mode);
 	else
