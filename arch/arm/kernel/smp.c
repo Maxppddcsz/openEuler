@@ -849,5 +849,5 @@ static void raise_nmi(cpumask_t *mask)
 bool arch_trigger_cpumask_backtrace(const cpumask_t *mask, int exclude_cpu)
 {
 	nmi_trigger_cpumask_backtrace(mask, exclude_cpu, raise_nmi);
-        return true;
+	return true;
 }
