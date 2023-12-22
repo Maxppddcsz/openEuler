@@ -1823,11 +1823,11 @@ static const struct ethtool_ops hinic_ethtool_ops = {
 };
 
 static const struct ethtool_ops hinicvf_ethtool_ops = {
-	.supported_coalesce_params = ETHTOOL_COALESCE_RX_USECS |
-				     ETHTOOL_COALESCE_RX_MAX_FRAMES |
-				     ETHTOOL_COALESCE_TX_USECS |
-				     ETHTOOL_COALESCE_TX_MAX_FRAMES,
-
+	.supported_coalesce_params = ETHTOOL_COALESCE_USECS |
+				     ETHTOOL_COALESCE_MAX_FRAMES |
+				     ETHTOOL_COALESCE_USECS_LOW_HIGH |
+				     ETHTOOL_COALESCE_MAX_FRAMES_LOW_HIGH |
+				     ETHTOOL_COALESCE_PKT_RATE_RX_USECS,
 	.get_link_ksettings = hinic_get_link_ksettings,
 	.get_drvinfo = hinic_get_drvinfo,
 	.get_link = ethtool_op_get_link,
