@@ -2375,6 +2375,33 @@ unlock_mutex:
 }
 EXPORT_SYMBOL_GPL(memory_failure);
 
+#ifdef CONFIG_ASCEND_RAS_FEATURES
+bool pfn_hwpoison_isolated(unsigned long pfn)
+{
+	struct page *p;
+	struct page *head;
+
+	p = pfn_to_online_page(pfn);
+	if (!p)
+		return false;
+
+	head = compound_head(p);
+
+	if (PageHuge(p)) {
+		if (PageHWPoison(head) && (page_count(head) == 0
+					|| page_count(head) == 1))
+			return true;
+	} else {
+		if (PageHWPoison(p) && (page_count(head) == 0
+					|| page_count(head) == 1))
+			return true;
+	}
+
+	return false;
+}
+EXPORT_SYMBOL_GPL(pfn_hwpoison_isolated);
+#endif
+
 #define MEMORY_FAILURE_FIFO_ORDER	4
 #define MEMORY_FAILURE_FIFO_SIZE	(1 << MEMORY_FAILURE_FIFO_ORDER)
 
