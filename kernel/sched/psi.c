@@ -140,6 +140,7 @@
 static int psi_bug __read_mostly;
 
 DEFINE_STATIC_KEY_FALSE(psi_disabled);
+DEFINE_STATIC_KEY_FALSE(psi_v1_disabled);
 static DEFINE_STATIC_KEY_TRUE(psi_cgroups_enabled);
 
 #ifdef CONFIG_PSI_DEFAULT_DISABLED
@@ -885,14 +886,13 @@ static inline struct psi_group *task_psi_group(struct task_struct *task)
 {
 #ifdef CONFIG_CGROUPS
 	if (static_branch_likely(&psi_cgroups_enabled)) {
-#ifdef CONFIG_PSI_CGROUP_V1
-		if (!cgroup_subsys_on_dfl(cpuacct_cgrp_subsys))
-			return cgroup_psi(task_cgroup(task, cpuacct_cgrp_id));
-		else
+		if (!cgroup_subsys_on_dfl(cpuacct_cgrp_subsys)) {
+			if (static_branch_likely(&psi_v1_disabled))
+				return &psi_system;
+			else
+				return cgroup_psi(task_cgroup(task, cpuacct_cgrp_id));
+		} else
 			return cgroup_psi(task_dfl_cgroup(task));
-#else
-		return cgroup_psi(task_dfl_cgroup(task));
-#endif
 	}
 #endif
 	return &psi_system;
