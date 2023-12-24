@@ -890,8 +890,13 @@ static inline struct psi_group *task_psi_group(struct task_struct *task)
 		if (!cgroup_subsys_on_dfl(cpuacct_cgrp_subsys)) {
 			if (static_branch_likely(&psi_v1_disabled))
 				return &psi_system;
-			else
-				return cgroup_psi(task_cgroup(task, cpuacct_cgrp_id));
+			else {
+				struct cgroup *cgroup;
+				rcu_read_lock();
+				cgroup = task_cgroup(task, cpuacct_cgrp_id);
+				rcu_read_unlock();
+				return cgroup_psi(cgroup);
+			}
 		} else
 			return cgroup_psi(task_dfl_cgroup(task));
 #endif
