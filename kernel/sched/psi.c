@@ -886,6 +886,7 @@ static inline struct psi_group *task_psi_group(struct task_struct *task)
 {
 #ifdef CONFIG_CGROUPS
 	if (static_branch_likely(&psi_cgroups_enabled)) {
+#ifdef CONFIG_CGORUP_CPUACCT
 		if (!cgroup_subsys_on_dfl(cpuacct_cgrp_subsys)) {
 			if (static_branch_likely(&psi_v1_disabled))
 				return &psi_system;
@@ -893,6 +894,7 @@ static inline struct psi_group *task_psi_group(struct task_struct *task)
 				return cgroup_psi(task_cgroup(task, cpuacct_cgrp_id));
 		} else
 			return cgroup_psi(task_dfl_cgroup(task));
+#endif
 	}
 #endif
 	return &psi_system;
