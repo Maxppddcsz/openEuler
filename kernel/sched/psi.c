@@ -175,6 +175,24 @@ struct psi_group psi_system = {
 	.pcpu = &system_group_pcpu,
 };
 
+#ifdef CONFIG_PSI_FINE_GRAINED
+/* System-level fine grained pressure and stall tracking */
+struct psi_group_ext psi_stat_system = { };
+
+struct psi_group_ext *to_psi_group_ext(struct psi_group *psi)
+{
+	if (psi == &psi_system)
+		return &psi_stat_system;
+	else
+		return container_of(psi, struct psi_group_ext, psi);
+}
+#else
+static inline struct psi_group_ext *to_psi_group_ext(struct psi_group *psi)
+{
+	return NULL;
+}
+#endif
+
 static void psi_avgs_work(struct work_struct *work);
 
 static void poll_timer_fn(struct timer_list *t);
@@ -1127,16 +1145,30 @@ EXPORT_SYMBOL_GPL(psi_memstall_leave);
 #ifdef CONFIG_CGROUPS
 int psi_cgroup_alloc(struct cgroup *cgroup)
 {
+#ifdef CONFIG_PSI_FINE_GRAINED
+	struct psi_group_ext *psi_ext;
+#endif
+
 	if (!static_branch_likely(&psi_cgroups_enabled))
 		return 0;
 
+#ifdef CONFIG_PSI_FINE_GRAINED
+	psi_ext = kzalloc(sizeof(struct psi_group_ext), GFP_KERNEL);
+	if (!psi_ext)
+		return -ENOMEM;
+	cgroup->psi = &psi_ext->psi;
+#else
 	cgroup->psi = kzalloc(sizeof(struct psi_group), GFP_KERNEL);
 	if (!cgroup->psi)
 		return -ENOMEM;
-
+#endif
 	cgroup->psi->pcpu = alloc_percpu(struct psi_group_cpu);
 	if (!cgroup->psi->pcpu) {
+#ifdef CONFIG_PSI_FINE_GRAINED
+		kfree(psi_ext);
+#else
 		kfree(cgroup->psi);
+#endif
 		return -ENOMEM;
 	}
 	group_init(cgroup->psi);
@@ -1153,7 +1185,11 @@ void psi_cgroup_free(struct cgroup *cgroup)
 	free_percpu(cgroup->psi->pcpu);
 	/* All triggers must be removed by now */
 	WARN_ONCE(cgroup->psi->rtpoll_states, "psi: trigger leak\n");
+#ifdef CONFIG_PSI_FINE_GRAINED
+	kfree(to_psi_group_ext(cgroup->psi));
+#else
 	kfree(cgroup->psi);
+#endif
 }
 
 /**

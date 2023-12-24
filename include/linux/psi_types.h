@@ -207,6 +207,14 @@ struct psi_group {
 	u64 rtpoll_until;
 };
 
+#ifdef CONFIG_PSI_FINE_GRAINED
+struct psi_group_ext {
+	struct psi_group psi;
+};
+#else
+struct psi_group_ext {};
+#endif /* CONFIG_PSI_FINE_GRAINED */
+
 #else /* CONFIG_PSI */
 
 #define NR_PSI_RESOURCES	0
