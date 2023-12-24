@@ -888,6 +888,9 @@ static inline struct psi_group *task_psi_group(struct task_struct *task)
 {
 #ifdef CONFIG_CGROUPS
 	if (static_branch_likely(&psi_cgroups_enabled)) {
+#ifndef CONFIG_PSI_CGROUP_V1
+		return cgroup_psi(task_dfl_cgroup(task));
+#endif
 #ifdef CONFIG_CGORUP_CPUACCT
 		if (!cgroup_subsys_on_dfl(cpuacct_cgrp_subsys)) {
 			if (static_branch_likely(&psi_v1_disabled))
@@ -1106,6 +1109,7 @@ void psi_memstall_leave(unsigned long *flags)
 		return;
 
 	trace_psi_memstall_leave(_RET_IP_);
+
 	/*
 	 * in_memstall clearing & accounting needs to be atomic wrt
 	 * changes to the task's scheduling state, otherwise we could

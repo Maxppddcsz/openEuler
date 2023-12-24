@@ -3902,6 +3902,7 @@ bool cgroup_psi_enabled(void)
 	return (cgroup_feature_disable_mask & (1 << OPT_FEATURE_PRESSURE)) == 0;
 }
 
+#ifdef 	CONFIG_PSI_CGROUP_V1
 struct cftype cgroup_v1_psi_files[] = {
 	{
 		.name = "io.pressure",
@@ -3939,6 +3940,7 @@ struct cftype cgroup_v1_psi_files[] = {
 #endif
 	{ }	/* terminate */
 };
+#endif
 #else /* CONFIG_PSI */
 bool cgroup_psi_enabled(void)
 {
