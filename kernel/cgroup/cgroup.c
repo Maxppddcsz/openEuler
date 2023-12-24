@@ -3927,6 +3927,16 @@ struct cftype cgroup_v1_psi_files[] = {
 		.poll = cgroup_pressure_poll,
 		.release = cgroup_pressure_release,
 	},
+#ifdef CONFIG_IRQ_TIME_ACCOUNTING
+	{
+		.name = "irq.pressure",
+		.file_offset = offsetof(struct cgroup, psi_files[PSI_IRQ]),
+		.seq_show = cgroup_irq_pressure_show,
+		.write = cgroup_irq_pressure_write,
+		.poll = cgroup_pressure_poll,
+		.release = cgroup_pressure_release,
+	},
+#endif
 	{ }	/* terminate */
 };
 #else /* CONFIG_PSI */
