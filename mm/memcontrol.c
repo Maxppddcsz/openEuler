@@ -2450,6 +2450,9 @@ static void async_reclaim_high(struct mem_cgroup *memcg)
 		return;
 	}
 
+#ifdef CONFIG_PSI_FINE_GRAINED
+	pflags = PSI_ASYNC_MEMCG_RECLAIM;
+#endif
 	psi_memstall_enter(&pflags);
 	nr_pages = memcg_usage > safe_pages ? memcg_usage - safe_pages :
 		   MEMCG_CHARGE_BATCH;
