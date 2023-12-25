@@ -582,6 +582,11 @@ struct task_struct *task_early_kill(struct task_struct *tsk, int force_early)
 {
 	if (!tsk->mm)
 		return NULL;
+
+#ifdef CONFIG_ASCEND_RAS_FEATURES
+	if (force_early == ASCEND_HWPOISON_MAGIC_NUM)
+		return tsk;
+#endif
 	/*
 	 * Comparing ->mm here because current task might represent
 	 * a subthread, while tsk always points to the main thread.
