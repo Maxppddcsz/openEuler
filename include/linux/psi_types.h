@@ -207,6 +207,66 @@ struct psi_group {
 	u64 rtpoll_until;
 };
 
+#ifdef CONFIG_PSI_FINE_GRAINED
+
+enum psi_stat_states {
+	PSI_MEMCG_RECLAIM_SOME,
+	PSI_MEMCG_RECLAIM_FULL,
+	PSI_GLOBAL_RECLAIM_SOME,
+	PSI_GLOBAL_RECLAIM_FULL,
+	PSI_COMPACT_SOME,
+	PSI_COMPACT_FULL,
+	PSI_ASYNC_MEMCG_RECLAIM_SOME,
+	PSI_ASYNC_MEMCG_RECLAIM_FULL,
+	PSI_SWAP_SOME,
+	PSI_SWAP_FULL,
+	PSI_CPU_CFS_BANDWIDTH_FULL,
+#ifdef CONFIG_QOS_SCHED
+	PSI_CPU_QOS_FULL,
+#endif
+	NR_PSI_STAT_STATES,
+};
+
+enum psi_stat_task_count {
+	NR_MEMCG_RECLAIM,
+	NR_MEMCG_RECLAIM_RUNNING,
+	NR_GLOBAL_RECLAIM,
+	NR_GLOBAL_RECLAIM_RUNNING,
+	NR_COMPACT,
+	NR_COMPACT_RUNNING,
+	NR_ASYNC_MEMCG_RECLAIM,
+	NR_ASYNC_MEMCG_RECLAIM_RUNNING,
+	NR_SWAP,
+	NR_SWAP_RUNNING,
+	NR_PSI_STAT_TASK_COUNTS,
+};
+
+#define CPU_CFS_BANDWIDTH		1
+
+struct psi_group_stat_cpu {
+	u32 state_mask;
+	u32 times[NR_PSI_STAT_STATES];
+	u32 psi_delta;
+	unsigned int tasks[NR_PSI_STAT_TASK_COUNTS];
+	u32 times_delta;
+	u32 times_prev[NR_PSI_AGGREGATORS][NR_PSI_STAT_STATES];
+	int prev_throttle;
+	int cur_throttle;
+};
+
+struct psi_group_ext {
+	struct psi_group psi;
+	struct psi_group_stat_cpu __percpu *pcpu;
+	/* Running fine grained pressure averages */
+	u64 avg_total[NR_PSI_STAT_STATES];
+	/* Total fine grained stall times and sampled pressure averages */
+	u64 total[NR_PSI_AGGREGATORS][NR_PSI_STAT_STATES];
+	unsigned long avg[NR_PSI_STAT_STATES][3];
+};
+#else
+struct psi_group_ext {};
+#endif /* CONFIG_PSI_FINE_GRAINED */
+
 #else /* CONFIG_PSI */
 
 #define NR_PSI_RESOURCES	0
@@ -214,5 +274,22 @@ struct psi_group {
 struct psi_group { };
 
 #endif /* CONFIG_PSI */
+
+/*
+ * one type should have two task stats: regular running and memstall
+ * threads. The reason is the same as NR_MEMSTALL_RUNNING.
+ * Because of the psi_memstall_type is start with 1, the correspondence
+ * between psi_memstall_type and psi_stat_task_count should be as below:
+ *
+ * memstall : psi_memstall_type * 2 - 2;
+ * running  : psi_memstall_type * 2 - 1;
+ */
+enum psi_memstall_type {
+	PSI_MEMCG_RECLAIM = 1,
+	PSI_GLOBAL_RECLAIM,
+	PSI_COMPACT,
+	PSI_ASYNC_MEMCG_RECLAIM,
+	PSI_SWAP,
+};
 
 #endif /* _LINUX_PSI_TYPES_H */

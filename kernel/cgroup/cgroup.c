@@ -3919,6 +3919,56 @@ bool cgroup_psi_enabled(void)
 	return (cgroup_feature_disable_mask & (1 << OPT_FEATURE_PRESSURE)) == 0;
 }
 
+#ifdef 	CONFIG_PSI_CGROUP_V1
+#ifdef CONFIG_PSI_FINE_GRAINED
+static int cgroup_psi_stat_show(struct seq_file *seq, void *v)
+{
+	return psi_stat_show(seq, cgroup_psi(seq_css(seq)->cgroup));
+}
+#endif
+
+struct cftype cgroup_v1_psi_files[] = {
+	{
+		.name = "io.pressure",
+		.file_offset = offsetof(struct cgroup, psi_files[PSI_IO]),
+		.seq_show = cgroup_io_pressure_show,
+		.write = cgroup_io_pressure_write,
+		.poll = cgroup_pressure_poll,
+		.release = cgroup_pressure_release,
+	},
+	{
+		.name = "memory.pressure",
+		.file_offset = offsetof(struct cgroup, psi_files[PSI_MEM]),
+		.seq_show = cgroup_memory_pressure_show,
+		.write = cgroup_memory_pressure_write,
+		.poll = cgroup_pressure_poll,
+		.release = cgroup_pressure_release,
+	},
+	{
+		.name = "cpu.pressure",
+		.file_offset = offsetof(struct cgroup, psi_files[PSI_CPU]),
+		.seq_show = cgroup_cpu_pressure_show,
+		.write = cgroup_cpu_pressure_write,
+		.poll = cgroup_pressure_poll,
+		.release = cgroup_pressure_release,
+	},
+#ifdef CONFIG_IRQ_TIME_ACCOUNTING
+	{
+		.name = "irq.pressure",
+		.file_offset = offsetof(struct cgroup, psi_files[PSI_IRQ]),
+		.seq_show = cgroup_irq_pressure_show,
+		.write = cgroup_irq_pressure_write,
+		.poll = cgroup_pressure_poll,
+		.release = cgroup_pressure_release,
+	},
+#endif
+	{
+		.name = "pressure.stat",
+		.seq_show = cgroup_psi_stat_show,
+	},
+	{ }	/* terminate */
+};
+#endif
 #else /* CONFIG_PSI */
 bool cgroup_psi_enabled(void)
 {

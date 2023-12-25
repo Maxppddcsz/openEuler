@@ -509,6 +509,9 @@ void swap_readpage(struct page *page, bool synchronous, struct swap_iocb **plug)
 	 */
 	if (workingset) {
 		delayacct_thrashing_start(&in_thrashing);
+#ifdef CONFIG_PSI_FINE_GRAINED
+		pflags = PSI_SWAP;
+#endif
 		psi_memstall_enter(&pflags);
 	}
 	delayacct_swapin_start();
