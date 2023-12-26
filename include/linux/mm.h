@@ -395,6 +395,10 @@ extern unsigned int kobjsize(const void *objp);
 # define VM_SHARE_POOL VM_NONE
 #endif
 
+#if defined(CONFIG_ASCEND_RAS_FEATURES)
+#define ASCEND_HWPOISON_MAGIC_NUM	0xABAB
+#endif
+
 #ifndef VM_GROWSUP
 # define VM_GROWSUP	VM_NONE
 #endif
@@ -3862,6 +3866,7 @@ enum mf_flags {
 int mf_dax_kill_procs(struct address_space *mapping, pgoff_t index,
 		      unsigned long count, int mf_flags);
 extern int memory_failure(unsigned long pfn, int flags);
+extern bool pfn_hwpoison_isolated(unsigned long pfn);
 extern void memory_failure_queue_kick(int cpu);
 extern int unpoison_memory(unsigned long pfn);
 extern void shake_page(struct page *p);
