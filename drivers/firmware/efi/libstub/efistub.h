@@ -1010,6 +1010,9 @@ unsigned long cal_slots_avoid_overlap(efi_memory_desc_t *md, unsigned long size,
 #if defined CONFIG_UEFI_KASLR_SKIP_MEMMAP
 void mem_avoid_memmap(char *str);
 #endif
+#if defined CONFIG_NOKASLR_MEM_RANGE && defined(CONFIG_ARM64)
+void mem_avoid_mem_nokaslr(char *str);
+#endif
 
 efi_status_t efi_setup_gop(struct screen_info *si, efi_guid_t *proto,
 			   unsigned long size);

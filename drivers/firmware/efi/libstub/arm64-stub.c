@@ -18,11 +18,19 @@
 #define MAX_MEMMAP_REGIONS 32
 #endif
 
+#ifdef CONFIG_NOKASLR_MEM_RANGE
+#define MAX_MEM_NOKASLR_REGIONS	4
+#endif
+
 #if defined CONFIG_UEFI_KASLR_SKIP_MEMMAP || defined(CONFIG_NOKASLR_MEM_RANGE)
 enum mem_avoid_index {
 #if defined CONFIG_UEFI_KASLR_SKIP_MEMMAP
 	MAX_MEMMAP_REGIONS_BEGIN = 0,
 	MAX_MEMMAP_REGIONS_END = MAX_MEMMAP_REGIONS_BEGIN + MAX_MEMMAP_REGIONS - 1,
+#endif
+#ifdef CONFIG_NOKASLR_MEM_RANGE
+	MEM_AVOID_MEM_NOKASLR_BEGIN,
+	MEM_AVOID_MEM_NOKASLR_END = MEM_AVOID_MEM_NOKASLR_BEGIN + MAX_MEM_NOKASLR_REGIONS - 1,
 #endif
 	MEM_AVOID_MAX,
 };
@@ -103,7 +111,7 @@ unsigned long cal_slots_avoid_overlap(efi_memory_desc_t *md, unsigned long size,
 			}
 		}
 
-		/* Clip off the overlapping region and start over. */
+		/* Clip off the overlapping region and start over.*/
 		region.start = overlap.start + overlap.size;
 	}
 
@@ -139,6 +147,40 @@ void mem_avoid_memmap(char *str)
 
 		mem_avoid[MAX_MEMMAP_REGIONS_BEGIN + i].start = start;
 		mem_avoid[MAX_MEMMAP_REGIONS_BEGIN + i].size = size;
+		str = k;
+		i++;
+	}
+}
+#endif
+
+#if defined CONFIG_NOKASLR_MEM_RANGE
+void mem_avoid_mem_nokaslr(char *str)
+{
+	int i = 0;
+
+	while (str && (i < MAX_MEM_NOKASLR_REGIONS)) {
+		char *oldstr;
+		u64 start, end;
+		char *k = strchr(str, ',');
+
+		if (k)
+			*k++ = 0;
+
+		oldstr = str;
+		start = memparse(str, &str);
+		if (str == oldstr || *str != '-') {
+			efi_warn("nokaslr values error.\n");
+			break;
+		}
+
+		end = memparse(str + 1, &str);
+		if (start >= end) {
+			efi_warn("nokaslr values error, start should be less than end.\n");
+			break;
+		}
+
+		mem_avoid[MEM_AVOID_MEM_NOKASLR_BEGIN + i].start = start;
+		mem_avoid[MEM_AVOID_MEM_NOKASLR_BEGIN + i].size = end - start;
 		str = k;
 		i++;
 	}
