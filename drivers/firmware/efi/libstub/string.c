@@ -202,7 +202,7 @@ void *memchr(const void *s, int c, size_t n)
 }
 #endif
 #endif
-#if defined CONFIG_KASLR_SKIP_MEM_RANGE
+#if defined (CONFIG_KASLR_SKIP_MEM_RANGE) && defined (CONFIG_ARM64)
 #ifndef EFI_HAVE_STRCHR
 /**
  * strchr - Find the first occurrence of a character in a string
