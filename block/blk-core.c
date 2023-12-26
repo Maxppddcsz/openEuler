@@ -71,6 +71,21 @@ static struct kmem_cache *blk_requestq_cachep;
  */
 static struct workqueue_struct *kblockd_workqueue;
 
+static bool precise_iostat;
+
+static int __init precise_iostat_setup(char *str)
+{
+	bool precise;
+
+	if (!strtobool(str, &precise)) {
+		precise_iostat = precise;
+		pr_info("precise iostat %d\n", precise_iostat);
+	}
+
+	return 1;
+}
+__setup("precise_iostat=", precise_iostat_setup);
+
 /**
  * blk_queue_flag_set - atomically set a queue flag
  * @flag: flag to be set
@@ -441,6 +456,8 @@ struct request_queue *blk_alloc_queue(int node_id)
 
 	blk_set_default_limits(&q->limits);
 	q->nr_requests = BLKDEV_DEFAULT_RQ;
+	if (precise_iostat)
+		blk_queue_flag_set(QUEUE_FLAG_PRECISE_IO_STAT, q);
 
 	return q;
 
@@ -935,14 +952,20 @@ int iocb_bio_iopoll(struct kiocb *kiocb, struct io_comp_batch *iob,
 }
 EXPORT_SYMBOL_GPL(iocb_bio_iopoll);
 
-void update_io_ticks(struct block_device *part, unsigned long now, bool end)
+void update_io_ticks(struct block_device *part, unsigned long now, bool end,
+		     bool precise)
 {
 	unsigned long stamp;
 again:
 	stamp = READ_ONCE(part->bd_stamp);
-	if (unlikely(time_after(now, stamp))) {
-		if (likely(try_cmpxchg(&part->bd_stamp, &stamp, now)))
+	if (unlikely(time_after(now, stamp)) &&
+	    likely(try_cmpxchg(&part->bd_stamp, &stamp, now))) {
+		if (precise) {
+			if (end || part_in_flight(part))
+				__part_stat_add(part, io_ticks, now - stamp);
+		} else {
 			__part_stat_add(part, io_ticks, end ? now - stamp : 1);
+		}
 	}
 	if (part->bd_partno) {
 		part = bdev_whole(part);
@@ -954,7 +977,8 @@ unsigned long bdev_start_io_acct(struct block_device *bdev, enum req_op op,
 				 unsigned long start_time)
 {
 	part_stat_lock();
-	update_io_ticks(bdev, start_time, false);
+	update_io_ticks(bdev, start_time, false,
+			blk_queue_precise_io_stat(bdev->bd_queue));
 	part_stat_local_inc(bdev, in_flight[op_is_write(op)]);
 	part_stat_unlock();
 
@@ -982,7 +1006,7 @@ void bdev_end_io_acct(struct block_device *bdev, enum req_op op,
 	unsigned long duration = now - start_time;
 
 	part_stat_lock();
-	update_io_ticks(bdev, now, true);
+	update_io_ticks(bdev, now, true, true);
 	part_stat_inc(bdev, ios[sgrp]);
 	part_stat_add(bdev, sectors[sgrp], sectors);
 	part_stat_add(bdev, nsecs[sgrp], jiffies_to_nsecs(duration));
