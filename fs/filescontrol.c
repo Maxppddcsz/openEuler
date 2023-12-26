@@ -151,6 +151,9 @@ static int files_cgroup_can_attach(struct cgroup_taskset *tset)
 
 int files_cgroup_alloc_fd(struct files_struct *files, u64 n)
 {
+	if (!files_cgroup_enabled()) {
+		return 0;
+	}
 	/*
 	 * Kernel threads which are forked by kthreadd inherited the
 	 * const files_struct 'init_files', we didn't wrap it so
@@ -175,6 +178,9 @@ EXPORT_SYMBOL(files_cgroup_alloc_fd);
 
 void files_cgroup_unalloc_fd(struct files_struct *files, u64 n)
 {
+	if (!files_cgroup_enabled()) {
+		return;
+	}
 	/*
 	 * It's not charged so no need to uncharge, see comments in
 	 * files_cgroup_alloc_fd.
@@ -189,6 +195,9 @@ EXPORT_SYMBOL(files_cgroup_unalloc_fd);
 
 void files_cgroup_put_fd(struct files_struct *files, unsigned int fd)
 {
+	if (!files_cgroup_enabled()) {
+		return;
+	}
 	struct fdtable *fdt = files_fdtable(files);
 
 	if (test_bit(fd, fdt->open_fds))
@@ -197,6 +206,9 @@ void files_cgroup_put_fd(struct files_struct *files, unsigned int fd)
 
 int files_cgroup_get_fd(struct files_struct *newf)
 {
+	if (!files_cgroup_enabled()) {
+		return 0;
+	}
 	spin_lock(&newf->file_lock);
 	int err = files_cgroup_alloc_fd(newf, files_cgroup_count_fds(newf));
 	spin_unlock(&newf->file_lock);
@@ -302,6 +314,10 @@ struct cgroup_subsys files_cgrp_subsys = {
  */
 void files_cgroup_assign(struct files_struct *files)
 {
+
+	if (!files_cgroup_enabled()) {
+		return;
+	}
 	struct cgroup_subsys_state *css;
 
 	if (files == &init_files)
@@ -313,6 +329,9 @@ void files_cgroup_assign(struct files_struct *files)
 
 void files_cgroup_remove(struct files_struct *files)
 {
+	if (!files_cgroup_enabled()) {
+		return;
+	}
 	struct task_struct *tsk = current;
 	struct files_cgroup *fcg;
 

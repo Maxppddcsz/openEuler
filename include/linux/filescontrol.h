@@ -19,6 +19,7 @@
 #define _LINUX_FILESCONTROL_H
 
 #include <linux/fdtable.h>
+#include <linux/cgroup.h>
 
 #ifdef CONFIG_CGROUP_FILES
 extern int files_cgroup_alloc_fd(struct files_struct *files, u64 n);
@@ -30,15 +31,23 @@ extern void files_cgroup_remove(struct files_struct *files);
 
 extern int files_cgroup_get_fd(struct files_struct *newf);
 extern void files_cgroup_put_fd(struct files_struct *files, unsigned int fd);
+
+static inline bool files_cgroup_enabled(void)
+{
+	return cgroup_subsys_enabled(files_cgrp_subsys);
+}
+
 #else /* no CONFIG_CGROUP_FILES */
 static inline int files_cgroup_alloc_fd(struct files_struct *files, u64 n){return 0;};
 static inline void files_cgroup_unalloc_fd(struct files_struct *files, u64 n){};
+
 
 static inline void files_cgroup_assign(struct files_struct *files){};
 static inline void files_cgroup_remove(struct files_struct *files){};
 
 static inline int files_cgroup_get_fd(struct files_struct *newf){return 0;};
 static inline void files_cgroup_put_fd(struct files_struct *files, unsigned int fd){};
+
 #endif /* CONFIG_CGROUP_FILES */
 
 #endif /* _LINUX_FILESCONTROL_H */
