@@ -582,6 +582,11 @@ struct task_struct *task_early_kill(struct task_struct *tsk, int force_early)
 {
 	if (!tsk->mm)
 		return NULL;
+
+#ifdef CONFIG_ASCEND_RAS_FEATURES
+	if (force_early == ASCEND_HWPOISON_MAGIC_NUM)
+		return tsk;
+#endif
 	/*
 	 * Comparing ->mm here because current task might represent
 	 * a subthread, while tsk always points to the main thread.
@@ -2369,6 +2374,33 @@ unlock_mutex:
 	return res;
 }
 EXPORT_SYMBOL_GPL(memory_failure);
+
+#ifdef CONFIG_ASCEND_RAS_FEATURES
+bool pfn_hwpoison_isolated(unsigned long pfn)
+{
+	struct page *p;
+	struct page *head;
+
+	p = pfn_to_online_page(pfn);
+	if (!p)
+		return false;
+
+	head = compound_head(p);
+
+	if (PageHuge(p)) {
+		if (PageHWPoison(head) && (page_count(head) == 0
+					|| page_count(head) == 1))
+			return true;
+	} else {
+		if (PageHWPoison(p) && (page_count(head) == 0
+					|| page_count(head) == 1))
+			return true;
+	}
+
+	return false;
+}
+EXPORT_SYMBOL_GPL(pfn_hwpoison_isolated);
+#endif
 
 #define MEMORY_FAILURE_FIFO_ORDER	4
 #define MEMORY_FAILURE_FIFO_SIZE	(1 << MEMORY_FAILURE_FIFO_ORDER)
