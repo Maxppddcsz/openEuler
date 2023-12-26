@@ -5,6 +5,7 @@
 #include <linux/genetlink.h>
 #include <net/netlink.h>
 #include <net/net_namespace.h>
+#include <linux/kabi.h>
 
 #define GENLMSG_DEFAULT_SIZE (NLMSG_DEFAULT_SIZE - GENL_HDRLEN)
 
@@ -87,6 +88,8 @@ struct genl_family {
 	int			id;
 	/* starting number of multicast group IDs in this family */
 	unsigned int		mcgrp_offset;
+
+	KABI_RESERVE(1)
 };
 
 /**
@@ -111,6 +114,8 @@ struct genl_info {
 	possible_net_t		_net;
 	void *			user_ptr[2];
 	struct netlink_ext_ack *extack;
+
+	KABI_RESERVE(1)
 };
 
 static inline struct net *genl_info_net(const struct genl_info *info)
@@ -193,6 +198,11 @@ struct genl_ops {
 	u8			internal_flags;
 	u8			flags;
 	u8			validate;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 };
 
 /**
