@@ -582,6 +582,11 @@ struct task_struct *task_early_kill(struct task_struct *tsk, int force_early)
 {
 	if (!tsk->mm)
 		return NULL;
+
+#ifdef CONFIG_ASCEND_RAS_FEATURES
+	if (force_early == ASCEND_HWPOISON_MAGIC_NUM)
+		return tsk;
+#endif
 	/*
 	 * Comparing ->mm here because current task might represent
 	 * a subthread, while tsk always points to the main thread.
@@ -704,8 +709,13 @@ static void collect_procs_fsdax(struct page *page,
 /*
  * Collect the processes who have the corrupted page mapped to kill.
  */
+#ifdef CONFIG_ASCEND_RAS_FEATURES
+void collect_procs(struct page *page, struct list_head *tokill,
+				int force_early)
+#else
 static void collect_procs(struct page *page, struct list_head *tokill,
 				int force_early)
+#endif
 {
 	if (!page->mapping)
 		return;
@@ -716,6 +726,9 @@ static void collect_procs(struct page *page, struct list_head *tokill,
 	else
 		collect_procs_file(page, tokill, force_early);
 }
+#ifdef CONFIG_ASCEND_RAS_FEATURES
+EXPORT_SYMBOL_GPL(collect_procs);
+#endif
 
 struct hwpoison_walk {
 	struct to_kill tk;
