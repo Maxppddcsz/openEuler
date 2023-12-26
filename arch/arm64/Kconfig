@@ -2246,6 +2246,18 @@ config RANDOMIZE_MODULE_REGION_FULL
 	  the region is exhausted. In this particular case of region
 	  exhaustion, modules might be able to fall back to a larger 2GB area.
 
+config UEFI_KASLR_SKIP_MEMMAP
+	bool "Skip the memmap address when randomize the kernel image"
+	depends on RANDOMIZE_BASE
+	default n
+	help
+	  Memmap kernel parameter are described by the memmap=nn[KMG]$ss[KMG],
+	  Region of memory to be reserved is from ss to ss+nn, the region must
+	  be in the range of existed memory, otherwise will be ignored. Teach
+	  KASLR to not insert the kernel in memmap defined regions. We support
+	  up to 32 memmap regions: any additional regions will cause KASLR to
+	  disable.
+
 config CC_HAVE_STACKPROTECTOR_SYSREG
 	def_bool $(cc-option,-mstack-protector-guard=sysreg -mstack-protector-guard-reg=sp_el0 -mstack-protector-guard-offset=0)
 
