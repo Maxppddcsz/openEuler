@@ -395,6 +395,10 @@ extern unsigned int kobjsize(const void *objp);
 # define VM_SHARE_POOL VM_NONE
 #endif
 
+#if defined(CONFIG_ASCEND_RAS_FEATURES)
+#define ASCEND_HWPOISON_MAGIC_NUM	0xABAB
+#endif
+
 #ifndef VM_GROWSUP
 # define VM_GROWSUP	VM_NONE
 #endif
@@ -3878,6 +3882,10 @@ extern int __get_huge_page_for_hwpoison(unsigned long pfn, int flags,
 void num_poisoned_pages_inc(unsigned long pfn);
 void num_poisoned_pages_sub(unsigned long pfn, long i);
 struct task_struct *task_early_kill(struct task_struct *tsk, int force_early);
+#ifdef CONFIG_ASCEND_RAS_FEATURES
+extern void collect_procs(struct page *page, struct list_head *tokill,
+				int force_early);
+#endif
 #else
 static inline void memory_failure_queue(unsigned long pfn, int flags)
 {
