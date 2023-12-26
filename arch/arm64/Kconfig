@@ -2259,6 +2259,15 @@ config RANDOMIZE_MODULE_REGION_FULL
 	  the region is exhausted. In this particular case of region
 	  exhaustion, modules might be able to fall back to a larger 2GB area.
 
+config SKIP_NOKASLR_MEM_RANGE
+	bool "Allow users to mark at most 4 memory regions as unavailable for kaslr"
+	depends on RANDOMIZE_BASE
+	default n
+	select EFI_KASLR_SKIP_MEM_RANGE
+	help
+	  Say y here and add kernel parameters as nokaslr=nn[KMG]-ss[KMG] to avoid kaslr
+	  place kernel image in such memory regions
+
 config CC_HAVE_STACKPROTECTOR_SYSREG
 	def_bool $(cc-option,-mstack-protector-guard=sysreg -mstack-protector-guard-reg=sp_el0 -mstack-protector-guard-offset=0)
 
