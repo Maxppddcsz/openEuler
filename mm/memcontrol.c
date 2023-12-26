@@ -4056,6 +4056,15 @@ static int mem_cgroup_move_charge_write(struct cgroup_subsys_state *css,
 #endif
 
 #ifdef CONFIG_MEMCG_OOM_PRIORITY
+#define ENABLE_MEMCG_OOM_PROIRITY	1
+#define DISABLE_MEMCG_OOM_PROIRITY	0
+int sysctl_memcg_oom_prio = DISABLE_MEMCG_OOM_PROIRITY;
+
+bool memcg_oom_prio_disabled(void)
+{
+	return READ_ONCE(sysctl_memcg_oom_prio) == DISABLE_MEMCG_OOM_PROIRITY;
+}
+
 static void memcg_oom_prio_init(struct mem_cgroup *memcg)
 {
 	struct mem_cgroup *parent = parent_mem_cgroup(memcg);
@@ -4087,6 +4096,9 @@ static s64 memcg_oom_prio_read(struct cgroup_subsys_state *css,
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
 
+	if (memcg_oom_prio_disabled())
+		return 0;
+
 	return READ_ONCE(memcg->oom_prio);
 }
 
@@ -4094,6 +4106,9 @@ static int memcg_oom_prio_write(struct cgroup_subsys_state *css,
 				       struct cftype *cft, s64 val)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
+
+	if (memcg_oom_prio_disabled())
+		return -EACCES;
 
 	if (mem_cgroup_is_root(memcg))
 		return -EINVAL;
@@ -4145,6 +4160,8 @@ bool memcg_oom_prio_scan_tasks(int (*fn)(struct task_struct *, void *),
 	int ret = 0;
 	bool retry = true;
 
+	if (memcg_oom_prio_disabled())
+		return false;
 retry:
 	max = memcg_find_max_usage(last);
 	if (!max)
@@ -4177,6 +4194,9 @@ retry:
 
 void memcg_print_bad_task(struct oom_control *oc)
 {
+	if (memcg_oom_prio_disabled())
+		return;
+
 	if (oc->chosen) {
 		struct mem_cgroup *memcg;
 
@@ -4188,6 +4208,64 @@ void memcg_print_bad_task(struct oom_control *oc)
 		rcu_read_unlock();
 	}
 }
+
+static void memcg_oom_prio_reset(void)
+{
+	struct mem_cgroup *iter;
+	struct cgroup_subsys_state *css;
+
+	rcu_read_lock();
+	css_for_each_descendant_pre(css, &root_mem_cgroup->css) {
+		iter = mem_cgroup_from_css(css);
+		WRITE_ONCE(iter->oom_prio, 0);
+	}
+	rcu_read_unlock();
+}
+
+static int sysctl_memcg_oom_prio_handler(struct ctl_table *table, int write,
+		void __user *buffer, size_t *length, loff_t *ppos)
+{
+	int ret;
+
+	ret = proc_dointvec_minmax(table, write, buffer, length, ppos);
+	if (ret)
+		return ret;
+
+	if (write) {
+		if (READ_ONCE(sysctl_memcg_oom_prio) == DISABLE_MEMCG_OOM_PROIRITY)
+			memcg_oom_prio_reset();
+	}
+
+	return ret;
+}
+
+static struct ctl_table memcg_oom_prio_sysctls[] = {
+	{
+		/*
+		 * This sysctl is used to control memcg oom priority
+		 * feature, the sysctl name is for compatibility.
+		 */
+		.procname	= "memcg_qos_enable",
+		.data		= &sysctl_memcg_oom_prio,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= sysctl_memcg_oom_prio_handler,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_ONE,
+	},
+};
+
+static __init int memcg_oom_prio_sysctls_init(void)
+{
+	register_sysctl_init("vm", memcg_oom_prio_sysctls);
+	return 0;
+}
+#else
+static inline int memcg_oom_prio_sysctls_init(void)
+{
+	return 0;
+}
+
 #endif
 
 #ifdef CONFIG_NUMA
@@ -7958,6 +8036,7 @@ static int __init mem_cgroup_init(void)
 	}
 
 	mem_cgroup_memfs_info_init();
+	memcg_oom_prio_sysctls_init();
 
 	return 0;
 }
