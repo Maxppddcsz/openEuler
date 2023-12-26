@@ -1323,6 +1323,15 @@ config ASCEND_OOM
 		0: disable oom killer
 		1: enable oom killer (default,compatible with mainline)
 
+config ASCEND_RAS_FEATURES
+	bool "ACPI RAS features for ascend scenarios"
+	default n
+	depends on ACPI && ARM64
+	help
+	  ACPI RAS features developed to support some of special cases in ascend
+	  scenarios. If you don't know the actual usage of these features don't
+	  open this config.
+
 source "mm/damon/Kconfig"
 
 endmenu
