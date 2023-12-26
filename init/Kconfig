@@ -2071,3 +2071,8 @@ config ARCH_HAS_SYNC_CORE_BEFORE_USERMODE
 # <asm/syscall_wrapper.h>.
 config ARCH_HAS_SYSCALL_WRAPPER
 	def_bool n
+
+config KASLR_SKIP_MEM_RANGE
+	bool "Skip specified memory range when randomize the kernel imager"
+	depends on RANDOMIZE_BASE
+	default n
