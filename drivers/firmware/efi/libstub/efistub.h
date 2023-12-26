@@ -1006,11 +1006,15 @@ void efi_parse_option_graphics(char *option);
 
 unsigned long cal_slots_avoid_overlap(efi_memory_desc_t *md, unsigned long size, u8 cal_type,
 					  unsigned long align_shift, unsigned long target);
-#endif
+
 #ifdef CONFIG_SKIP_MEMMAP_MEM_RANGE
 void mem_avoid_memmap(char *str);
 #endif
 
+#ifdef CONFIG_SKIP_NOKASLR_MEM_RANGE
+void mem_avoid_mem_nokaslr(char *str);
+#endif
+#endif
 efi_status_t efi_setup_gop(struct screen_info *si, efi_guid_t *proto,
 			   unsigned long size);
 
