@@ -39,8 +39,11 @@ static unsigned long get_entry_num_slots(efi_memory_desc_t *md,
 
 	if (first_slot > last_slot)
 		return 0;
-
+#if defined(CONFIG_ARM64) && (defined CONFIG_UEFI_KASLR_SKIP_MEMMAP || defined(CONFIG_NOKASLR_MEM_RANGE))
+	return cal_slots_avoid_overlap(md, size, CAL_SLOTS_NUMBER, align_shift, 0);
+#else
 	return ((unsigned long)(last_slot - first_slot) >> align_shift) + 1;
+#endif
 }
 
 /*
@@ -117,8 +120,12 @@ efi_status_t efi_random_alloc(unsigned long size,
 			target_slot -= MD_NUM_SLOTS(md);
 			continue;
 		}
-
+#if defined(CONFIG_ARM64) && (defined CONFIG_UEFI_KASLR_SKIP_MEMMAP || defined(CONFIG_NOKASLR_MEM_RANGE))
+		target = cal_slots_avoid_overlap(md, size, CAL_SLOTS_PHYADDR, ilog2(align),
+			target_slot);
+#else
 		target = round_up(md->phys_addr, align) + target_slot * align;
+#endif
 		pages = size / EFI_PAGE_SIZE;
 
 		status = efi_bs_call(allocate_pages, EFI_ALLOCATE_ADDRESS,

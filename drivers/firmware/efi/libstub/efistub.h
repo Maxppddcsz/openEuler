@@ -1000,6 +1000,14 @@ efi_status_t efi_parse_options(char const *cmdline);
 
 void efi_parse_option_graphics(char *option);
 
+#if defined CONFIG_UEFI_KASLR_SKIP_MEMMAP || defined(CONFIG_NOKASLR_MEM_RANGE)
+#define CAL_SLOTS_NUMBER	 0
+#define CAL_SLOTS_PHYADDR	 1
+
+unsigned long cal_slots_avoid_overlap(efi_memory_desc_t *md, unsigned long size, u8 cal_type,
+					  unsigned long align_shift, unsigned long target);
+#endif
+
 efi_status_t efi_setup_gop(struct screen_info *si, efi_guid_t *proto,
 			   unsigned long size);
 
