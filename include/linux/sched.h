@@ -2473,4 +2473,8 @@ static inline int sched_qos_cpu_overload(void)
 }
 #endif
 
+#ifdef CONFIG_BPF_SCHED
+extern void sched_settag(struct task_struct *tsk, s64 tag);
+#endif
+
 #endif
