@@ -543,6 +543,12 @@ struct sched_statistics {
 #ifdef CONFIG_SCHED_CORE
 	u64				core_forceidle_sum;
 #endif
+
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+	u64				nr_qos_smt_send_ipi;
+	u64				nr_qos_smt_expelled;
+#endif
+
 #endif /* CONFIG_SCHEDSTATS */
 } ____cacheline_aligned;
 
