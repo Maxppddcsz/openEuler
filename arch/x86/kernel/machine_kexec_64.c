@@ -337,6 +337,8 @@ void machine_kexec(struct kimage *image)
 	if (image->type == KEXEC_TYPE_DEFAULT)
 		page_list[PA_SWAP_PAGE] = (page_to_pfn(image->swap_page)
 						<< PAGE_SHIFT);
+	
+	pr_info("Bye!\n");
 
 	/*
 	 * The segment registers are funny things, they have both a
