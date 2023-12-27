@@ -212,8 +212,12 @@ struct ftrace_likely_data {
  * of extern inline functions at link time.
  * A lot of inline functions can cause havoc with function tracing.
  */
+#if !defined(CONFIG_OPTIMIZE_INLINING)
+#define inline inline __attribute__((__always_inline__)) __gnu_inline \
+	__inline_maybe_unused notrace
+#else
 #define inline inline __gnu_inline __inline_maybe_unused notrace
-
+#endif
 /*
  * gcc provides both __inline__ and __inline as alternate spellings of
  * the inline keyword, though the latter is undocumented. New kernel
