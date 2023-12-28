@@ -196,6 +196,7 @@ static inline void cleanup_exception_handling(void) { }
 #endif
 
 /* IDT Entry Points */
+void boot_nmi_fault(void);
 void boot_page_fault(void);
 void boot_stage1_vc(void);
 void boot_stage2_vc(void);
