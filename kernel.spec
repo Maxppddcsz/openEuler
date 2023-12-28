@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .119.0
-%global pkg_release         .146
+%global maintenance_release .120.0
+%global pkg_release         .147
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,53 @@ fi
 %endif
 
 %changelog
+* Wed Dec 27 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.120.0.147
+- !3624  ipv4: igmp: fix refcnt uaf issue when receiving igmp query packet
+- !3621  netfilter: nft_set_pipapo: skip inactive elements during set walk
+- ipv4: igmp: fix refcnt uaf issue when receiving igmp query packet
+- netfilter: nft_set_pipapo: skip inactive elements during set walk
+- !3583  tty: n_gsm: fix the UAF caused by race condition in gsm_cleanup_mux
+- !3580 [sync] PR-3577:  perf/core: Fix CVE-2023-6931
+- tty: n_gsm: fix the UAF caused by race condition in gsm_cleanup_mux
+- perf: Fix perf_event_validate_size() lockdep splat
+- perf: Fix perf_event_validate_size()
+- !3292 [sync] PR-2843:  Add error handle for sd
+- !3288 [sync] PR-3222:  md/raid5: fix miscalculation of 'end_sector' in raid5_read_one_chunk()
+- !3252 [sync] PR-2946:  LoongArch: disable 40bit user space by default
+- scsi: sd: Clean up sdkp if device_add_disk() failed
+- scsi: sd: Add error handling support for add_disk()
+- md/raid5: fix miscalculation of 'end_sector' in raid5_read_one_chunk()
+- !3179 [sync] PR-2825:  Add error handle for driver
+- LoongArch: disable 40bit user space by default
+- !3017 [sync] PR-1203:  Revert "locking/rwsem: Prevent potential lock starvation"
+- !3229 [sync] PR-3161:  fs: Fix error checking for d_hash_and_lookup()
+- !2956 [sync] PR-1613:  arm64/mpam: implement CPU_PM notifier
+- fs: Fix error checking for d_hash_and_lookup()
+- nbd: fix uaf in nbd_open
+- mtd/ubi/block: Fix uaf problem in ubiblock_cleanup
+- mtd/ubi/block: Fix null pointer dereference issue in error path
+- mtd/ubi/block: add error handling support for add_disk()
+- ubi: use blk_mq_alloc_disk and blk_cleanup_disk
+- scsi: sr: Add error handling support for add_disk()
+- block/brd: add error handling support for add_disk()
+- brd: convert to blk_alloc_disk/blk_cleanup_disk
+- nvme: add error handling support for add_disk()
+- nvme: use blk_mq_alloc_disk
+- block: add a flag to make put_disk on partially initalized disks safer
+- nbd: add error handling support for add_disk()
+- nbd: fix order of cleaning up the queue and freeing the tagset
+- nbd: use blk_mq_alloc_disk and blk_cleanup_disk
+- loop: add error handling support for add_disk()
+- loop: fix order of cleaning up the queue and freeing the tagset
+- loop: use blk_mq_alloc_disk and blk_cleanup_disk
+- blk-mq: fix an IS_ERR() vs NULL bug
+- blk-mq: add the blk_mq_alloc_disk APIs
+- block: add blk_alloc_disk and blk_cleanup_disk APIs
+- Revert "locking/rwsem: Better collate rwsem_read_trylock()"
+- Revert "locking/rwsem: Pass the current atomic count to rwsem_down_read_slowpath()"
+- Revert "locking/rwsem: Prevent potential lock starvation"
+- arm64/mpam: implement CPU_PM notifier
+
 * Tue Dec 05 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.119.0.146
 - !3193 [sync] PR-3128:  fix ksmbd to release the ones allocated for async work
 - ksmbd: delete asynchronous work from list
