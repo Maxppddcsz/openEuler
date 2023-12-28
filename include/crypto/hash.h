@@ -11,6 +11,7 @@
 #include <linux/atomic.h>
 #include <linux/crypto.h>
 #include <linux/string.h>
+#include <linux/kabi.h>
 
 struct crypto_ahash;
 
@@ -78,6 +79,7 @@ struct ahash_request {
 
 	/* This field may only be used by the ahash API code. */
 	void *priv;
+	KABI_RESERVE(0);
 
 	void *__ctx[] CRYPTO_MINALIGN_ATTR;
 };

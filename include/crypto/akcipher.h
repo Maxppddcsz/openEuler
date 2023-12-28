@@ -10,6 +10,7 @@
 
 #include <linux/atomic.h>
 #include <linux/crypto.h>
+#include <linux/kabi.h>
 
 /**
  * struct akcipher_request - public key request
@@ -38,6 +39,7 @@ struct akcipher_request {
 	struct scatterlist *dst;
 	unsigned int src_len;
 	unsigned int dst_len;
+	KABI_RESERVE(0);
 	void *__ctx[] CRYPTO_MINALIGN_ATTR;
 };
 
@@ -52,6 +54,7 @@ struct crypto_akcipher {
 	unsigned int reqsize;
 
 	struct crypto_tfm base;
+	KABI_RESERVE(0);
 };
 
 /*
@@ -132,6 +135,7 @@ struct akcipher_alg {
 #endif
 
 	struct crypto_alg base;
+	KABI_RESERVE(0);
 };
 
 /**
