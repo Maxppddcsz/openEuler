@@ -862,6 +862,14 @@ void store_cpu_topology(unsigned int cpuid)
 	cpuid_topo->core_id = cpuid;
 	cpuid_topo->package_id = cpu_to_node(cpuid);
 
+#if defined(CONFIG_ARM64)
+	if (read_cpuid_implementor() == ARM_CPU_IMP_PHYTIUM) {
+		cpuid_topo->thread_id  = 0;
+		cpuid_topo->core_id  = cpuid;
+		cpuid_topo->package_id = 0;
+	}
+#endif
+
 	pr_debug("CPU%u: package %d core %d thread %d\n",
 		 cpuid, cpuid_topo->package_id, cpuid_topo->core_id,
 		 cpuid_topo->thread_id);
