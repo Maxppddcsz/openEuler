@@ -1843,10 +1843,21 @@ static int hisi_sas_debug_I_T_nexus_reset(struct domain_device *device)
 			dev_warn(dev, "phy%d reset timeout\n", sas_phy->id);
 			hisi_sas_phy_down(hisi_hba, sas_phy->id, 0);
 		}
-	} else if (sas_dev->dev_status != HISI_SAS_DEV_INIT)
-		/* Sleep 2s, wait for I_T reset at expander env except fail */
-		if (!rc)
-			msleep(2000);
+		return rc;
+	}
+
+	/* Remote phy */
+	if (rc)
+		return rc;
+
+	if (dev_is_sata(device)) {
+		struct ata_link *link = &device->sata_dev.ap->link;
+
+		rc = ata_wait_after_reset(link, HISI_SAS_WAIT_PHYUP_TIMEOUT,
+					  smp_ata_check_ready_type);
+	} else {
+		msleep(2000);
+	}
 
 	return rc;
 }
