@@ -29,4 +29,8 @@ extern int sysctl_numa_balancing_mode;
 #define sysctl_numa_balancing_mode	0
 #endif
 
+#ifdef CONFIG_QOS_SCHED_PRIO_LB
+extern unsigned int sysctl_sched_prio_load_balance_enabled;
+#endif
+
 #endif /* _LINUX_SCHED_SYSCTL_H */
