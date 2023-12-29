@@ -784,15 +784,23 @@ static void bdev_partition_unblock_part0_writes(struct block_device *bdev)
 
 static void bdev_dump_info(struct block_device *bdev, blk_mode_t mode)
 {
+	char msg[100];
 	if (bdev_write_mounted_quiet)
 		return;
 
 	if (mode & BLK_OPEN_WRITE && bdev_writes_blocked(bdev))
-		blkdev_dump_conflict_opener(bdev, "Open a writes blocked device(has"
+		blkdev_dump_conflict_opener(bdev, "Open a writes blocked device"
+						  "(partition or itself has"
 						  " been mounted) for write");
-	else if (mode & BLK_OPEN_RESTRICT_WRITES && bdev->bd_writers > 0)
-		blkdev_dump_conflict_opener(bdev, "Open a write opened device for"
-						  " restrict write(for mount)");
+	else if (mode & BLK_OPEN_RESTRICT_WRITES &&
+		 (bdev->bd_writers > 0 || bdev_whole(bdev)->bd_writers > 0)) {
+		snprintf(msg, sizeof(msg),
+			 "Open a device %s%s for restrict write(for mount)",
+			 (bdev->bd_writers > 0) ? "(which has been write opened)" : "",
+			 (bdev_is_partition(bdev) &&
+			  bdev_whole(bdev)->bd_writers > 0) ? "(part0 has been write opend)" : "");
+		blkdev_dump_conflict_opener(bdev, msg);
+	}
 }
 
 static bool bdev_may_open(struct block_device *bdev, blk_mode_t mode)
