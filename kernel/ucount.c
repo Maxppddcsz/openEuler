@@ -87,6 +87,24 @@ static struct ctl_table user_table[] = {
 	UCOUNT_ENTRY("max_fanotify_groups"),
 	UCOUNT_ENTRY("max_fanotify_marks"),
 #endif
+#ifdef CONFIG_KABI_RESERVE
+	/* These corresponds to the reservation in enum ucount_type */
+	{ }, // UCOUNT_KABI_RESERVE1
+	{ }, // UCOUNT_KABI_RESERVE2
+	{ }, // UCOUNT_KABI_RESERVE3
+	{ }, // UCOUNT_KABI_RESERVE4
+	{ }, // UCOUNT_KABI_RESERVE5
+	{ }, // UCOUNT_KABI_RESERVE6
+	{ }, // UCOUNT_KABI_RESERVE7
+	{ }, // UCOUNT_KABI_RESERVE8
+	{ }, // UCOUNT_KABI_RESERVE9
+	{ }, // UCOUNT_KABI_RESERVE10
+	{ }, // UCOUNT_KABI_RESERVE11
+	{ }, // UCOUNT_KABI_RESERVE12
+	{ }, // UCOUNT_KABI_RESERVE13
+	{ }, // UCOUNT_KABI_RESERVE14
+	{ }, // UCOUNT_KABI_RESERVE15
+#endif
 	{ }
 };
 #endif /* CONFIG_SYSCTL */

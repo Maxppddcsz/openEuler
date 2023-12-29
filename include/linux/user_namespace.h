@@ -10,6 +10,7 @@
 #include <linux/rwsem.h>
 #include <linux/sysctl.h>
 #include <linux/err.h>
+#include <linux/kabi.h>
 
 #define UID_GID_MAP_MAX_BASE_EXTENTS 5
 #define UID_GID_MAP_MAX_EXTENTS 340
@@ -53,6 +54,28 @@ enum ucount_type {
 #ifdef CONFIG_FANOTIFY
 	UCOUNT_FANOTIFY_GROUPS,
 	UCOUNT_FANOTIFY_MARKS,
+#endif
+#ifdef CONFIG_KABI_RESERVE
+	/* These 15 members are reserved (with extra margin) for the future
+	 * enlargement of enum ucount_type, as how RH8.1 did it. This number
+	 * should be enough, as 6 of them are very likely to be used in the near
+	 * future.
+	 */
+	UCOUNT_KABI_RESERVE1,
+	UCOUNT_KABI_RESERVE2,
+	UCOUNT_KABI_RESERVE3,
+	UCOUNT_KABI_RESERVE4,
+	UCOUNT_KABI_RESERVE5,
+	UCOUNT_KABI_RESERVE6,
+	UCOUNT_KABI_RESERVE7,
+	UCOUNT_KABI_RESERVE8,
+	UCOUNT_KABI_RESERVE9,
+	UCOUNT_KABI_RESERVE10,
+	UCOUNT_KABI_RESERVE11,
+	UCOUNT_KABI_RESERVE12,
+	UCOUNT_KABI_RESERVE13,
+	UCOUNT_KABI_RESERVE14,
+	UCOUNT_KABI_RESERVE15,
 #endif
 	UCOUNT_COUNTS,
 };
@@ -102,6 +125,16 @@ struct user_namespace {
 	struct ucounts		*ucounts;
 	long ucount_max[UCOUNT_COUNTS];
 	long rlimit_max[UCOUNT_RLIMIT_COUNTS];
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
+	KABI_RESERVE(5)
+	KABI_RESERVE(6)
+	KABI_RESERVE(7)
+	KABI_RESERVE(8)
+	KABI_RESERVE(9)
+	KABI_RESERVE(10)
 } __randomize_layout;
 
 struct ucounts {
