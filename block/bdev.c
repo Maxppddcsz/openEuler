@@ -759,7 +759,7 @@ static void blkdev_dump_conflict_opener(struct block_device *bdev, char *msg)
 
 static bool bdev_writes_blocked(struct block_device *bdev)
 {
-	return bdev->bd_writers == -1;
+	return bdev->bd_writers < 0;
 }
 
 static void bdev_block_writes(struct block_device *bdev)
@@ -770,6 +770,16 @@ static void bdev_block_writes(struct block_device *bdev)
 static void bdev_unblock_writes(struct block_device *bdev)
 {
 	bdev->bd_writers = 0;
+}
+
+static void bdev_partition_block_part0_writes(struct block_device *bdev)
+{
+	bdev_whole(bdev)->bd_writers--;
+}
+
+static void bdev_partition_unblock_part0_writes(struct block_device *bdev)
+{
+	bdev_whole(bdev)->bd_writers++;
 }
 
 static void bdev_dump_info(struct block_device *bdev, blk_mode_t mode)
@@ -794,7 +804,8 @@ static bool bdev_may_open(struct block_device *bdev, blk_mode_t mode)
 	/* Writes blocked? */
 	if (mode & BLK_OPEN_WRITE && bdev_writes_blocked(bdev))
 		return false;
-	if (mode & BLK_OPEN_RESTRICT_WRITES && bdev->bd_writers > 0)
+	if (mode & BLK_OPEN_RESTRICT_WRITES &&
+	    (bdev->bd_writers > 0 || bdev_whole(bdev)->bd_writers > 0))
 		return false;
 	return true;
 }
@@ -818,6 +829,11 @@ static void bdev_claim_write_access(struct block_device *bdev, blk_mode_t mode)
 		bdev_block_writes(bdev);
 	else if (mode & BLK_OPEN_WRITE)
 		bdev->bd_writers++;
+
+	/* For partition, mounting partition block part0 writes */
+	if (bdev_is_partition(bdev) &&
+	    mode & BLK_OPEN_RESTRICT_WRITES)
+		bdev_partition_block_part0_writes(bdev);
 }
 
 static void bdev_yield_write_access(struct block_device *bdev, blk_mode_t mode)
@@ -830,6 +846,11 @@ static void bdev_yield_write_access(struct block_device *bdev, blk_mode_t mode)
 		bdev_unblock_writes(bdev);
 	else if (mode & BLK_OPEN_WRITE)
 		bdev->bd_writers--;
+
+	/* For partition, unblock part0 writes */
+	if (bdev_is_partition(bdev) &&
+	    mode & BLK_OPEN_RESTRICT_WRITES)
+		bdev_partition_unblock_part0_writes(bdev);
 }
 
 /**
