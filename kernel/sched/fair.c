@@ -62,6 +62,10 @@
 #include <linux/resume_user_mode.h>
 #endif
 
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+#include <trace/events/ipi.h>
+#endif
+
 /*
  * The initial- and re-scaling of tunables is configurable
  *
@@ -145,6 +149,11 @@ unsigned int sysctl_offline_wait_interval = 100;  /* in ms */
 static int one_thousand = 1000;
 static int hundred_thousand = 100000;
 static int unthrottle_qos_cfs_rqs(int cpu);
+static bool qos_smt_expelled(int this_cpu);
+#endif
+
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+static DEFINE_PER_CPU(int, qos_smt_status);
 #endif
 
 #ifdef CONFIG_CFS_BANDWIDTH
@@ -5695,6 +5704,9 @@ static bool throttle_cfs_rq(struct cfs_rq *cfs_rq)
 	struct cfs_bandwidth *cfs_b = tg_cfs_bandwidth(cfs_rq->tg);
 	struct sched_entity *se;
 	long task_delta, idle_task_delta, dequeue = 1;
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+	long qos_idle_delta;
+#endif
 
 	raw_spin_lock(&cfs_b->lock);
 	/* This will start the period timer if necessary */
@@ -5726,6 +5738,10 @@ static bool throttle_cfs_rq(struct cfs_rq *cfs_rq)
 
 	task_delta = cfs_rq->h_nr_running;
 	idle_task_delta = cfs_rq->idle_h_nr_running;
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+	qos_idle_delta = cfs_rq->qos_idle_h_nr_running;
+#endif
+
 	for_each_sched_entity(se) {
 		struct cfs_rq *qcfs_rq = cfs_rq_of(se);
 		/* throttled entity or throttle-on-deactivate */
@@ -5739,6 +5755,9 @@ static bool throttle_cfs_rq(struct cfs_rq *cfs_rq)
 
 		qcfs_rq->h_nr_running -= task_delta;
 		qcfs_rq->idle_h_nr_running -= idle_task_delta;
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+		qcfs_rq->qos_idle_h_nr_running -= qos_idle_delta;
+#endif
 
 		if (qcfs_rq->load.weight) {
 			/* Avoid re-evaluating load for this entity: */
@@ -5761,6 +5780,9 @@ static bool throttle_cfs_rq(struct cfs_rq *cfs_rq)
 
 		qcfs_rq->h_nr_running -= task_delta;
 		qcfs_rq->idle_h_nr_running -= idle_task_delta;
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+		qcfs_rq->qos_idle_h_nr_running -= qos_idle_delta;
+#endif
 	}
 
 	/* At this point se is NULL and we are at root level*/
@@ -5784,6 +5806,9 @@ void unthrottle_cfs_rq(struct cfs_rq *cfs_rq)
 	struct cfs_bandwidth *cfs_b = tg_cfs_bandwidth(cfs_rq->tg);
 	struct sched_entity *se;
 	long task_delta, idle_task_delta;
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+	long qos_idle_delta;
+#endif
 
 	se = cfs_rq->tg->se[cpu_of(rq)];
 
@@ -5826,6 +5851,9 @@ void unthrottle_cfs_rq(struct cfs_rq *cfs_rq)
 
 	task_delta = cfs_rq->h_nr_running;
 	idle_task_delta = cfs_rq->idle_h_nr_running;
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+	qos_idle_delta = cfs_rq->qos_idle_h_nr_running;
+#endif
 	for_each_sched_entity(se) {
 		struct cfs_rq *qcfs_rq = cfs_rq_of(se);
 
@@ -5838,6 +5866,9 @@ void unthrottle_cfs_rq(struct cfs_rq *cfs_rq)
 
 		qcfs_rq->h_nr_running += task_delta;
 		qcfs_rq->idle_h_nr_running += idle_task_delta;
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+		qcfs_rq->qos_idle_h_nr_running += qos_idle_delta;
+#endif
 
 		/* end evaluation on encountering a throttled cfs_rq */
 		if (cfs_rq_throttled(qcfs_rq))
@@ -5855,6 +5886,9 @@ void unthrottle_cfs_rq(struct cfs_rq *cfs_rq)
 
 		qcfs_rq->h_nr_running += task_delta;
 		qcfs_rq->idle_h_nr_running += idle_task_delta;
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+		qcfs_rq->qos_idle_h_nr_running += qos_idle_delta;
+#endif
 
 		/* end evaluation on encountering a throttled cfs_rq */
 		if (cfs_rq_throttled(qcfs_rq))
@@ -6674,6 +6708,9 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &p->se;
 	int idle_h_nr_running = task_has_idle_policy(p);
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+	int qos_idle_h_nr_running = task_has_qos_idle_policy(p);
+#endif
 	int task_new = !(flags & ENQUEUE_WAKEUP);
 
 	/*
@@ -6700,6 +6737,9 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 		cfs_rq->h_nr_running++;
 		cfs_rq->idle_h_nr_running += idle_h_nr_running;
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+		cfs_rq->qos_idle_h_nr_running += qos_idle_h_nr_running;
+#endif
 
 		if (cfs_rq_is_idle(cfs_rq))
 			idle_h_nr_running = 1;
@@ -6720,7 +6760,9 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 		cfs_rq->h_nr_running++;
 		cfs_rq->idle_h_nr_running += idle_h_nr_running;
-
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+		cfs_rq->qos_idle_h_nr_running += qos_idle_h_nr_running;
+#endif
 		if (cfs_rq_is_idle(cfs_rq))
 			idle_h_nr_running = 1;
 
@@ -6768,6 +6810,9 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	struct sched_entity *se = &p->se;
 	int task_sleep = flags & DEQUEUE_SLEEP;
 	int idle_h_nr_running = task_has_idle_policy(p);
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+	int qos_idle_h_nr_running = task_has_qos_idle_policy(p);
+#endif
 	bool was_sched_idle = sched_idle_rq(rq);
 
 	util_est_dequeue(&rq->cfs, p);
@@ -6778,6 +6823,9 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 		cfs_rq->h_nr_running--;
 		cfs_rq->idle_h_nr_running -= idle_h_nr_running;
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+		cfs_rq->qos_idle_h_nr_running -= qos_idle_h_nr_running;
+#endif
 
 		if (cfs_rq_is_idle(cfs_rq))
 			idle_h_nr_running = 1;
@@ -6810,7 +6858,9 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 
 		cfs_rq->h_nr_running--;
 		cfs_rq->idle_h_nr_running -= idle_h_nr_running;
-
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+		cfs_rq->qos_idle_h_nr_running -= qos_idle_h_nr_running;
+#endif
 		if (cfs_rq_is_idle(cfs_rq))
 			idle_h_nr_running = 1;
 
@@ -8294,6 +8344,16 @@ preempt:
 }
 
 #ifdef CONFIG_QOS_SCHED
+static inline bool qos_timer_is_activated(int cpu)
+{
+	return hrtimer_active(per_cpu_ptr(&qos_overload_timer, cpu));
+}
+
+static inline void cancel_qos_timer(int cpu)
+{
+	hrtimer_cancel(per_cpu_ptr(&qos_overload_timer, cpu));
+}
+
 static inline bool is_offline_task(struct task_struct *p)
 {
 	return task_group(p)->qos_level == -1;
@@ -8306,7 +8366,9 @@ static void throttle_qos_cfs_rq(struct cfs_rq *cfs_rq)
 	struct rq *rq = rq_of(cfs_rq);
 	struct sched_entity *se;
 	long task_delta, idle_task_delta;
-
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+	long qos_idle_delta;
+#endif
 	se = cfs_rq->tg->se[cpu_of(rq_of(cfs_rq))];
 
 	/* freeze hierarchy runnable averages while throttled */
@@ -8316,6 +8378,9 @@ static void throttle_qos_cfs_rq(struct cfs_rq *cfs_rq)
 
 	task_delta = cfs_rq->h_nr_running;
 	idle_task_delta = cfs_rq->idle_h_nr_running;
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+	qos_idle_delta = cfs_rq->qos_idle_h_nr_running;
+#endif
 	for_each_sched_entity(se) {
 		struct cfs_rq *qcfs_rq = cfs_rq_of(se);
 		/* throttled entity or throttle-on-deactivate */
@@ -8326,6 +8391,9 @@ static void throttle_qos_cfs_rq(struct cfs_rq *cfs_rq)
 
 		qcfs_rq->h_nr_running -= task_delta;
 		qcfs_rq->idle_h_nr_running -= idle_task_delta;
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+		qcfs_rq->qos_idle_h_nr_running -= qos_idle_delta;
+#endif
 
 		if (qcfs_rq->load.weight) {
 			/* Avoid re-evaluating load for this entity: */
@@ -8348,13 +8416,16 @@ static void throttle_qos_cfs_rq(struct cfs_rq *cfs_rq)
 
 		qcfs_rq->h_nr_running -= task_delta;
 		qcfs_rq->idle_h_nr_running -= idle_task_delta;
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+		qcfs_rq->qos_idle_h_nr_running -= qos_idle_delta;
+#endif
 	}
 
 	/* At this point se is NULL and we are at root level*/
 	sub_nr_running(rq, task_delta);
 
 done:
-	if (list_empty(&per_cpu(qos_throttled_cfs_rq, cpu_of(rq))))
+	if (!qos_timer_is_activated(cpu_of(rq)))
 		start_qos_hrtimer(cpu_of(rq));
 
 	cfs_rq->throttled = QOS_THROTTLED;
@@ -8368,6 +8439,9 @@ static void unthrottle_qos_cfs_rq(struct cfs_rq *cfs_rq)
 	struct rq *rq = rq_of(cfs_rq);
 	struct sched_entity *se;
 	long task_delta, idle_task_delta;
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+	long qos_idle_delta;
+#endif
 
 	se = cfs_rq->tg->se[cpu_of(rq)];
 
@@ -8400,6 +8474,9 @@ static void unthrottle_qos_cfs_rq(struct cfs_rq *cfs_rq)
 
 	task_delta = cfs_rq->h_nr_running;
 	idle_task_delta = cfs_rq->idle_h_nr_running;
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+	qos_idle_delta = cfs_rq->qos_idle_h_nr_running;
+#endif
 	for_each_sched_entity(se) {
 		if (se->on_rq)
 			break;
@@ -8409,6 +8486,9 @@ static void unthrottle_qos_cfs_rq(struct cfs_rq *cfs_rq)
 
 		cfs_rq->h_nr_running += task_delta;
 		cfs_rq->idle_h_nr_running += idle_task_delta;
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+		cfs_rq->qos_idle_h_nr_running += qos_idle_delta;
+#endif
 
 		if (cfs_rq_throttled(cfs_rq))
 			goto unthrottle_throttle;
@@ -8422,6 +8502,9 @@ static void unthrottle_qos_cfs_rq(struct cfs_rq *cfs_rq)
 
 		cfs_rq->h_nr_running += task_delta;
 		cfs_rq->idle_h_nr_running += idle_task_delta;
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+		cfs_rq->qos_idle_h_nr_running += qos_idle_delta;
+#endif
 
 		/* end evaluation on encountering a throttled cfs_rq */
 		if (cfs_rq_throttled(cfs_rq))
@@ -8433,10 +8516,6 @@ static void unthrottle_qos_cfs_rq(struct cfs_rq *cfs_rq)
 unthrottle_throttle:
 
 	assert_list_leaf_cfs_rq(rq);
-
-	/* Determine whether we need to wake up potentially idle CPU: */
-	if (rq->curr == rq->idle && rq->cfs.nr_running)
-		resched_curr(rq);
 }
 
 static int __unthrottle_qos_cfs_rqs(int cpu)
@@ -8458,11 +8537,10 @@ static int __unthrottle_qos_cfs_rqs(int cpu)
 static int unthrottle_qos_cfs_rqs(int cpu)
 {
 	int res;
-
 	res = __unthrottle_qos_cfs_rqs(cpu);
-	if (res)
-		hrtimer_cancel(&(per_cpu(qos_overload_timer, cpu)));
 
+	if (qos_timer_is_activated(cpu) && !qos_smt_expelled(cpu))
+		cancel_qos_timer(cpu);
 	return res;
 }
 
@@ -8522,8 +8600,13 @@ static enum hrtimer_restart qos_overload_timer_handler(struct hrtimer *timer)
 	struct rq *rq = this_rq();
 
 	rq_lock_irqsave(rq, &rf);
-	if (__unthrottle_qos_cfs_rqs(smp_processor_id()))
-		__this_cpu_write(qos_cpu_overload, 1);
+	__unthrottle_qos_cfs_rqs(smp_processor_id());
+	__this_cpu_write(qos_cpu_overload, 1);
+
+	/* Determine whether we need to wake up potentially idle CPU. */
+	if (rq->curr == rq->idle && rq->cfs.nr_running)
+		resched_curr(rq);
+
 	rq_unlock_irqrestore(rq, &rf);
 
 	return HRTIMER_NORESTART;
@@ -8563,6 +8646,177 @@ static void qos_schedule_throttle(struct task_struct *p)
 	}
 }
 
+#ifndef CONFIG_QOS_SCHED_SMT_EXPELLER
+static bool qos_smt_expelled(int this_cpu)
+{
+	return false;
+}
+#endif
+
+#endif
+
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+DEFINE_STATIC_KEY_TRUE(qos_smt_expell_switch);
+
+static int __init qos_sched_smt_noexpell_setup(char *__unused)
+{
+	static_branch_disable(&qos_smt_expell_switch);
+	return 1;
+}
+__setup("nosmtexpell", qos_sched_smt_noexpell_setup);
+
+static bool qos_smt_check_siblings_status(int this_cpu)
+{
+	int cpu;
+
+	if (!sched_smt_active())
+		return false;
+
+	for_each_cpu(cpu, cpu_smt_mask(this_cpu)) {
+		if (cpu == this_cpu)
+			continue;
+
+		if (per_cpu(qos_smt_status, cpu) == QOS_LEVEL_ONLINE)
+			return true;
+	}
+
+	return false;
+}
+
+static bool qos_sched_idle_cpu(int this_cpu)
+{
+	struct rq *rq = cpu_rq(this_cpu);
+
+	return unlikely(rq->nr_running == rq->cfs.qos_idle_h_nr_running &&
+			rq->nr_running);
+}
+
+static bool qos_smt_expelled(int this_cpu)
+{
+	if (!static_branch_likely(&qos_smt_expell_switch))
+		return false;
+
+	/*
+	 * The qos_smt_status of siblings cpu is online, and current cpu only has
+	 * offline tasks enqueued, there is not suitable task,
+	 * so pick_next_task_fair return null.
+	 */
+	if (qos_smt_check_siblings_status(this_cpu) && qos_sched_idle_cpu(this_cpu))
+		return true;
+
+	return false;
+}
+
+static bool qos_smt_update_status(struct task_struct *p)
+{
+	int status = QOS_LEVEL_OFFLINE;
+
+	if (p != NULL && task_group(p)->qos_level >= QOS_LEVEL_ONLINE)
+		status = QOS_LEVEL_ONLINE;
+
+	if (__this_cpu_read(qos_smt_status) == status)
+		return false;
+
+	__this_cpu_write(qos_smt_status, status);
+
+	return true;
+}
+
+static void qos_smt_send_ipi(int this_cpu)
+{
+	int cpu;
+	struct rq *rq = NULL;
+
+	if (!sched_smt_active())
+		return;
+
+	for_each_cpu(cpu, cpu_smt_mask(this_cpu)) {
+		if (cpu == this_cpu)
+			continue;
+
+		rq = cpu_rq(cpu);
+
+		/*
+		* There are two cases where current don't need to send scheduler_ipi:
+		* a) The qos_smt_status of siblings cpu is online;
+		* b) The cfs.h_nr_running of siblings cpu is 0.
+		*/
+		if (per_cpu(qos_smt_status, cpu) == QOS_LEVEL_ONLINE ||
+		    rq->cfs.h_nr_running == 0)
+			continue;
+
+		schedstat_inc(current->stats.nr_qos_smt_send_ipi);
+		smp_send_reschedule(cpu);
+	}
+}
+
+static void qos_smt_expel(int this_cpu, struct task_struct *p)
+{
+	if (!static_branch_likely(&qos_smt_expell_switch))
+		return;
+
+	if (qos_smt_update_status(p))
+		qos_smt_send_ipi(this_cpu);
+}
+
+static inline bool qos_smt_enabled(void)
+{
+	if (!static_branch_likely(&qos_smt_expell_switch))
+		return false;
+
+	if (!sched_smt_active())
+		return false;
+
+	return true;
+}
+
+static bool _qos_smt_check_need_resched(int this_cpu, struct rq *rq)
+{
+	int cpu;
+
+	if (!qos_smt_enabled())
+		return false;
+
+	for_each_cpu(cpu, cpu_smt_mask(this_cpu)) {
+		if (cpu == this_cpu)
+			continue;
+
+		/*
+		* There are two cases rely on the set need_resched to drive away
+		* offline task：
+		* a) The qos_smt_status of siblings cpu is online, the task of current cpu is offline;
+		* b) The qos_smt_status of siblings cpu is offline, the task of current cpu is idle,
+		*    and current cpu only has SCHED_IDLE tasks enqueued.
+		*/
+		if (per_cpu(qos_smt_status, cpu) == QOS_LEVEL_ONLINE &&
+		    task_group(current)->qos_level < QOS_LEVEL_ONLINE) {
+			trace_sched_qos_smt_expel(cpu_curr(cpu), per_cpu(qos_smt_status, cpu));
+			return true;
+		}
+
+		if (per_cpu(qos_smt_status, cpu) == QOS_LEVEL_OFFLINE &&
+		    rq->curr == rq->idle && qos_sched_idle_cpu(this_cpu)) {
+			trace_sched_qos_smt_expel(cpu_curr(cpu), per_cpu(qos_smt_status, cpu));
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void qos_smt_check_need_resched(void)
+{
+	struct rq *rq = this_rq();
+	int this_cpu = rq->cpu;
+
+	if (test_tsk_need_resched(current))
+		return;
+
+	if (_qos_smt_check_need_resched(this_cpu, rq)) {
+		set_tsk_need_resched(current);
+		set_preempt_need_resched();
+	}
+}
 #endif
 
 #ifdef CONFIG_SMP
@@ -8605,14 +8859,36 @@ pick_next_task_fair(struct rq *rq, struct task_struct *prev, struct rq_flags *rf
 	struct sched_entity *se;
 	struct task_struct *p;
 	int new_tasks;
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+	int this_cpu = rq->cpu;
+#endif
 
 again:
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+	if (qos_smt_expelled(this_cpu) && !__this_cpu_read(qos_cpu_overload)) {
+		__this_cpu_write(qos_smt_status, QOS_LEVEL_OFFLINE);
+
+		if (!qos_timer_is_activated(this_cpu))
+			start_qos_hrtimer(this_cpu);
+
+		schedstat_inc(rq->curr->stats.nr_qos_smt_expelled);
+		trace_sched_qos_smt_expelled(rq->curr, per_cpu(qos_smt_status, this_cpu));
+		return NULL;
+	}
+#endif
+
 	if (!sched_fair_runnable(rq))
 		goto idle;
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
-	if (!prev || prev->sched_class != &fair_sched_class)
-		goto simple;
+	if (!prev || prev->sched_class != &fair_sched_class) {
+#ifdef CONFIG_QOS_SCHED
+		if (cfs_rq->idle_h_nr_running != 0 && rq->online)
+			goto qos_simple;
+		else
+#endif
+			goto simple;
+	}
 
 	/*
 	 * Because of the set_next_buddy() in dequeue_task_fair() it is rather
@@ -8696,6 +8972,34 @@ again:
 	}
 
 	goto done;
+
+#ifdef CONFIG_QOS_SCHED
+qos_simple:
+	if (prev)
+		put_prev_task(rq, prev);
+
+	do {
+		se = pick_next_entity(cfs_rq, NULL);
+		if (check_qos_cfs_rq(group_cfs_rq(se))) {
+			cfs_rq = &rq->cfs;
+			if (!cfs_rq->nr_running)
+				goto idle;
+			continue;
+		}
+
+		cfs_rq = group_cfs_rq(se);
+	} while (cfs_rq);
+
+	p = task_of(se);
+
+	while (se) {
+		set_next_entity(cfs_rq_of(se), se);
+		se = parent_entity(se);
+	}
+
+	goto done;
+#endif
+
 simple:
 #endif
 	if (prev)
@@ -8729,6 +9033,10 @@ done: __maybe_unused;
 	qos_schedule_throttle(p);
 #endif
 
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+	qos_smt_expel(this_cpu, p);
+#endif
+
 	return p;
 
 idle:
@@ -8754,13 +9062,18 @@ idle:
 		goto again;
 	}
 
-	__this_cpu_write(qos_cpu_overload, 0);
+	if (!qos_smt_expelled(cpu_of(rq)))
+		__this_cpu_write(qos_cpu_overload, 0);
 #endif
 	/*
 	 * rq is about to be idle, check if we need to update the
 	 * lost_idle_time of clock_pelt
 	 */
 	update_idle_rq_clock_pelt(rq);
+
+#ifdef CONFIG_QOS_SCHED_SMT_EXPELLER
+	qos_smt_expel(this_cpu, NULL);
+#endif
 
 	return NULL;
 }
