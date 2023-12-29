@@ -94,6 +94,7 @@ static void init_vdso(void)
 		printf("[%s]\tfailed to find getcpu in vDSO\n",
 		       sizeof(long) == 8 ? "WARN" : "NOTE");
 	}
+    dlclose(vdso);
 }
 
 static int init_vsys(void)
