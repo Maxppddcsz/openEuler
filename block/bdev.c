@@ -33,6 +33,9 @@
 /* Should we allow writing to mounted block devices? */
 static bool bdev_allow_write_mounted = IS_ENABLED(CONFIG_BLK_DEV_WRITE_MOUNTED);
 
+/* Should we keep quiet when opening mounted block devices for write? */
+static bool bdev_write_mounted_quiet = IS_ENABLED(CONFIG_BLK_DEV_WRITE_MOUNTED_QUIET);
+
 struct bdev_inode {
 	struct block_device bdev;
 	struct inode vfs_inode;
@@ -733,6 +736,27 @@ void blkdev_put_no_open(struct block_device *bdev)
 	put_device(&bdev->bd_device);
 }
 
+static void blkdev_dump_conflict_opener(struct block_device *bdev, char *msg)
+{
+	char name[BDEVNAME_SIZE];
+	struct task_struct *p = NULL;
+	char comm_buf[TASK_COMM_LEN];
+	pid_t p_pid;
+
+	rcu_read_lock();
+	p = rcu_dereference(current->real_parent);
+	task_lock(p);
+	strncpy(comm_buf, p->comm, TASK_COMM_LEN);
+	p_pid = p->pid;
+	task_unlock(p);
+	rcu_read_unlock();
+
+	snprintf(name, sizeof(name), "%pg", bdev);
+	pr_info_ratelimited("%s [%s]. current [%d %s]. parent [%d %s]\n",
+	                    msg, name,
+			    current->pid, current->comm, p_pid, comm_buf);
+}
+
 static bool bdev_writes_blocked(struct block_device *bdev)
 {
 	return bdev->bd_writers == -1;
@@ -748,10 +772,25 @@ static void bdev_unblock_writes(struct block_device *bdev)
 	bdev->bd_writers = 0;
 }
 
+static void bdev_dump_info(struct block_device *bdev, blk_mode_t mode)
+{
+	if (bdev_write_mounted_quiet)
+		return;
+
+	if (mode & BLK_OPEN_WRITE && bdev_writes_blocked(bdev))
+		blkdev_dump_conflict_opener(bdev, "Open a writes blocked device(has"
+						  " been mounted) for write");
+	else if (mode & BLK_OPEN_RESTRICT_WRITES && bdev->bd_writers > 0)
+		blkdev_dump_conflict_opener(bdev, "Open a write opened device for"
+						  " restrict write(for mount)");
+}
+
 static bool bdev_may_open(struct block_device *bdev, blk_mode_t mode)
 {
-	if (bdev_allow_write_mounted)
+	if (bdev_allow_write_mounted) {
+		bdev_dump_info(bdev, mode);
 		return true;
+	}
 	/* Writes blocked? */
 	if (mode & BLK_OPEN_WRITE && bdev_writes_blocked(bdev))
 		return false;
@@ -762,7 +801,16 @@ static bool bdev_may_open(struct block_device *bdev, blk_mode_t mode)
 
 static void bdev_claim_write_access(struct block_device *bdev, blk_mode_t mode)
 {
-	if (bdev_allow_write_mounted)
+	/*
+	 * 1) BLK_DEV_WRITE_MOUNTED == Y
+	 *    Whether to claim depends on the setting of
+	 *    BLK_DEV_WRITE_MOUNTED_QUIET, and it has no effect
+	 *    on opening block device.
+	 * 2) BLK_DEV_WRITE_MOUNTED == N
+	 *    BLK_DEV_WRITE_MOUNTED_QUIET is not set, and claiming
+	 *    will be done.
+	 */
+	if (bdev_write_mounted_quiet)
 		return;
 
 	/* Claim exclusive or shared write access. */
@@ -774,7 +822,7 @@ static void bdev_claim_write_access(struct block_device *bdev, blk_mode_t mode)
 
 static void bdev_yield_write_access(struct block_device *bdev, blk_mode_t mode)
 {
-	if (bdev_allow_write_mounted)
+	if (bdev_write_mounted_quiet)
 		return;
 
 	/* Yield exclusive or shared write access. */
@@ -1138,6 +1186,22 @@ static int __init setup_bdev_allow_write_mounted(char *str)
 	if (kstrtobool(str, &bdev_allow_write_mounted))
 		pr_warn("Invalid option string for bdev_allow_write_mounted:"
 			" '%s'\n", str);
+	else if (!bdev_allow_write_mounted)
+		bdev_write_mounted_quiet = 0;
 	return 1;
 }
 __setup("bdev_allow_write_mounted=", setup_bdev_allow_write_mounted);
+
+static int __init setup_bdev_write_mounted_quiet(char *str)
+{
+	if (!bdev_allow_write_mounted) {
+		pr_warn("Can't set bdev_write_mounted_quiet_quiet since"
+			" bdev_allow_write_mounted is false\n");
+		return 1;
+	}
+	if (kstrtobool(str, &bdev_write_mounted_quiet))
+		pr_warn("Invalid option string for bdev_write_mounted_quiet:"
+			" '%s'\n", str);
+	return 1;
+}
+__setup("bdev_write_mounted_quiet=", setup_bdev_write_mounted_quiet);

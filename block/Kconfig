@@ -228,6 +228,15 @@ config BLK_INLINE_ENCRYPTION_FALLBACK
 	  by falling back to the kernel crypto API when inline
 	  encryption hardware is not present.
 
+config BLK_DEV_WRITE_MOUNTED_QUIET
+	bool "Keep quiet when detecting conflict of opening block device"
+	default y
+	depends on BLK_DEV_WRITE_MOUNTED
+	help
+	  While writing to mounted block devices is allowed, disabling this
+	  to dump info when opening mounted block devices for write or
+	  trying to mount write opened block devices.
+
 source "block/partitions/Kconfig"
 
 config BLK_MQ_PCI
