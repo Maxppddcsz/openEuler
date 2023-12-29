@@ -71,7 +71,9 @@ static int smp_execute_task_sg(struct domain_device *dev,
 	struct sas_task *task = NULL;
 	struct sas_internal *i =
 		to_sas_internal(dev->port->ha->core.shost->transportt);
+	struct sas_ha_struct *ha = dev->port->ha;
 
+	pm_runtime_get_sync(ha->dev);
 	mutex_lock(&dev->ex_dev.cmd_mutex);
 	for (retry = 0; retry < 3; retry++) {
 		if (test_bit(SAS_DEV_GONE, &dev->state)) {
@@ -144,6 +146,7 @@ static int smp_execute_task_sg(struct domain_device *dev,
 		}
 	}
 	mutex_unlock(&dev->ex_dev.cmd_mutex);
+	pm_runtime_put_sync(ha->dev);
 
 	BUG_ON(retry == 3 && task != NULL);
 	sas_free_task(task);
@@ -1161,8 +1164,7 @@ static int sas_find_sub_addr(struct domain_device *dev, u8 *sub_addr)
 		    phy->phy_state == PHY_NOT_PRESENT)
 			continue;
 
-		if ((phy->attached_dev_type == SAS_EDGE_EXPANDER_DEVICE ||
-		     phy->attached_dev_type == SAS_FANOUT_EXPANDER_DEVICE) &&
+		if (dev_is_expander(phy->attached_dev_type) &&
 		    phy->routing_attr == SUBTRACTIVE_ROUTING) {
 
 			memcpy(sub_addr, phy->attached_sas_addr, SAS_ADDR_SIZE);
@@ -1180,8 +1182,7 @@ static int sas_check_level_subtractive_boundary(struct domain_device *dev)
 	u8 sub_addr[SAS_ADDR_SIZE] = {0, };
 
 	list_for_each_entry(child, &ex->children, siblings) {
-		if (child->dev_type != SAS_EDGE_EXPANDER_DEVICE &&
-		    child->dev_type != SAS_FANOUT_EXPANDER_DEVICE)
+		if (!dev_is_expander(child->dev_type))
 			continue;
 		if (sub_addr[0] == 0) {
 			sas_find_sub_addr(child, sub_addr);
@@ -1268,8 +1269,7 @@ static int sas_check_ex_subtractive_boundary(struct domain_device *dev)
 		    phy->phy_state == PHY_NOT_PRESENT)
 			continue;
 
-		if ((phy->attached_dev_type == SAS_FANOUT_EXPANDER_DEVICE ||
-		     phy->attached_dev_type == SAS_EDGE_EXPANDER_DEVICE) &&
+		if (dev_is_expander(phy->attached_dev_type) &&
 		    phy->routing_attr == SUBTRACTIVE_ROUTING) {
 
 			if (!sub_sas_addr)
@@ -1371,8 +1371,7 @@ static int sas_check_parent_topology(struct domain_device *child)
 	if (!child->parent)
 		return 0;
 
-	if (child->parent->dev_type != SAS_EDGE_EXPANDER_DEVICE &&
-	    child->parent->dev_type != SAS_FANOUT_EXPANDER_DEVICE)
+	if (!dev_is_expander(child->parent->dev_type))
 		return 0;
 
 	parent_ex = &child->parent->ex_dev;
@@ -1670,8 +1669,7 @@ static int sas_ex_level_discovery(struct asd_sas_port *port, const int level)
 	struct domain_device *dev;
 
 	list_for_each_entry(dev, &port->dev_list, dev_list_node) {
-		if (dev->dev_type == SAS_EDGE_EXPANDER_DEVICE ||
-		    dev->dev_type == SAS_FANOUT_EXPANDER_DEVICE) {
+		if (dev_is_expander(dev->dev_type)) {
 			struct sas_expander_device *ex =
 				rphy_to_expander_device(dev->rphy);
 
@@ -1770,8 +1768,8 @@ static int sas_get_phy_change_count(struct domain_device *dev,
 	return res;
 }
 
-static int sas_get_phy_attached_dev(struct domain_device *dev, int phy_id,
-				    u8 *sas_addr, enum sas_device_type *type)
+int sas_get_phy_attached_dev(struct domain_device *dev, int phy_id,
+			     u8 *sas_addr, enum sas_device_type *type)
 {
 	int res;
 	struct smp_resp *disc_resp;
@@ -1901,7 +1899,7 @@ static int sas_find_bcast_dev(struct domain_device *dev,
 			SAS_DPRINTK("Expander phys DID NOT change\n");
 	}
 	list_for_each_entry(ch, &ex->children, siblings) {
-		if (ch->dev_type == SAS_EDGE_EXPANDER_DEVICE || ch->dev_type == SAS_FANOUT_EXPANDER_DEVICE) {
+		if (dev_is_expander(ch->dev_type)) {
 			res = sas_find_bcast_dev(ch, src_dev);
 			if (*src_dev)
 				return res;
@@ -1918,8 +1916,7 @@ static void sas_unregister_ex_tree(struct asd_sas_port *port, struct domain_devi
 
 	list_for_each_entry_safe(child, n, &ex->children, siblings) {
 		set_bit(SAS_DEV_GONE, &child->state);
-		if (child->dev_type == SAS_EDGE_EXPANDER_DEVICE ||
-		    child->dev_type == SAS_FANOUT_EXPANDER_DEVICE)
+		if (dev_is_expander(child->dev_type))
 			sas_unregister_ex_tree(port, child);
 		else
 			sas_unregister_dev(port, child);
@@ -1939,8 +1936,7 @@ static void sas_unregister_devs_sas_addr(struct domain_device *parent,
 			if (SAS_ADDR(child->sas_addr) ==
 			    SAS_ADDR(phy->attached_sas_addr)) {
 				set_bit(SAS_DEV_GONE, &child->state);
-				if (child->dev_type == SAS_EDGE_EXPANDER_DEVICE ||
-				    child->dev_type == SAS_FANOUT_EXPANDER_DEVICE)
+				if (dev_is_expander(child->dev_type))
 					sas_unregister_ex_tree(parent->port, child);
 				else
 					sas_unregister_dev(parent->port, child);
@@ -1971,8 +1967,7 @@ static int sas_discover_bfs_by_root_level(struct domain_device *root,
 	int res = 0;
 
 	list_for_each_entry(child, &ex_root->children, siblings) {
-		if (child->dev_type == SAS_EDGE_EXPANDER_DEVICE ||
-		    child->dev_type == SAS_FANOUT_EXPANDER_DEVICE) {
+		if (dev_is_expander(child->dev_type)) {
 			struct sas_expander_device *ex =
 				rphy_to_expander_device(child->rphy);
 
@@ -2025,8 +2020,7 @@ static int sas_discover_new(struct domain_device *dev, int phy_id)
 	list_for_each_entry(child, &dev->ex_dev.children, siblings) {
 		if (SAS_ADDR(child->sas_addr) ==
 		    SAS_ADDR(ex_phy->attached_sas_addr)) {
-			if (child->dev_type == SAS_EDGE_EXPANDER_DEVICE ||
-			    child->dev_type == SAS_FANOUT_EXPANDER_DEVICE)
+			if (dev_is_expander(child->dev_type))
 				res = sas_discover_bfs_by_root(child);
 			break;
 		}

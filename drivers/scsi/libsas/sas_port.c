@@ -70,7 +70,7 @@ static void sas_resume_port(struct asd_sas_phy *phy)
 			continue;
 		}
 
-		if (dev->dev_type == SAS_EDGE_EXPANDER_DEVICE || dev->dev_type == SAS_FANOUT_EXPANDER_DEVICE) {
+		if (dev_is_expander(dev->dev_type)) {
 			dev->ex_dev.ex_change_count = -1;
 			for (i = 0; i < dev->ex_dev.num_phys; i++) {
 				struct ex_phy *phy = &dev->ex_dev.ex_phy[i];

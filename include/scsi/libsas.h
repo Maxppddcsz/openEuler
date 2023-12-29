@@ -225,6 +225,12 @@ struct sas_work {
 	struct work_struct work;
 };
 
+static inline bool dev_is_expander(enum sas_device_type type)
+{
+	return type == SAS_EDGE_EXPANDER_DEVICE ||
+	       type == SAS_FANOUT_EXPANDER_DEVICE;
+}
+
 static inline void INIT_SAS_WORK(struct sas_work *sw, void (*fn)(struct work_struct *))
 {
 	INIT_WORK(&sw->work, fn);
@@ -368,6 +374,7 @@ enum sas_ha_state {
 	SAS_HA_DRAINING,
 	SAS_HA_ATA_EH_ACTIVE,
 	SAS_HA_FROZEN,
+	SAS_HA_RESUMING,
 };
 
 struct sas_ha_struct {
@@ -673,6 +680,7 @@ extern int sas_register_ha(struct sas_ha_struct *);
 extern int sas_unregister_ha(struct sas_ha_struct *);
 extern void sas_prep_resume_ha(struct sas_ha_struct *sas_ha);
 extern void sas_resume_ha(struct sas_ha_struct *sas_ha);
+extern void sas_resume_ha_no_sync(struct sas_ha_struct *sas_ha);
 extern void sas_suspend_ha(struct sas_ha_struct *sas_ha);
 
 int sas_set_phy_speed(struct sas_phy *phy,
@@ -722,5 +730,12 @@ extern void sas_ssp_task_response(struct device *dev, struct sas_task *task,
 struct sas_phy *sas_get_local_phy(struct domain_device *dev);
 
 int sas_request_addr(struct Scsi_Host *shost, u8 *addr);
+
+int sas_notify_port_event(struct asd_sas_phy *phy, enum port_event event);
+int sas_notify_phy_event(struct asd_sas_phy *phy, enum phy_event event);
+int sas_notify_port_event_gfp(struct asd_sas_phy *phy, enum port_event event,
+			      gfp_t gfp_flags);
+int sas_notify_phy_event_gfp(struct asd_sas_phy *phy, enum phy_event event,
+			     gfp_t gfp_flags);
 
 #endif /* _SASLIB_H_ */

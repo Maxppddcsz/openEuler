@@ -381,6 +381,7 @@ void sas_prep_resume_ha(struct sas_ha_struct *ha)
 	int i;
 
 	set_bit(SAS_HA_REGISTERED, &ha->state);
+	set_bit(SAS_HA_RESUMING, &ha->state);
 
 	/* clear out any stale link events/data from the suspension path */
 	for (i = 0; i < ha->num_phys; i++) {
@@ -406,7 +407,31 @@ static int phys_suspended(struct sas_ha_struct *ha)
 	return rc;
 }
 
-void sas_resume_ha(struct sas_ha_struct *ha)
+static void sas_resume_insert_broadcast_ha(struct sas_ha_struct *ha)
+{
+	int i;
+
+	for (i = 0; i < ha->num_phys; i++) {
+		struct asd_sas_port *port = ha->sas_port[i];
+		struct domain_device *dev = port->port_dev;
+
+		if (dev && dev_is_expander(dev->dev_type)) {
+			struct asd_sas_phy *first_phy;
+
+			spin_lock(&port->phy_list_lock);
+			first_phy = list_first_entry_or_null(
+				&port->phy_list, struct asd_sas_phy,
+				port_phy_el);
+			spin_unlock(&port->phy_list_lock);
+
+			if (first_phy)
+				sas_notify_port_event_gfp(first_phy,
+					PORTE_BROADCAST_RCVD, GFP_KERNEL);
+		}
+	}
+}
+
+static void _sas_resume_ha(struct sas_ha_struct *ha, bool drain)
 {
 	const unsigned long tmo = msecs_to_jiffies(25000);
 	int i;
@@ -427,7 +452,8 @@ void sas_resume_ha(struct sas_ha_struct *ha)
 
 		if (phy->suspended) {
 			dev_warn(&phy->phy->dev, "resume timeout\n");
-			sas_notify_phy_event(phy, PHYE_RESUME_TIMEOUT);
+			sas_notify_phy_event_gfp(phy, PHYE_RESUME_TIMEOUT,
+						 GFP_KERNEL);
 		}
 	}
 
@@ -435,9 +461,28 @@ void sas_resume_ha(struct sas_ha_struct *ha)
 	 * flush out disks that did not return
 	 */
 	scsi_unblock_requests(ha->core.shost);
-	sas_drain_work(ha);
+	if (drain)
+		sas_drain_work(ha);
+	clear_bit(SAS_HA_RESUMING, &ha->state);
+
+	/* send event PORTE_BROADCAST_RCVD to identify some new inserted
+	 * disks for expander
+	 */
+	sas_resume_insert_broadcast_ha(ha);
+}
+
+void sas_resume_ha(struct sas_ha_struct *ha)
+{
+	_sas_resume_ha(ha, true);
 }
 EXPORT_SYMBOL(sas_resume_ha);
+
+/* A no-sync variant, which does not call sas_drain_ha(). */
+void sas_resume_ha_no_sync(struct sas_ha_struct *ha)
+{
+	_sas_resume_ha(ha, false);
+}
+EXPORT_SYMBOL(sas_resume_ha_no_sync);
 
 void sas_suspend_ha(struct sas_ha_struct *ha)
 {
@@ -504,6 +549,7 @@ static int queue_phy_reset(struct sas_phy *phy, int hard_reset)
 	if (!d)
 		return -ENOMEM;
 
+	pm_runtime_get_sync(ha->dev);
 	/* libsas workqueue coordinates ata-eh reset with discovery */
 	mutex_lock(&d->event_lock);
 	d->reset_result = 0;
@@ -517,6 +563,7 @@ static int queue_phy_reset(struct sas_phy *phy, int hard_reset)
 	if (rc == 0)
 		rc = d->reset_result;
 	mutex_unlock(&d->event_lock);
+	pm_runtime_put_sync(ha->dev);
 
 	return rc;
 }
@@ -531,6 +578,7 @@ static int queue_phy_enable(struct sas_phy *phy, int enable)
 	if (!d)
 		return -ENOMEM;
 
+	pm_runtime_get_sync(ha->dev);
 	/* libsas workqueue coordinates ata-eh reset with discovery */
 	mutex_lock(&d->event_lock);
 	d->enable_result = 0;
@@ -544,6 +592,7 @@ static int queue_phy_enable(struct sas_phy *phy, int enable)
 	if (rc == 0)
 		rc = d->enable_result;
 	mutex_unlock(&d->event_lock);
+	pm_runtime_put_sync(ha->dev);
 
 	return rc;
 }
@@ -607,16 +656,15 @@ sas_domain_attach_transport(struct sas_domain_function_template *dft)
 }
 EXPORT_SYMBOL_GPL(sas_domain_attach_transport);
 
-
-struct asd_sas_event *sas_alloc_event(struct asd_sas_phy *phy)
+static struct asd_sas_event *__sas_alloc_event(struct asd_sas_phy *phy,
+					       gfp_t gfp_flags)
 {
 	struct asd_sas_event *event;
-	gfp_t flags = in_interrupt() ? GFP_ATOMIC : GFP_KERNEL;
 	struct sas_ha_struct *sas_ha = phy->ha;
 	struct sas_internal *i =
 		to_sas_internal(sas_ha->core.shost->transportt);
 
-	event = kmem_cache_zalloc(sas_event_cache, flags);
+	event = kmem_cache_zalloc(sas_event_cache, gfp_flags);
 	if (!event)
 		return NULL;
 
@@ -627,7 +675,8 @@ struct asd_sas_event *sas_alloc_event(struct asd_sas_phy *phy)
 			if (cmpxchg(&phy->in_shutdown, 0, 1) == 0) {
 				sas_printk("The phy%02d bursting events, shut it down.\n",
 					phy->id);
-				sas_notify_phy_event(phy, PHYE_SHUTDOWN);
+				sas_notify_phy_event_gfp(phy, PHYE_SHUTDOWN,
+							 gfp_flags);
 			}
 		} else {
 			/* Do not support PHY control, stop allocating events */
@@ -639,6 +688,17 @@ struct asd_sas_event *sas_alloc_event(struct asd_sas_phy *phy)
 	}
 
 	return event;
+}
+
+struct asd_sas_event *sas_alloc_event(struct asd_sas_phy *phy)
+{
+	return __sas_alloc_event(phy, in_interrupt() ? GFP_ATOMIC : GFP_KERNEL);
+}
+
+struct asd_sas_event *sas_alloc_event_gfp(struct asd_sas_phy *phy,
+					  gfp_t gfp_flags)
+{
+	return __sas_alloc_event(phy, gfp_flags);
 }
 
 void sas_free_event(struct asd_sas_event *event)

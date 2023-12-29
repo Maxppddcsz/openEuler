@@ -83,8 +83,10 @@ static struct mvs_info *mvs_find_dev_mvi(struct domain_device *dev)
 
 	while (sha->sas_port[i]) {
 		if (sha->sas_port[i] == dev->port) {
+			spin_lock(&sha->sas_port[i]->phy_list_lock);
 			phy =  container_of(sha->sas_port[i]->phy_list.next,
 				struct asd_sas_phy, port_phy_el);
+			spin_unlock(&sha->sas_port[i]->phy_list_lock);
 			j = 0;
 			while (sha->sas_phy[j]) {
 				if (sha->sas_phy[j] == phy)
@@ -112,6 +114,8 @@ static int mvs_find_dev_phyno(struct domain_device *dev, int *phyno)
 	while (sha->sas_port[i]) {
 		if (sha->sas_port[i] == dev->port) {
 			struct asd_sas_phy *phy;
+
+			spin_lock(&sha->sas_port[i]->phy_list_lock);
 			list_for_each_entry(phy,
 				&sha->sas_port[i]->phy_list, port_phy_el) {
 				j = 0;
@@ -125,6 +129,7 @@ static int mvs_find_dev_phyno(struct domain_device *dev, int *phyno)
 				num++;
 				n++;
 			}
+			spin_unlock(&sha->sas_port[i]->phy_list_lock);
 			break;
 		}
 		i++;
@@ -1210,7 +1215,7 @@ static int mvs_dev_found_notify(struct domain_device *dev, int lock)
 	mvi_device->dev_type = dev->dev_type;
 	mvi_device->mvi_info = mvi;
 	mvi_device->sas_device = dev;
-	if (parent_dev && DEV_IS_EXPANDER(parent_dev->dev_type)) {
+	if (parent_dev && dev_is_expander(parent_dev->dev_type)) {
 		int phy_id;
 		u8 phy_num = parent_dev->ex_dev.num_phys;
 		struct ex_phy *phy;
