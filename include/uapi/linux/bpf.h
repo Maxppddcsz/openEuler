@@ -6898,6 +6898,8 @@ enum {
 	TCP_BPF_SYN_MAC         = 1007, /* Copy the MAC, IP[46], and TCP header */
 };
 
+#define SK_BPF_GID_UID	18000
+
 enum {
 	BPF_LOAD_HDR_OPT_TCP_SYN = (1ULL << 0),
 };
