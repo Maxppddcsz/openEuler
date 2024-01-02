@@ -881,11 +881,26 @@ static void psi_group_change(struct psi_group *group, int cpu,
 		schedule_delayed_work(&group->avgs_work, PSI_FREQ);
 }
 
+#ifdef CONFIG_PSI_CGROUP_V1
+static bool task_is_in_psi_v1(void)
+{
+	return !cgroup_subsys_on_dfl(cpuacct_cgrp_subsys);
+}
+#else
+static bool task_is_in_psi_v1(void)
+{
+	return false;
+}
+#endif
+
 static inline struct psi_group *task_psi_group(struct task_struct *task)
 {
 #ifdef CONFIG_CGROUPS
-	if (static_branch_likely(&psi_cgroups_enabled))
+	if (static_branch_likely(&psi_cgroups_enabled)) {
+		if (task_is_in_psi_v1())
+			return cgroup_psi(task_cgroup(task, cpuacct_cgrp_id));
 		return cgroup_psi(task_dfl_cgroup(task));
+	}
 #endif
 	return &psi_system;
 }
