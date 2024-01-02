@@ -140,6 +140,7 @@
 static int psi_bug __read_mostly;
 
 DEFINE_STATIC_KEY_FALSE(psi_disabled);
+DEFINE_STATIC_KEY_FALSE(psi_v1_disabled);
 static DEFINE_STATIC_KEY_TRUE(psi_cgroups_enabled);
 
 #ifdef CONFIG_PSI_DEFAULT_DISABLED
@@ -881,17 +882,13 @@ static void psi_group_change(struct psi_group *group, int cpu,
 		schedule_delayed_work(&group->avgs_work, PSI_FREQ);
 }
 
-#ifdef CONFIG_PSI_CGROUP_V1
 static bool task_is_in_psi_v1(void)
 {
+	if (static_branch_likely(&psi_v1_disabled))
+		return false;
+
 	return !cgroup_subsys_on_dfl(cpuacct_cgrp_subsys);
 }
-#else
-static bool task_is_in_psi_v1(void)
-{
-	return false;
-}
-#endif
 
 static inline struct psi_group *task_psi_group(struct task_struct *task)
 {
