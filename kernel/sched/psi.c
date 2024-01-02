@@ -901,8 +901,14 @@ static inline struct psi_group *task_psi_group(struct task_struct *task)
 {
 #ifdef CONFIG_CGROUPS
 	if (static_branch_likely(&psi_cgroups_enabled)) {
-		if (task_is_in_psi_v1())
-			return cgroup_psi(task_cgroup(task, cpuacct_cgrp_id));
+		if (task_is_in_psi_v1()) {
+			struct cgroup *cgroup;
+
+			rcu_read_lock();
+			cgroup = task_cgroup(task, cpuacct_cgrp_id);
+			rcu_read_unlock();
+			return cgroup_psi(cgroup);
+		}
 		return cgroup_psi(task_dfl_cgroup(task));
 	}
 #endif
