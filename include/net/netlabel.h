@@ -24,6 +24,7 @@
 #include <net/netlink.h>
 #include <net/request_sock.h>
 #include <linux/refcount.h>
+#include <linux/kabi.h>
 
 struct cipso_v4_doi;
 struct calipso_doi;
@@ -100,6 +101,9 @@ struct netlbl_audit {
 	u32 secid;
 	kuid_t loginuid;
 	unsigned int sessionid;
+	KABI_RESERVE(0);
+	KABI_RESERVE(1);
+	KABI_RESERVE(2);
 };
 
 /*

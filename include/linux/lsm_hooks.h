@@ -52,6 +52,7 @@ struct security_hook_list {
 	struct hlist_head		*head;
 	union security_list_options	hook;
 	const char			*lsm;
+	KABI_RESERVE(0);
 } __randomize_layout;
 
 /*
@@ -68,6 +69,10 @@ struct lsm_blob_sizes {
 	int	lbs_xattr_count; /* number of xattr slots in new_xattrs array */
 	KABI_RESERVE(0);
 	KABI_RESERVE(1);
+	KABI_RESERVE(2);
+	KABI_RESERVE(3);
+	KABI_RESERVE(4);
+	KABI_RESERVE(5);
 };
 
 /**
