@@ -3,9 +3,6 @@
 /*
  * Support for ILP32 Linux/aarch64 ELF binaries.
  */
-#undef CONFIG_AARCH32_EL0
-#define compat_elf_gregset_t	elf_gregset_t
-
 #include <linux/elfcore-compat.h>
 #include <linux/time.h>
 #include <asm/cpufeature.h>
