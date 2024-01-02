@@ -15,6 +15,7 @@
 
 #include <linux/list.h>
 #include <linux/uidgid.h>
+#include <linux/security.h>
 #include <uapi/linux/nfs4.h>
 #include <linux/sunrpc/msg_prot.h>
 
@@ -48,6 +49,7 @@ struct nfs4_label {
 	uint32_t	pi;
 	u32		len;
 	char	*label;
+	struct lsmcontext	lsmctx;	//reserve for lsm stacking kabi
 };
 
 typedef struct { char data[NFS4_VERIFIER_SIZE]; } nfs4_verifier;

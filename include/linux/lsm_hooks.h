@@ -44,6 +44,15 @@ struct security_hook_heads {
 } __randomize_layout;
 
 /*
+ * reserve for lsm stacking kabi
+ */
+struct lsm_id {
+	const char	*name;
+	u64		id;
+	bool		lsmblob;
+};
+
+/*
  * Security module hook list structure.
  * For use with generic list macros for common operations.
  */
@@ -52,6 +61,7 @@ struct security_hook_list {
 	struct hlist_head		*head;
 	union security_list_options	hook;
 	const char			*lsm;
+	const struct lsm_id *lsmid;	//reserve for lsm stacking kabi
 } __randomize_layout;
 
 /*
@@ -61,11 +71,16 @@ struct lsm_blob_sizes {
 	int	lbs_cred;
 	int	lbs_file;
 	int	lbs_inode;
+	int	lbs_sock;	//reserve for lsm stacking kabi
 	int	lbs_superblock;
 	int	lbs_ipc;
+	int	lbs_key;	//reserve for lsm stacking kabi
 	int	lbs_msg_msg;
 	int	lbs_task;
 	int	lbs_xattr_count; /* number of xattr slots in new_xattrs array */
+	int	lbs_mnt_opts;	//reserve for lsm stacking kabi
+	bool	lbs_secmark;	//reserve for lsm stacking kabi
+	bool	lbs_netlabel;	//reserve for lsm stacking kabi
 	KABI_RESERVE(0);
 	KABI_RESERVE(1);
 };
