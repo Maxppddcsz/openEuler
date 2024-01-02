@@ -203,6 +203,8 @@ extern int arch_setup_additional_pages(struct linux_binprm *bprm,
 #endif
 
 #ifdef CONFIG_COMPAT
+#define EF_ARM_EABI_MASK		0xff000000
+int compat_elf_check_arch(const struct elf32_hdr *);
 
 /* PIE load location for compat arm. Must match ARM ELF_ET_DYN_BASE. */
 #define COMPAT_ELF_ET_DYN_BASE		0x000400000UL
@@ -215,8 +217,6 @@ typedef unsigned int			compat_elf_greg_t;
 typedef compat_elf_greg_t		compat_elf_gregset_t[COMPAT_ELF_NGREG];
 
 /* AArch32 EABI. */
-#define EF_ARM_EABI_MASK		0xff000000
-int compat_elf_check_arch(const struct elf32_hdr *);
 #define compat_start_thread		compat_start_thread
 
 #ifdef CONFIG_COMPAT_VDSO
@@ -238,6 +238,11 @@ do {									\
 extern int aarch32_setup_additional_pages(struct linux_binprm *bprm,
 				      int uses_interp);
 #endif /* CONFIG_AARCH32_EL0 */
+
+#ifdef CONFIG_ARM64_ILP32
+#undef CONFIG_AARCH32_EL0
+#define compat_elf_gregset_t	elf_gregset_t
+#endif
 
 struct arch_elf_state {
 	int flags;
