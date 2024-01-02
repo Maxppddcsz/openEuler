@@ -10,6 +10,7 @@
  */
 #ifndef _LSM_COMMON_LOGGING_
 #define _LSM_COMMON_LOGGING_
+#include <linux/kabi.h>
 
 #include <linux/stddef.h>
 #include <linux/errno.h>
@@ -111,6 +112,7 @@ struct common_audit_data {
 		struct apparmor_audit_data *apparmor_audit_data;
 #endif
 	}; /* per LSM data pointer union */
+	KABI_RESERVE(0);
 };
 
 #define v4info fam.v4
