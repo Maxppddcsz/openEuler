@@ -22,6 +22,7 @@
 #include <linux/hashtable.h>
 
 #include <linux/ceph/libceph.h>
+#include <linux/kabi.h>
 #include "crypto.h"
 
 /* large granularity for statfs utilization stats to facilitate
@@ -1129,6 +1130,8 @@ struct ceph_acl_sec_ctx {
 #ifdef CONFIG_CEPH_FS_SECURITY_LABEL
 	void *sec_ctx;
 	u32 sec_ctxlen;
+	KABI_RESERVE(0);
+	KABI_RESERVE(1);
 #endif
 #ifdef CONFIG_FS_ENCRYPTION
 	struct ceph_fscrypt_auth *fscrypt_auth;

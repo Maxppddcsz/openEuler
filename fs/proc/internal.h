@@ -13,6 +13,7 @@
 #include <linux/binfmts.h>
 #include <linux/sched/coredump.h>
 #include <linux/sched/task.h>
+#include <linux/kabi.h>
 
 struct ctl_table_header;
 struct mempolicy;
@@ -93,6 +94,7 @@ union proc_op {
 		struct pid_namespace *ns, struct pid *pid,
 		struct task_struct *task);
 	const char *lsm;
+	KABI_RESERVE(0);
 };
 
 struct proc_inode {

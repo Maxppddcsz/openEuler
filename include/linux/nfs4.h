@@ -17,6 +17,7 @@
 #include <linux/uidgid.h>
 #include <uapi/linux/nfs4.h>
 #include <linux/sunrpc/msg_prot.h>
+#include <linux/kabi.h>
 
 enum nfs4_acl_whotype {
 	NFS4_ACL_WHO_NAMED = 0,
@@ -48,6 +49,8 @@ struct nfs4_label {
 	uint32_t	pi;
 	u32		len;
 	char	*label;
+	KABI_RESERVE(0);
+	KABI_RESERVE(1);
 };
 
 typedef struct { char data[NFS4_VERIFIER_SIZE]; } nfs4_verifier;

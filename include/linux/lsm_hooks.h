@@ -29,6 +29,7 @@
 #include <linux/init.h>
 #include <linux/rculist.h>
 #include <linux/xattr.h>
+#include <linux/kabi.h>
 
 union security_list_options {
 	#define LSM_HOOK(RET, DEFAULT, NAME, ...) RET (*NAME)(__VA_ARGS__);
@@ -51,6 +52,7 @@ struct security_hook_list {
 	struct hlist_head		*head;
 	union security_list_options	hook;
 	const char			*lsm;
+	KABI_RESERVE(0);
 } __randomize_layout;
 
 /*
@@ -65,6 +67,12 @@ struct lsm_blob_sizes {
 	int	lbs_msg_msg;
 	int	lbs_task;
 	int	lbs_xattr_count; /* number of xattr slots in new_xattrs array */
+	KABI_RESERVE(0);
+	KABI_RESERVE(1);
+	KABI_RESERVE(2);
+	KABI_RESERVE(3);
+	KABI_RESERVE(4);
+	KABI_RESERVE(5);
 };
 
 /**
@@ -113,6 +121,7 @@ enum lsm_order {
 	LSM_ORDER_FIRST = -1,	/* This is only for capabilities. */
 	LSM_ORDER_MUTABLE = 0,
 	LSM_ORDER_LAST = 1,	/* This is only for integrity. */
+	LSM_ORDER_KABI_RESERVE0,
 };
 
 struct lsm_info {

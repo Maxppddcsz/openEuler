@@ -135,6 +135,7 @@ enum lockdown_reason {
 	LOCKDOWN_XMON_RW,
 	LOCKDOWN_XFRM_SECRET,
 	LOCKDOWN_CONFIDENTIALITY_MAX,
+	LOCKDOWN_KABI_RESERVE0,
 };
 
 extern const char *const lockdown_reasons[LOCKDOWN_CONFIDENTIALITY_MAX+1];
