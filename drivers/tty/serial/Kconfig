@@ -73,6 +73,21 @@ config SERIAL_AMBA_PL011_CONSOLE
 	  your boot loader (lilo or loadlin) about how to pass options to the
 	  kernel at boot time.)
 
+config SERIAL_ATTACHED_MBIGEN
+	bool "Serial port interrupt signal lines connected to the mbigen"
+	depends on SERIAL_AMBA_PL011=y
+	depends on ASCEND_FEATURES
+	default n
+	help
+	  Say Y here when the interrupt signal line of the serial port is
+	  connected to the mbigne. The mbigen device has the function of
+	  clearing interrupts automatically. However, the interrupt processing
+	  function of the serial port driver may process multiple interrupts
+	  at a time. The mbigen device cannot adapt to this scenario.
+	  As a result, interrupts are lost.Because it maybe discard interrupt.
+
+	  If unsure, say N.
+
 config SERIAL_EARLYCON_SEMIHOST
 	bool "Early console using Arm compatible semihosting"
 	depends on ARM64 || ARM || RISCV
