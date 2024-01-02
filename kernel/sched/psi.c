@@ -884,7 +884,7 @@ static void psi_group_change(struct psi_group *group, int cpu,
 		schedule_delayed_work(&group->avgs_work, PSI_FREQ);
 }
 
-#ifdef CONFIG_CGROUP_CPUACCT
+#if defined(CONFIG_CGROUP_CPUACCT) && defined(CONFIG_PSI_CGROUP_V1)
 static bool task_is_in_psi_v1(void)
 {
 	if (static_branch_likely(&psi_v1_disabled))
