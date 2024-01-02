@@ -882,6 +882,7 @@ static void psi_group_change(struct psi_group *group, int cpu,
 		schedule_delayed_work(&group->avgs_work, PSI_FREQ);
 }
 
+#ifdef CONFIG_CGROUP_CPUACCT
 static bool task_is_in_psi_v1(void)
 {
 	if (static_branch_likely(&psi_v1_disabled))
@@ -889,6 +890,12 @@ static bool task_is_in_psi_v1(void)
 
 	return !cgroup_subsys_on_dfl(cpuacct_cgrp_subsys);
 }
+#else
+static bool task_is_in_psi_v1(void)
+{
+	return false;
+}
+#endif
 
 static inline struct psi_group *task_psi_group(struct task_struct *task)
 {
