@@ -43,6 +43,7 @@
 #include <linux/cred.h>
 #include <linux/mnt_idmapping.h>
 #include <linux/slab.h>
+#include <linux/tracepoint-defs.h>
 
 #include <asm/byteorder.h>
 #include <uapi/linux/fs.h>
@@ -184,6 +185,12 @@ typedef int (dio_iodone_t)(struct kiocb *iocb, loff_t offset,
 
 /* File supports async nowait buffered writes */
 #define FMODE_BUF_WASYNC	((__force fmode_t)0x80000000)
+
+/* File mode control flag, expect random access pattern */
+#define FMODE_CTL_RANDOM	((__force fmode_t)0x1000)
+
+/* File mode control flag, will try to read head of the file into pagecache */
+#define FMODE_CTL_WILLNEED		((__force fmode_t)0x400000)
 
 /*
  * Attribute flags.  These should be or-ed together to figure out what
@@ -1002,6 +1009,7 @@ struct file {
 	 */
 	spinlock_t		f_lock;
 	fmode_t			f_mode;
+	fmode_t			f_ctl_mode;
 	atomic_long_t		f_count;
 	struct mutex		f_pos_lock;
 	loff_t			f_pos;
@@ -3379,4 +3387,33 @@ extern int vfs_fadvise(struct file *file, loff_t offset, loff_t len,
 extern int generic_fadvise(struct file *file, loff_t offset, loff_t len,
 			   int advice);
 
+struct fs_file_read_ctx {
+	const unsigned char *name;
+	unsigned int f_mode;
+	unsigned int rsvd;
+	/* clear from f_ctl_mode */
+	unsigned int clr_f_mode;
+	/* set into f_ctl_mode */
+	unsigned int set_f_mode;
+	unsigned long key;
+	/* file size */
+	long long i_size;
+	/* previous page index */
+	long long prev_index;
+	/* current page index */
+	long long index;
+};
+
+#ifdef CONFIG_TRACEPOINTS
+DECLARE_TRACEPOINT(fs_file_read);
+extern void fs_file_read_update_args_by_trace(struct kiocb *iocb);
+#else
+static inline void fs_file_read_update_args_by_trace(struct kiocb *iocb) {}
+#endif
+
+static inline void fs_file_read_do_trace(struct kiocb *iocb)
+{
+	if (tracepoint_enabled(fs_file_read))
+		fs_file_read_update_args_by_trace(iocb);
+}
 #endif /* _LINUX_FS_H */
