@@ -1547,6 +1547,10 @@ struct task_struct {
 	const cpumask_t			*select_cpus;
 #endif
 
+#if defined(CONFIG_QOS_SCHED_SMART_GRID) && !defined(__GENKSYMS__)
+		struct sched_grid_qos *grid_qos;
+#endif
+
 	/*
 	 * New fields for task_struct should be added above here, so that
 	 * they are included in the randomized portion of task_struct.
@@ -2489,6 +2493,19 @@ extern struct static_key_false __dynamic_affinity_switch;
 static inline bool dynamic_affinity_enabled(void)
 {
 	return static_branch_unlikely(&__dynamic_affinity_switch);
+}
+#endif
+
+#ifdef CONFIG_QOS_SCHED_SMART_GRID
+extern struct static_key __smart_grid_used;
+static inline bool smart_grid_used(void)
+{
+	return static_key_false(&__smart_grid_used);
+}
+#else
+static inline bool smart_grid_used(void)
+{
+	return false;
 }
 #endif
 #endif
