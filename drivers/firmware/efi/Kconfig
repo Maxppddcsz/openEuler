@@ -301,3 +301,8 @@ config UEFI_CPER_X86
 	bool
 	depends on UEFI_CPER && X86
 	default y
+
+config EFI_KASLR_SKIP_MEM_RANGE
+	bool
+	depends on RANDOMIZE_BASE
+	default n
