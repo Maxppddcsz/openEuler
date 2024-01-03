@@ -1452,7 +1452,8 @@ void page_remove_rmap(struct page *page, struct vm_area_struct *vma,
 		 */
 		if (folio_test_pmd_mappable(folio) && folio_test_anon(folio))
 			if (!compound || nr < nr_pmdmapped)
-				deferred_split_folio(folio);
+				if (!PageHotreplace(&folio->page))
+					deferred_split_folio(folio);
 	}
 
 	/*

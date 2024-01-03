@@ -31,6 +31,7 @@
 #include <linux/hugetlb.h>
 #include <linux/acpi_iort.h>
 #include <linux/kmemleak.h>
+#include <linux/pin_mem.h>
 
 #include <asm/boot.h>
 #include <asm/fixmap.h>
@@ -481,6 +482,8 @@ void __init bootmem_init(void)
 	 */
 	reserve_crashkernel();
 
+	reserve_pin_memory_res();
+
 	memblock_dump_all();
 }
 
@@ -500,6 +503,9 @@ void __init mem_init(void)
 
 	/* this will put all unused low memory onto the freelists */
 	memblock_free_all();
+
+	/* pre alloc the pages for pin memory */
+	init_reserve_page_map();
 
 	/*
 	 * Check boundaries twice: Some fundamental inconsistencies can be
