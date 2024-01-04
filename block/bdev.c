@@ -759,7 +759,7 @@ static void blkdev_dump_conflict_opener(struct block_device *bdev, char *msg)
 
 static bool bdev_writes_blocked(struct block_device *bdev)
 {
-	return bdev->bd_writers == -1;
+	return bdev->bd_writers < 0;
 }
 
 static void bdev_block_writes(struct block_device *bdev)
@@ -770,6 +770,27 @@ static void bdev_block_writes(struct block_device *bdev)
 static void bdev_unblock_writes(struct block_device *bdev)
 {
 	bdev->bd_writers = 0;
+}
+
+static void bdev_partition_block_part0_writes(struct block_device *bdev)
+{
+	if (bdev_whole(bdev)->bd_writers > 0)
+		/*
+		 * Mounting the partition for the first time blocks part0
+		 * writes while part0 is write opened.
+		 */
+		bdev_whole(bdev)->bd_writers = -1;
+	else
+		bdev_whole(bdev)->bd_writers--;
+}
+
+static void bdev_partition_unblock_part0_writes(struct block_device *bdev)
+{
+	/*
+	 * Make sure that umount does not cause bd_writers to be positive.
+	 */
+	if (bdev_whole(bdev)->bd_writers < 0)
+		bdev_whole(bdev)->bd_writers++;
 }
 
 static void bdev_dump_info(struct block_device *bdev, blk_mode_t mode)
@@ -794,7 +815,8 @@ static bool bdev_may_open(struct block_device *bdev, blk_mode_t mode)
 	/* Writes blocked? */
 	if (mode & BLK_OPEN_WRITE && bdev_writes_blocked(bdev))
 		return false;
-	if (mode & BLK_OPEN_RESTRICT_WRITES && bdev->bd_writers > 0)
+	if (mode & BLK_OPEN_RESTRICT_WRITES &&
+	    (bdev->bd_writers > 0 || bdev_whole(bdev)->bd_writers > 0))
 		return false;
 	return true;
 }
@@ -819,6 +841,11 @@ static void bdev_claim_write_access(struct block_device *bdev, blk_mode_t mode)
 	else if (mode & BLK_OPEN_WRITE && bdev->bd_writers > -1)
 		/* Ensure that write open does not touch blocking state */
 		bdev->bd_writers++;
+
+	/* For partition, mounting partition block part0 writes */
+	if (bdev_is_partition(bdev) &&
+	    mode & BLK_OPEN_RESTRICT_WRITES)
+		bdev_partition_block_part0_writes(bdev);
 }
 
 static void bdev_yield_write_access(struct block_device *bdev, blk_mode_t mode)
@@ -832,6 +859,11 @@ static void bdev_yield_write_access(struct block_device *bdev, blk_mode_t mode)
 	else if (mode & BLK_OPEN_WRITE && bdev->bd_writers > 0)
 		/* Don't subtract bd_writers if mount/umount has been done */
 		bdev->bd_writers--;
+
+	/* For partition, unblock part0 writes */
+	if (bdev_is_partition(bdev) &&
+	    mode & BLK_OPEN_RESTRICT_WRITES)
+		bdev_partition_unblock_part0_writes(bdev);
 }
 
 /**
