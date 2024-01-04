@@ -52,6 +52,7 @@
 #include <asm/switch_to.h>
 
 #include <linux/sched/cond_resched.h>
+#include <linux/bpf_sched.h>
 
 #include "sched.h"
 #include "stats.h"
@@ -98,6 +99,10 @@ static unsigned int normalized_sysctl_sched_base_slice	= 750000ULL;
 unsigned int sysctl_sched_child_runs_first __read_mostly;
 
 const_debug unsigned int sysctl_sched_migration_cost	= 500000UL;
+
+#ifdef CONFIG_BPF_SCHED
+DEFINE_PER_CPU(cpumask_var_t, select_idle_mask);
+#endif
 
 int sched_thermal_decay_shift;
 static int __init setup_sched_thermal_decay_shift(char *str)
@@ -8154,6 +8159,11 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu)
 	if (!pd || READ_ONCE(rd->overutilized))
 		goto unlock;
 
+#ifdef CONFIG_BPF_SCHED
+	struct sched_migrate_ctx ctx;
+	int ret;
+#endif
+
 	/*
 	 * Energy-aware wake-up happens on the lowest sched_domain starting
 	 * from sd_asym_cpucapacity spanning over this_cpu and prev_cpu.
@@ -8475,6 +8485,25 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int wake_flags)
 	}
 
 	rcu_read_lock();
+#ifdef CONFIG_BPF_SCHED
+	if (bpf_sched_enabled()) {
+		ctx.task = p;
+		ctx.prev_cpu = prev_cpu;
+		ctx.curr_cpu = cpu;
+		ctx.is_sync = sync;
+		ctx.wake_flags = wake_flags;
+		ctx.want_affine = want_affine;
+		ctx.sd_flag = sd_flag;
+		ctx.select_idle_mask = this_cpu_cpumask_var_ptr(select_idle_mask);
+
+		ret = bpf_sched_cfs_select_rq(&ctx);
+		if (ret >= 0 && is_cpu_allowed(p, ret)) {
+			rcu_read_unlock();
+			return ret;
+		}
+	}
+#endif
+
 	for_each_domain(cpu, tmp) {
 		/*
 		 * If both 'cpu' and 'prev_cpu' are part of this domain,
