@@ -1963,6 +1963,9 @@ spinlock_t *__pud_trans_huge_lock(pud_t *pud, struct vm_area_struct *vma)
 	spin_unlock(ptl);
 	return NULL;
 }
+#ifdef CONFIG_ETMEM
+EXPORT_SYMBOL_GPL(__pud_trans_huge_lock);
+#endif
 
 #ifdef CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE_PUD
 int zap_huge_pud(struct mmu_gather *tlb, struct vm_area_struct *vma,
