@@ -12,6 +12,7 @@
 #include <linux/rhashtable-types.h>
 #include <linux/sysctl.h>
 #include <linux/percpu_counter.h>
+#include <linux/kabi.h>
 
 struct user_namespace;
 
@@ -78,6 +79,11 @@ struct ipc_namespace {
 	struct llist_node mnt_llist;
 
 	struct ns_common ns;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 } __randomize_layout;
 
 extern struct ipc_namespace init_ipc_ns;
