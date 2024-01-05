@@ -2396,9 +2396,11 @@ __latent_entropy struct task_struct *copy_process(
 	current->flags &= ~PF_NPROC_EXCEEDED;
 
 #ifdef CONFIG_QOS_SCHED_SMART_GRID
-	retval = sched_grid_qos_fork(p, current);
-	if (retval)
-		goto bad_fork_cleanup_count;
+	if (smart_grid_enabled()) {
+		retval = sched_grid_qos_fork(p, current);
+		if (retval)
+			goto bad_fork_cleanup_count;
+	}
 #endif
 
 	/*
