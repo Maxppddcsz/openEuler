@@ -525,6 +525,9 @@ int walk_page_range(struct mm_struct *mm, unsigned long start,
 	} while (start = next, start < end);
 	return err;
 }
+#ifdef CONFIG_ETMEM
+EXPORT_SYMBOL_GPL(walk_page_range);
+#endif
 
 /**
  * walk_page_range_novma - walk a range of pagetables not backed by a vma
