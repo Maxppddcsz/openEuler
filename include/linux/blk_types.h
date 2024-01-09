@@ -70,6 +70,7 @@ struct block_device {
 	bool			bd_make_it_fail;
 #endif
 	int			bd_writers;
+	int			bd_mounters;
 	/*
 	 * keep this out-of-line as it's both big and not needed in the fast
 	 * path
