@@ -61,6 +61,22 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(block_rq_insert);
 
 static DEFINE_IDA(blk_queue_ida);
 
+bool precise_iostat;
+
+static int __init precise_iostat_setup(char *str)
+{
+	bool precise;
+
+	if (!strtobool(str, &precise)) {
+		precise_iostat = precise;
+		pr_info("precise iostat %d\n", precise_iostat);
+	}
+
+	return 1;
+}
+__setup("precise_iostat=", precise_iostat_setup);
+
+
 /*
  * For queue allocation
  */
@@ -940,9 +956,14 @@ void update_io_ticks(struct block_device *part, unsigned long now, bool end)
 	unsigned long stamp;
 again:
 	stamp = READ_ONCE(part->bd_stamp);
-	if (unlikely(time_after(now, stamp))) {
-		if (likely(try_cmpxchg(&part->bd_stamp, &stamp, now)))
+	if (unlikely(time_after(now, stamp)) &&
+		likely(try_cmpxchg(&part->bd_stamp, &stamp, now))) {
+		if (precise_iostat) {
+			if (end || part_in_flight(part))
+				__part_stat_add(part, io_ticks, now - stamp);
+		} else {
 			__part_stat_add(part, io_ticks, end ? now - stamp : 1);
+		}
 	}
 	if (part->bd_partno) {
 		part = bdev_whole(part);
