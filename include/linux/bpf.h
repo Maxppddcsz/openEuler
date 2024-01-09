@@ -29,6 +29,7 @@
 #include <linux/rcupdate_trace.h>
 #include <linux/static_call.h>
 #include <linux/memcontrol.h>
+#include <linux/kabi.h>
 
 struct bpf_verifier_env;
 struct bpf_verifier_log;
@@ -163,6 +164,11 @@ struct bpf_map_ops {
 
 	u64 (*map_mem_usage)(const struct bpf_map *map);
 
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
+
 	/* BTF id of struct allocated by map_alloc */
 	int *map_btf_id;
 
@@ -288,6 +294,11 @@ struct bpf_map {
 	bool bypass_spec_v1;
 	bool frozen; /* write-once; write-protected by freeze_mutex */
 	s64 __percpu *elem_count;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 };
 
 static inline const char *btf_field_type_name(enum btf_field_type type)
@@ -664,6 +675,13 @@ enum bpf_type_flag {
 	/* DYNPTR points to xdp_buff */
 	DYNPTR_TYPE_XDP		= BIT(16 + BPF_BASE_TYPE_BITS),
 
+#ifdef CONFIG_KABI_RESERVE
+	BPF_TYPE_FLAG_RESERVE_1	= BIT(17 + BPF_BASE_TYPE_BITS),
+	BPF_TYPE_FLAG_RESERVE_2	= BIT(18 + BPF_BASE_TYPE_BITS),
+	BPF_TYPE_FLAG_RESERVE_3	= BIT(19 + BPF_BASE_TYPE_BITS),
+	BPF_TYPE_FLAG_RESERVE_4	= BIT(20 + BPF_BASE_TYPE_BITS),
+#endif
+
 	__BPF_TYPE_FLAG_MAX,
 	__BPF_TYPE_LAST_FLAG	= __BPF_TYPE_FLAG_MAX - 1,
 };
@@ -730,6 +748,13 @@ enum bpf_arg_type {
 	/* Pointer to valid memory of size known at compile time. */
 	ARG_PTR_TO_FIXED_SIZE_MEM	= MEM_FIXED_SIZE | ARG_PTR_TO_MEM,
 
+#ifdef CONFIG_KABI_RESERVE
+	BPF_ARG_TYPE_RESERVE_1,
+	BPF_ARG_TYPE_RESERVE_2,
+	BPF_ARG_TYPE_RESERVE_3,
+	BPF_ARG_TYPE_RESERVE_4,
+#endif
+
 	/* This must be the last entry. Its purpose is to ensure the enum is
 	 * wide enough to hold the higher bits reserved for bpf_type_flag.
 	 */
@@ -759,6 +784,13 @@ enum bpf_return_type {
 	RET_PTR_TO_DYNPTR_MEM_OR_NULL	= PTR_MAYBE_NULL | RET_PTR_TO_MEM,
 	RET_PTR_TO_BTF_ID_OR_NULL	= PTR_MAYBE_NULL | RET_PTR_TO_BTF_ID,
 	RET_PTR_TO_BTF_ID_TRUSTED	= PTR_TRUSTED	 | RET_PTR_TO_BTF_ID,
+
+#ifdef CONFIG_KABI_RESERVE
+	BPF_RET_TYPE_RESERVE_1,
+	BPF_RET_TYPE_RESERVE_2,
+	BPF_RET_TYPE_RESERVE_3,
+	BPF_RET_TYPE_RESERVE_4,
+#endif
 
 	/* This must be the last entry. Its purpose is to ensure the enum is
 	 * wide enough to hold the higher bits reserved for bpf_type_flag.
@@ -807,6 +839,9 @@ struct bpf_func_proto {
 	};
 	int *ret_btf_id; /* return value btf_id */
 	bool (*allowed)(const struct bpf_prog *prog);
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 /* bpf_context is intentionally undefined structure. Pointer to bpf_context is
@@ -875,6 +910,13 @@ enum bpf_reg_type {
 	PTR_TO_TCP_SOCK_OR_NULL		= PTR_MAYBE_NULL | PTR_TO_TCP_SOCK,
 	PTR_TO_BTF_ID_OR_NULL		= PTR_MAYBE_NULL | PTR_TO_BTF_ID,
 
+#ifdef CONFIG_KABI_RESERVE
+	BPF_REG_TYPE_RESERVE_1,
+	BPF_REG_TYPE_RESERVE_2,
+	BPF_REG_TYPE_RESERVE_3,
+	BPF_REG_TYPE_RESERVE_4,
+#endif
+
 	/* This must be the last entry. Its purpose is to ensure the enum is
 	 * wide enough to hold the higher bits reserved for bpf_type_flag.
 	 */
@@ -895,6 +937,9 @@ struct bpf_insn_access_aux {
 		};
 	};
 	struct bpf_verifier_log *log; /* for verbose logs */
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 static inline void
@@ -942,6 +987,11 @@ struct bpf_verifier_ops {
 	int (*btf_struct_access)(struct bpf_verifier_log *log,
 				 const struct bpf_reg_state *reg,
 				 int off, int size);
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 };
 
 struct bpf_prog_offload_ops {
@@ -1121,6 +1171,9 @@ struct bpf_tramp_image {
 		struct rcu_head rcu;
 		struct work_struct work;
 	};
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 struct bpf_trampoline {
@@ -1149,6 +1202,11 @@ struct bpf_trampoline {
 	/* Executable image of trampoline */
 	struct bpf_tramp_image *cur_image;
 	struct module *mod;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 };
 
 struct bpf_attach_target_info {
@@ -1180,6 +1238,11 @@ struct bpf_dispatcher {
 	struct static_call_key *sc_key;
 	void *sc_tramp;
 #endif
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 };
 
 static __always_inline __nocfi unsigned int bpf_dispatcher_nop_func(
@@ -1339,6 +1402,9 @@ static inline bool bpf_prog_has_trampoline(const struct bpf_prog *prog)
 struct bpf_func_info_aux {
 	u16 linkage;
 	bool unreliable;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 enum bpf_jit_poke_reason {
@@ -1361,6 +1427,9 @@ struct bpf_jit_poke_descriptor {
 	u8 adj_off;
 	u16 reason;
 	u32 insn_idx;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 /* reg_type info for ctx arguments */
@@ -1368,6 +1437,9 @@ struct bpf_ctx_arg_aux {
 	u32 offset;
 	enum bpf_reg_type reg_type;
 	u32 btf_id;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 struct btf_mod_pair {
@@ -1465,6 +1537,15 @@ struct bpf_prog_aux {
 		struct work_struct work;
 		struct rcu_head	rcu;
 	};
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
+	KABI_RESERVE(5)
+	KABI_RESERVE(6)
+	KABI_RESERVE(7)
+	KABI_RESERVE(8)
 };
 
 struct bpf_prog {
@@ -1499,6 +1580,11 @@ struct bpf_prog {
 		DECLARE_FLEX_ARRAY(struct sock_filter, insns);
 		DECLARE_FLEX_ARRAY(struct bpf_insn, insnsi);
 	};
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 };
 
 struct bpf_array_aux {
@@ -1507,6 +1593,9 @@ struct bpf_array_aux {
 	struct bpf_map *map;
 	struct mutex poke_mutex;
 	struct work_struct work;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 struct bpf_link {
@@ -1516,6 +1605,9 @@ struct bpf_link {
 	const struct bpf_link_ops *ops;
 	struct bpf_prog *prog;
 	struct work_struct work;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 struct bpf_link_ops {
@@ -1529,12 +1621,18 @@ struct bpf_link_ops {
 			      struct bpf_link_info *info);
 	int (*update_map)(struct bpf_link *link, struct bpf_map *new_map,
 			  struct bpf_map *old_map);
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 struct bpf_tramp_link {
 	struct bpf_link link;
 	struct hlist_node tramp_hlist;
 	u64 cookie;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 struct bpf_shim_tramp_link {
@@ -1554,6 +1652,9 @@ struct bpf_link_primer {
 	struct file *file;
 	int fd;
 	u32 id;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 struct bpf_struct_ops_value;
@@ -1626,6 +1727,11 @@ struct bpf_struct_ops {
 	struct btf_func_model func_models[BPF_STRUCT_OPS_MAX_NR_MEMBERS];
 	u32 type_id;
 	u32 value_id;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 };
 
 #if defined(CONFIG_BPF_JIT) && defined(CONFIG_BPF_SYSCALL)
@@ -1727,6 +1833,9 @@ struct bpf_array {
 		DECLARE_FLEX_ARRAY(void *, ptrs) __aligned(8);
 		DECLARE_FLEX_ARRAY(void __percpu *, pptrs) __aligned(8);
 	};
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 #define BPF_COMPLEXITY_LIMIT_INSNS      1000000 /* yes. 1M insns */
@@ -2222,6 +2331,9 @@ struct bpf_iter_aux_info {
 		enum bpf_iter_task_type	type;
 		u32 pid;
 	} task;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 typedef int (*bpf_iter_attach_target_t)(struct bpf_prog *prog,
@@ -2252,6 +2364,9 @@ struct bpf_iter_reg {
 	u32 feature;
 	struct bpf_ctx_arg_aux ctx_arg_info[BPF_ITER_CTX_ARG_MAX];
 	const struct bpf_iter_seq_info *seq_info;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 struct bpf_iter_meta {
