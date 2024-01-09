@@ -3935,6 +3935,34 @@ static void blk_mq_map_swqueue(struct request_queue *q)
 	}
 }
 
+static void queue_update_fair_tag_sharing(struct request_queue *q)
+{
+	struct blk_mq_hw_ctx *hctx;
+	unsigned long i;
+
+	queue_for_each_hw_ctx(q, hctx, i) {
+		if (q->tag_set->disable_fair_tag_sharing)
+			hctx->flags |= BLK_MQ_F_DISABLE_FAIR_TAG_SHARING;
+		else
+			hctx->flags &= ~BLK_MQ_F_DISABLE_FAIR_TAG_SHARING;
+	}
+
+}
+
+void blk_mq_update_fair_tag_sharing(struct blk_mq_tag_set *set)
+{
+	struct request_queue *q;
+
+	lockdep_assert_held(&set->tag_list_lock);
+
+	list_for_each_entry(q, &set->tag_list, tag_set_list) {
+		blk_mq_freeze_queue(q);
+		queue_update_fair_tag_sharing(q);
+		blk_mq_unfreeze_queue(q);
+	}
+}
+EXPORT_SYMBOL_GPL(blk_mq_update_fair_tag_sharing);
+
 /*
  * Caller needs to ensure that we're either frozen/quiesced, or that
  * the queue isn't live yet.
@@ -3989,6 +4017,7 @@ static void blk_mq_add_queue_tag_set(struct blk_mq_tag_set *set,
 {
 	mutex_lock(&set->tag_list_lock);
 
+	queue_update_fair_tag_sharing(q);
 	/*
 	 * Check to see if we're transitioning to shared (from 1 to 2 queues).
 	 */
@@ -4771,6 +4800,7 @@ reregister:
 	list_for_each_entry(q, &set->tag_list, tag_set_list) {
 		blk_mq_sysfs_register_hctxs(q);
 		blk_mq_debugfs_register_hctxs(q);
+		queue_update_fair_tag_sharing(q);
 	}
 
 switch_back:
