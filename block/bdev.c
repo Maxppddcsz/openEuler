@@ -32,9 +32,12 @@
 
 /* Should we allow writing to mounted block devices? */
 #define BLKDEV_ALLOW_WRITE_MOUNTED	0
+/* Should we detect writing to part0 when partitions mounted  */
+#define BLKDEV_DETECT_WRITING_PART0	1
 
 static u8 bdev_allow_write_mounted =
-	IS_ENABLED(CONFIG_BLK_DEV_WRITE_MOUNTED) << BLKDEV_ALLOW_WRITE_MOUNTED;
+	IS_ENABLED(CONFIG_BLK_DEV_WRITE_MOUNTED) << BLKDEV_ALLOW_WRITE_MOUNTED ||
+	IS_ENABLED(CONFIG_BLK_DEV_DETECT_WRITING_PART0) << BLKDEV_DETECT_WRITING_PART0;
 
 struct bdev_inode {
 	struct block_device bdev;
@@ -744,15 +747,23 @@ static bool bdev_writes_blocked(struct block_device *bdev)
 static void bdev_block_writes(struct block_device *bdev)
 {
 	bdev->bd_mounters++;
+	if (bdev_is_partition(bdev) &&
+	    bdev_allow_write_mounted & (1 << BLKDEV_DETECT_WRITING_PART0))
+		bdev_whole(bdev)->bd_mounters++;
 }
 
 static void bdev_unblock_writes(struct block_device *bdev)
 {
 	bdev->bd_mounters--;
+	if (bdev_is_partition(bdev) &&
+	    bdev_allow_write_mounted & (1 << BLKDEV_DETECT_WRITING_PART0))
+		bdev_whole(bdev)->bd_mounters--;
 }
 
 static bool bdev_mount_blocked(struct block_device *bdev)
 {
+	if (bdev_allow_write_mounted & (1 << BLKDEV_DETECT_WRITING_PART0))
+		return bdev->bd_writers > 0 || bdev_whole(bdev)->bd_writers > 0;
 	return bdev->bd_writers > 0;
 }
 
