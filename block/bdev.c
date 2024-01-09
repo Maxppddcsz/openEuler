@@ -771,6 +771,14 @@ static bool bdev_writes_blocked(struct block_device *bdev)
 	return !!bdev->bd_mounters;
 }
 
+static bool bdev_lower_device_writes_blocked(struct block_device *bdev)
+{
+	if (bdev_allow_write_mounted & (1 << BLKDEV_DETECT_WRITING_PART0))
+		return !!bdev->bd_holder;
+	else
+		return !!bdev->bd_holder && bdev->bd_holder != bd_may_claim;
+}
+
 static void bdev_block_writes(struct block_device *bdev)
 {
 	bdev->bd_mounters++;
@@ -813,6 +821,8 @@ static bool bdev_may_open(struct block_device *bdev, blk_mode_t mode)
 		return bdev_may_conflict_open(bdev, OPEN_EXCLUSIVE);
 	if (mode & BLK_OPEN_RESTRICT_WRITES && bdev_mount_blocked(bdev))
 		return bdev_may_conflict_open(bdev, OPEN_FOR_EXCLUSIVE);
+	if (mode & BLK_OPEN_WRITE && bdev_lower_device_writes_blocked(bdev))
+		blkdev_dump_conflict_opener(bdev, OPEN_EXCLUSIVE);
 
 	return true;
 }
