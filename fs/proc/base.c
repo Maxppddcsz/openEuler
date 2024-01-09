@@ -3357,6 +3357,7 @@ static const struct pid_entry tgid_base_stuff[] = {
 #endif
 #ifdef CONFIG_ETMEM
 	REG("idle_pages", S_IRUSR|S_IWUSR, proc_mm_idle_operations),
+	REG("swap_pages", S_IWUSR, proc_mm_swap_operations),
 #endif
 #ifdef CONFIG_SECURITY
 	DIR("attr",       S_IRUGO|S_IXUGO, proc_attr_dir_inode_operations, proc_attr_dir_operations),
@@ -3709,6 +3710,7 @@ static const struct pid_entry tid_base_stuff[] = {
 #endif
 #ifdef CONFIG_ETMEM
 	REG("idle_pages", S_IRUSR|S_IWUSR, proc_mm_idle_operations),
+	REG("swap_pages", S_IWUSR, proc_mm_swap_operations),
 #endif
 #ifdef CONFIG_SECURITY
 	DIR("attr",      S_IRUGO|S_IXUGO, proc_attr_dir_inode_operations, proc_attr_dir_operations),
