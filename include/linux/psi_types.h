@@ -7,6 +7,7 @@
 #include <linux/types.h>
 #include <linux/kref.h>
 #include <linux/wait.h>
+#include <linux/kabi.h>
 
 #ifdef CONFIG_PSI
 
@@ -104,6 +105,12 @@ struct psi_group_cpu {
 	/* Delta detection against the sampling buckets */
 	u32 times_prev[NR_PSI_AGGREGATORS][NR_PSI_STATES]
 			____cacheline_aligned_in_smp;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
+	KABI_RESERVE(5)
 };
 
 /* PSI growth tracking window */
@@ -119,6 +126,9 @@ struct psi_window {
 
 	/* Value growth in the previous window */
 	u64 prev_growth;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 struct psi_trigger {
@@ -157,6 +167,9 @@ struct psi_trigger {
 
 	/* Trigger type - PSI_AVGS for unprivileged, PSI_POLL for RT */
 	enum psi_aggregators aggregator;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 struct psi_group {
@@ -205,6 +218,9 @@ struct psi_group {
 	u64 rtpoll_total[NR_PSI_STATES - 1];
 	u64 rtpoll_next_update;
 	u64 rtpoll_until;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 #else /* CONFIG_PSI */
