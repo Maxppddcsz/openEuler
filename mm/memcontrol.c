@@ -75,6 +75,7 @@
 
 #include <trace/events/vmscan.h>
 #include <linux/ksm.h>
+#include <linux/kabi.h>
 
 struct cgroup_subsys memory_cgrp_subsys __read_mostly;
 EXPORT_SYMBOL(memory_cgrp_subsys);
@@ -755,6 +756,9 @@ struct memcg_vmstats_percpu {
 	/* Cgroup1: threshold notifications & softlimit tree updates */
 	unsigned long		nr_page_events;
 	unsigned long		targets[MEM_CGROUP_NTARGETS];
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 struct memcg_vmstats {
@@ -769,6 +773,9 @@ struct memcg_vmstats {
 	/* Pending child counts during tree propagation */
 	long			state_pending[MEMCG_NR_STAT];
 	unsigned long		events_pending[NR_MEMCG_EVENTS];
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 unsigned long memcg_page_state(struct mem_cgroup *memcg, int idx)

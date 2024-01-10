@@ -21,6 +21,7 @@
 #include <linux/vmstat.h>
 #include <linux/writeback.h>
 #include <linux/page-flags.h>
+#include <linux/kabi.h>
 
 struct mem_cgroup;
 struct obj_cgroup;
@@ -51,6 +52,12 @@ enum memcg_memory_event {
 	MEMCG_SWAP_HIGH,
 	MEMCG_SWAP_MAX,
 	MEMCG_SWAP_FAIL,
+#ifdef CONFIG_KABI_RESERVE
+	MEMCG_MEMORY_EVENTS_RESERVE_1,
+	MEMCG_MEMORY_EVENTS_RESERVE_2,
+	MEMCG_MEMORY_EVENTS_RESERVE_3,
+	MEMCG_MEMORY_EVENTS_RESERVE_4,
+#endif
 	MEMCG_NR_MEMORY_EVENTS,
 };
 
@@ -66,6 +73,7 @@ struct mem_cgroup_reclaim_cookie {
 struct mem_cgroup_id {
 	int id;
 	refcount_t ref;
+	KABI_RESERVE(1)
 };
 
 /*
@@ -106,6 +114,9 @@ struct lruvec_stats_percpu {
 
 	/* Delta calculation for lockless upward propagation */
 	long state_prev[NR_VM_NODE_STAT_ITEMS];
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 struct lruvec_stats {
@@ -117,6 +128,9 @@ struct lruvec_stats {
 
 	/* Pending child counts during tree propagation */
 	long state_pending[NR_VM_NODE_STAT_ITEMS];
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 /*
@@ -140,6 +154,9 @@ struct mem_cgroup_per_node {
 	bool			on_tree;
 	struct mem_cgroup	*memcg;		/* Back pointer, we cannot */
 						/* use container_of	   */
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 struct mem_cgroup_threshold {
@@ -166,6 +183,9 @@ struct mem_cgroup_thresholds {
 	 * It must be able to store at least primary->size - 1 entries.
 	 */
 	struct mem_cgroup_threshold_ary *spare;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 /*
@@ -350,6 +370,14 @@ struct mem_cgroup {
 	bool high_async_reclaim;
 #endif
 
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
+	KABI_RESERVE(5)
+	KABI_RESERVE(6)
+	KABI_RESERVE(7)
+	KABI_RESERVE(8)
 	struct mem_cgroup_per_node *nodeinfo[];
 };
 
