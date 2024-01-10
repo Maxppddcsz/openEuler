@@ -17,8 +17,8 @@
 %global upstream_version    5.10
 %global upstream_sublevel   0
 %global devel_release       60
-%global maintenance_release .120.0
-%global pkg_release         .147
+%global maintenance_release .121.0
+%global pkg_release         .148
 
 %define with_debuginfo 1
 # Do not recompute the build-id of vmlinux in find-debuginfo.sh
@@ -932,6 +932,30 @@ fi
 %endif
 
 %changelog
+* Wed Jan 10 2024 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.121.0.148
+- !3853 [sync] PR-3694:  Fix tow CVEs of CIFS
+- !3773 [sync] PR-3594:  CVE-2023-35827 patchset
+- smb: client: fix potential OOB in smb2_dump_detail()
+- smb: client: fix OOB in smbCalcSize()
+- !3799 [sync] PR-3659:  atm: Fix Use-After-Free in do_vcc_ioctl
+- !3824 [sync] PR-3822:  ext4: fix kernel BUG in 'ext4_write_inline_data_end()'
+- !3794  md: protect md_thread with rcu
+- ext4: fix kernel BUG in 'ext4_write_inline_data_end()'
+- !3780 [sync] PR-3447:  dm: add error handling support for add_disk()
+- !3778 [sync] PR-3379:  md: do not return existing mddevs from mddev_find_or_alloc
+- atm: Fix Use-After-Free in do_vcc_ioctl
+- md: protect md_thread with rcu
+- md/bitmap: factor out a helper to set timeout
+- md/bitmap: always wake up md_thread in timeout_store
+- dm-raid: remove useless checking in raid_message()
+- md: factor out a helper to wake up md_thread directly
+- dm: add error handling support for add_disk()
+- md: do not return existing mddevs from mddev_find_or_alloc
+- md: refactor mddev_find_or_alloc
+- md: factor out a mddev_alloc_unit helper from mddev_find
+- ravb: Fix races between ravb_tx_timeout_work() and net related ops
+- ravb: Fix use-after-free issue in ravb_tx_timeout_work()
+
 * Wed Dec 27 2023 Jialin Zhang <zhangjialin11@huawei.com> - 5.10.0-60.120.0.147
 - !3624  ipv4: igmp: fix refcnt uaf issue when receiving igmp query packet
 - !3621  netfilter: nft_set_pipapo: skip inactive elements during set walk
