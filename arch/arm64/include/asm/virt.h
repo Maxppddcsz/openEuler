@@ -156,6 +156,11 @@ static inline bool is_hyp_nvhe(void)
 	return is_hyp_mode_available() && !is_kernel_in_hyp_mode();
 }
 
+static __always_inline bool has_twed(void)
+{
+	return cpus_have_const_cap(ARM64_HAS_TWED);
+}
+
 #endif /* __ASSEMBLY__ */
 
 #endif /* ! __ASM__VIRT_H */
