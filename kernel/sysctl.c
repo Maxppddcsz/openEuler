@@ -1809,15 +1809,17 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= proc_dointvec,
 	},
 #endif
+#ifndef CONFIG_PID_MAX_PER_NAMESPACE
 	{
 		.procname	= "pid_max",
 		.data		= &pid_max,
-		.maxlen		= sizeof (int),
+		.maxlen		= sizeof(int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= &pid_max_min,
 		.extra2		= &pid_max_max,
 	},
+#endif
 	{
 		.procname	= "panic_on_oops",
 		.data		= &panic_on_oops,
