@@ -30,15 +30,21 @@
 #include "../fs/internal.h"
 #include "blk.h"
 
+#define OPEN_EXCLUSIVE "VFS: Open an exclusive opened block device for write"
+#define OPEN_FOR_EXCLUSIVE "VFS: Open a write opened block device exclusively"
+
 /* Should we allow writing to mounted block devices? */
 #define BLKDEV_ALLOW_WRITE_MOUNTED	0
 /* Should we detect writing to part0 when partitions mounted  */
 #define BLKDEV_DETECT_WRITING_PART0	1
+/* Should we dump info when opening mounted block devices for write? */
+#define BLKDEV_WRITE_MOUNTED_DUMP	2
 #define PARTITION_WRITE_BIT		16
 
 static u8 bdev_allow_write_mounted =
 	IS_ENABLED(CONFIG_BLK_DEV_WRITE_MOUNTED) << BLKDEV_ALLOW_WRITE_MOUNTED ||
-	IS_ENABLED(CONFIG_BLK_DEV_DETECT_WRITING_PART0) << BLKDEV_DETECT_WRITING_PART0;
+	IS_ENABLED(CONFIG_BLK_DEV_DETECT_WRITING_PART0) << BLKDEV_DETECT_WRITING_PART0 ||
+	IS_ENABLED(CONFIG_BLK_DEV_WRITE_MOUNTED_DUMP) << BLKDEV_WRITE_MOUNTED_DUMP;
 
 struct bdev_inode {
 	struct block_device bdev;
@@ -740,6 +746,27 @@ void blkdev_put_no_open(struct block_device *bdev)
 	put_device(&bdev->bd_device);
 }
 
+static void blkdev_dump_conflict_opener(struct block_device *bdev, char *msg)
+{
+	char name[BDEVNAME_SIZE];
+	struct task_struct *p = NULL;
+	char comm_buf[TASK_COMM_LEN];
+	pid_t p_pid;
+
+	rcu_read_lock();
+	p = rcu_dereference(current->real_parent);
+	task_lock(p);
+	strncpy(comm_buf, p->comm, TASK_COMM_LEN);
+	p_pid = p->pid;
+	task_unlock(p);
+	rcu_read_unlock();
+
+	snprintf(name, sizeof(name), "%pg", bdev);
+	pr_info_ratelimited("%s [%s]. current [%d %s]. parent [%d %s]\n",
+			    msg, name,
+			    current->pid, current->comm, p_pid, comm_buf);
+}
+
 static bool bdev_writes_blocked(struct block_device *bdev)
 {
 	if (bdev_allow_write_mounted & (1 << BLKDEV_DETECT_WRITING_PART0))
@@ -790,15 +817,29 @@ static void bdev_unblock_mount(struct block_device *bdev)
 		bdev_whole(bdev)->bd_writers -= 1 << PARTITION_WRITE_BIT;
 }
 
-static bool bdev_may_open(struct block_device *bdev, blk_mode_t mode)
+bool bdev_may_conflict_open(struct block_device *bdev, char *msg)
 {
+	if (bdev_allow_write_mounted & (1 << BLKDEV_WRITE_MOUNTED_DUMP))
+		blkdev_dump_conflict_opener(bdev, msg);
+
 	if (bdev_allow_write_mounted & (1 << BLKDEV_ALLOW_WRITE_MOUNTED))
 		return true;
+
+	return false;
+}
+
+static bool bdev_may_open(struct block_device *bdev, blk_mode_t mode)
+{
+	if (bdev_allow_write_mounted & (1 << BLKDEV_ALLOW_WRITE_MOUNTED) &&
+	    !(bdev_allow_write_mounted & (1 << BLKDEV_WRITE_MOUNTED_DUMP)))
+		return true;
+
 	/* Writes blocked? */
 	if (mode & BLK_OPEN_WRITE && bdev_writes_blocked(bdev))
-		return false;
+		return bdev_may_conflict_open(bdev, OPEN_EXCLUSIVE);
 	if (mode & BLK_OPEN_RESTRICT_WRITES && bdev_mount_blocked(bdev))
-		return false;
+		return bdev_may_conflict_open(bdev, OPEN_FOR_EXCLUSIVE);
+
 	return true;
 }
 
