@@ -451,13 +451,21 @@ static void hisi_read_sccl_and_ccl_id(int *scclp, int *cclp)
 	int aff1 = MPIDR_AFFINITY_LEVEL(mpidr, 1);
 	bool mt = mpidr & MPIDR_MT_BITMASK;
 	int sccl, ccl;
+	const struct midr_range workaround_list[] = {
+		MIDR_ALL_VERSIONS(MIDR_CORTEX_A55),
+		MIDR_ALL_VERSIONS(MIDR_HISI_TSV110),
+		MIDR_REV(MIDR_HISI_LINXICORE9100, 1, 0),
+		{ /* sentinel */ }
+	};
 
-	if (mt && read_cpuid_part_number() == HISI_CPU_PART_TSV110) {
-		sccl = aff2 >> 3;
-		ccl = aff2 & 0x7;
-	} else if (mt) {
-		sccl = aff3;
-		ccl = aff2;
+	if (mt) {
+		if (is_midr_in_range_list(read_cpuid_id(), workaround_list)) {
+			sccl = aff2 >> 3;
+			ccl = aff2 & 0x7;
+		} else {
+			sccl = aff3;
+			ccl = aff2;
+		}
 	} else {
 		sccl = aff2;
 		ccl = aff1;
