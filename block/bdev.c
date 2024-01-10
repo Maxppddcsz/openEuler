@@ -32,9 +32,13 @@
 
 /* Should we allow writing to mounted block devices? */
 #define BLKDEV_ALLOW_WRITE_MOUNTED	0
+/* Should we detect writing to part0 when partitions mounted  */
+#define BLKDEV_DETECT_WRITING_PART0	1
+#define PARTITION_WRITE_BIT		16
 
 static u8 bdev_allow_write_mounted =
-	IS_ENABLED(CONFIG_BLK_DEV_WRITE_MOUNTED) << BLKDEV_ALLOW_WRITE_MOUNTED;
+	IS_ENABLED(CONFIG_BLK_DEV_WRITE_MOUNTED) << BLKDEV_ALLOW_WRITE_MOUNTED ||
+	IS_ENABLED(CONFIG_BLK_DEV_DETECT_WRITING_PART0) << BLKDEV_DETECT_WRITING_PART0;
 
 struct bdev_inode {
 	struct block_device bdev;
@@ -738,22 +742,52 @@ void blkdev_put_no_open(struct block_device *bdev)
 
 static bool bdev_writes_blocked(struct block_device *bdev)
 {
+	if (bdev_allow_write_mounted & (1 << BLKDEV_DETECT_WRITING_PART0))
+		return !!bdev->bd_mounters ||
+		       !!(bdev_whole(bdev)->bd_mounters &
+		       ((1 << PARTITION_WRITE_BIT) -1));
 	return !!bdev->bd_mounters;
 }
 
 static void bdev_block_writes(struct block_device *bdev)
 {
 	bdev->bd_mounters++;
+	if (bdev_is_partition(bdev) &&
+	    bdev_allow_write_mounted & (1 << BLKDEV_DETECT_WRITING_PART0))
+		bdev_whole(bdev)->bd_mounters += 1 << PARTITION_WRITE_BIT;;
 }
 
 static void bdev_unblock_writes(struct block_device *bdev)
 {
 	bdev->bd_mounters--;
+	if (bdev_is_partition(bdev) &&
+	    bdev_allow_write_mounted & (1 << BLKDEV_DETECT_WRITING_PART0))
+		bdev_whole(bdev)->bd_mounters -= 1 << PARTITION_WRITE_BIT;;
 }
 
 static bool bdev_mount_blocked(struct block_device *bdev)
 {
+	if (bdev_allow_write_mounted & (1 << BLKDEV_DETECT_WRITING_PART0))
+		return bdev->bd_writers > 0 ||
+		       (bdev_whole(bdev)->bd_writers &
+		       ((1 << PARTITION_WRITE_BIT) -1)) > 0;
 	return bdev->bd_writers > 0;
+}
+
+static void bdev_block_mount(struct block_device *bdev)
+{
+	bdev->bd_writers++;
+	if (bdev_is_partition(bdev) &&
+	    bdev_allow_write_mounted & (1 << BLKDEV_DETECT_WRITING_PART0))
+		bdev_whole(bdev)->bd_writers += 1 << PARTITION_WRITE_BIT;
+}
+
+static void bdev_unblock_mount(struct block_device *bdev)
+{
+	bdev->bd_writers--;
+	if (bdev_is_partition(bdev) &&
+	    bdev_allow_write_mounted & (1 << BLKDEV_DETECT_WRITING_PART0))
+		bdev_whole(bdev)->bd_writers -= 1 << PARTITION_WRITE_BIT;
 }
 
 static bool bdev_may_open(struct block_device *bdev, blk_mode_t mode)
@@ -774,7 +808,7 @@ static void bdev_claim_write_access(struct block_device *bdev, blk_mode_t mode)
 	if (mode & BLK_OPEN_RESTRICT_WRITES)
 		bdev_block_writes(bdev);
 	else if (mode & BLK_OPEN_WRITE)
-		bdev->bd_writers++;
+		bdev_block_mount(bdev);
 }
 
 static void bdev_yield_write_access(struct block_device *bdev, blk_mode_t mode)
@@ -783,7 +817,7 @@ static void bdev_yield_write_access(struct block_device *bdev, blk_mode_t mode)
 	if (mode & BLK_OPEN_RESTRICT_WRITES)
 		bdev_unblock_writes(bdev);
 	else if (mode & BLK_OPEN_WRITE)
-		bdev->bd_writers--;
+		bdev_unblock_mount(bdev);
 }
 
 /**
