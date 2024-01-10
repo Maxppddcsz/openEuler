@@ -152,8 +152,12 @@ static void read_pages(struct readahead_control *rac)
 	if (!readahead_count(rac))
 		return;
 
-	if (unlikely(rac->_workingset))
+	if (unlikely(rac->_workingset)) {
+#ifdef CONFIG_PSI_FINE_GRAINED
+		rac->_pflags = 0;
+#endif
 		psi_memstall_enter(&rac->_pflags);
+	}
 	blk_start_plug(&plug);
 
 	if (aops->readahead) {
@@ -803,6 +807,9 @@ void readahead_expand(struct readahead_control *ractl,
 		if (unlikely(folio_test_workingset(folio)) &&
 				!ractl->_workingset) {
 			ractl->_workingset = true;
+#ifdef CONFIG_PSI_FINE_GRAINED
+			ractl->_pflags = 0;
+#endif
 			psi_memstall_enter(&ractl->_pflags);
 		}
 		ractl->_nr_pages++;
@@ -830,6 +837,9 @@ void readahead_expand(struct readahead_control *ractl,
 		if (unlikely(folio_test_workingset(folio)) &&
 				!ractl->_workingset) {
 			ractl->_workingset = true;
+#ifdef CONFIG_PSI_FINE_GRAINED
+			ractl->_pflags = 0;
+#endif
 			psi_memstall_enter(&ractl->_pflags);
 		}
 		ractl->_nr_pages++;
