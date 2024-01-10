@@ -1552,6 +1552,10 @@ struct task_struct {
 	const cpumask_t			*select_cpus;
 #endif
 
+#ifdef CONFIG_BPF_SCHED
+	long tag;
+#endif
+
 	/*
 	 * New fields for task_struct should be added above here, so that
 	 * they are included in the randomized portion of task_struct.
@@ -2463,6 +2467,40 @@ void rseq_syscall(struct pt_regs *regs);
 static inline void rseq_syscall(struct pt_regs *regs)
 {
 }
+
+#ifdef CONFIG_BPF_SCHED
+extern void sched_settag(struct task_struct *tsk, s64 tag);
+
+struct bpf_sched_cpu_stats {
+	/* nr_running */
+	unsigned int nr_running;
+	unsigned int cfs_nr_running;
+	unsigned int cfs_h_nr_running;
+	unsigned int cfs_idle_h_nr_running;
+	unsigned int rt_nr_running;
+	unsigned int rr_nr_running;
+};
+
+struct sched_migrate_ctx {
+	struct task_struct *task;
+	struct cpumask *select_idle_mask;
+	int prev_cpu;
+	int curr_cpu;
+	int is_sync;
+	int want_affine;
+	int wake_flags;
+	int sd_flag;
+	int new_cpu;
+};
+
+struct sched_migrate_node {
+	int src_cpu;
+	int src_node;
+	int dst_cpu;
+	int dst_node;
+};
+
+#endif
 
 #endif
 
