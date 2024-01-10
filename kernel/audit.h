@@ -15,6 +15,7 @@
 #include <uapi/linux/mqueue.h>
 #include <linux/tty.h>
 #include <uapi/linux/openat2.h> // struct open_how
+#include <linux/kabi.h>
 
 /* AUDIT_NAMES is the number of slots we reserve in the audit_context
  * for saving names from getname().  If we get more names we will allocate
@@ -91,6 +92,9 @@ struct audit_names {
 	 * should be freed on syscall exit.
 	 */
 	bool			should_free;
+	KABI_RESERVE(1);
+	KABI_RESERVE(2);
+	KABI_RESERVE(3);
 };
 
 struct audit_proctitle {
@@ -208,6 +212,14 @@ struct audit_context {
 	};
 	int fds[2];
 	struct audit_proctitle proctitle;
+	KABI_RESERVE(1);
+	KABI_RESERVE(2);
+	KABI_RESERVE(3);
+	KABI_RESERVE(4);
+	KABI_RESERVE(5);
+	KABI_RESERVE(6);
+	KABI_RESERVE(7);
+	KABI_RESERVE(8);
 };
 
 extern bool audit_ever_enabled;
