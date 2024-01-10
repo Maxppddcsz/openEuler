@@ -12,6 +12,11 @@ extern unsigned long sysctl_hung_task_timeout_secs;
 enum { sysctl_hung_task_timeout_secs = 0 };
 #endif
 
+#ifdef CONFIG_QOS_SCHED_SMART_GRID
+extern unsigned int sysctl_smart_grid_strategy_ctrl;
+extern int sysctl_affinity_adjust_delay_ms;
+#endif
+
 enum sched_tunable_scaling {
 	SCHED_TUNABLESCALING_NONE,
 	SCHED_TUNABLESCALING_LOG,
