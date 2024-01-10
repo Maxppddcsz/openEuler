@@ -157,18 +157,21 @@ static irqreturn_t hisi_uncore_pmu_isr(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-int hisi_uncore_pmu_init_irq(struct hisi_pmu *hisi_pmu,
-			     struct platform_device *pdev)
+static int __hisi_uncore_pmu_init_irq(struct hisi_pmu *hisi_pmu,
+				      struct platform_device *pdev, int shared)
 {
 	int irq, ret;
+	unsigned long irqflags = IRQF_NOBALANCING | IRQF_NO_THREAD;
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
 		return irq;
 
+	if (shared)
+		irqflags |= IRQF_SHARED;
+
 	ret = devm_request_irq(&pdev->dev, irq, hisi_uncore_pmu_isr,
-			       IRQF_NOBALANCING | IRQF_NO_THREAD,
-			       dev_name(&pdev->dev), hisi_pmu);
+			       irqflags, dev_name(&pdev->dev), hisi_pmu);
 	if (ret < 0) {
 		dev_err(&pdev->dev,
 			"Fail to request IRQ: %d ret: %d.\n", irq, ret);
@@ -179,7 +182,20 @@ int hisi_uncore_pmu_init_irq(struct hisi_pmu *hisi_pmu,
 
 	return 0;
 }
+
+int hisi_uncore_pmu_init_irq(struct hisi_pmu *hisi_pmu,
+			     struct platform_device *pdev)
+{
+	return __hisi_uncore_pmu_init_irq(hisi_pmu, pdev, 0);
+}
 EXPORT_SYMBOL_GPL(hisi_uncore_pmu_init_irq);
+
+int hisi_uncore_pmu_init_irq_shared(struct hisi_pmu *hisi_pmu,
+				    struct platform_device *pdev)
+{
+	return __hisi_uncore_pmu_init_irq(hisi_pmu, pdev, 1);
+}
+EXPORT_SYMBOL_GPL(hisi_uncore_pmu_init_irq_shared);
 
 int hisi_uncore_pmu_event_init(struct perf_event *event)
 {
