@@ -368,14 +368,14 @@ int kvm_smccc_call_handler(struct kvm_vcpu *vcpu)
 		break;
 	case ARM_SMCCC_HV_PV_SCHED_IPA_INIT:
 		gpa = smccc_get_arg1(vcpu);
-		if (gpa != GPA_INVALID) {
+		if (gpa != INVALID_GPA) {
 			vcpu->arch.pvsched.base = gpa;
-			val = SMCCC_RET_SUCCESS;
+			val[0] = SMCCC_RET_SUCCESS;
 		}
 		break;
 	case ARM_SMCCC_HV_PV_SCHED_IPA_RELEASE:
-		vcpu->arch.pvsched.base = GPA_INVALID;
-		val = SMCCC_RET_SUCCESS;
+		vcpu->arch.pvsched.base = INVALID_GPA;
+		val[0] = SMCCC_RET_SUCCESS;
 		break;
 	default:
 		return kvm_psci_call(vcpu);
