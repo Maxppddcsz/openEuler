@@ -317,6 +317,9 @@ int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 	case KVM_CAP_ARM_SUPPORTED_BLOCK_SIZES:
 		r = kvm_supported_block_sizes();
 		break;
+	case KVM_CAP_ARM_VIRT_MSI_BYPASS:
+		r = sdev_enable;
+		break;
 	default:
 		r = 0;
 	}
@@ -1633,6 +1636,36 @@ int kvm_arch_vm_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 
 		return kvm_vm_set_attr(kvm, &attr);
 	}
+
+	case KVM_CREATE_SHADOW_DEV: {
+		struct kvm_master_dev_info *mdi;
+		u32 nvectors;
+		int ret;
+
+		if (get_user(nvectors, (const u32 __user *)argp))
+			return -EFAULT;
+		if (!nvectors)
+			return -EINVAL;
+
+		mdi = memdup_user(argp, sizeof(*mdi) + nvectors * sizeof(mdi->msi[0]));
+		if (IS_ERR(mdi))
+			return PTR_ERR(mdi);
+
+		ret = kvm_shadow_dev_create(kvm, mdi);
+		kfree(mdi);
+
+		return ret;
+	}
+	case KVM_DEL_SHADOW_DEV: {
+		u32 devid;
+
+		if (get_user(devid, (const u32 __user *)argp))
+			return -EFAULT;
+
+		kvm_shadow_dev_delete(kvm, devid);
+		return 0;
+	}
+
 	default:
 		return -EINVAL;
 	}
@@ -2397,6 +2430,11 @@ void kvm_arch_irq_bypass_start(struct irq_bypass_consumer *cons)
 	kvm_arm_resume_guest(irqfd->kvm);
 }
 
+void kvm_arch_pre_destroy_vm(struct kvm *kvm)
+{
+	kvm_shadow_dev_delete_all(kvm);
+}
+
 /* Initialize Hyp-mode and memory mappings on all CPUs */
 static __init int kvm_arm_init(void)
 {
@@ -2473,6 +2511,8 @@ static __init int kvm_arm_init(void)
 		goto out_subs;
 
 	kvm_arm_initialised = true;
+
+	kvm_shadow_dev_init();
 
 	return 0;
 

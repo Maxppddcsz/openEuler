@@ -56,6 +56,9 @@ void kvm_vgic_early_init(struct kvm *kvm)
 	INIT_LIST_HEAD(&dist->lpi_list_head);
 	INIT_LIST_HEAD(&dist->lpi_translation_cache);
 	raw_spin_lock_init(&dist->lpi_list_lock);
+
+	INIT_LIST_HEAD(&dist->sdev_list_head);
+	raw_spin_lock_init(&dist->sdev_list_lock);
 }
 
 /* CREATION */
