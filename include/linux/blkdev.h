@@ -209,6 +209,8 @@ struct gendisk {
 	 * devices that do not have multiple independent access ranges.
 	 */
 	struct blk_independent_access_ranges *ia_ranges;
+	int part_mounters;
+	int part_writers;
 };
 
 static inline bool disk_live(struct gendisk *disk)
