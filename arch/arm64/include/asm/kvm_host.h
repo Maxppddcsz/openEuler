@@ -591,6 +591,12 @@ struct kvm_vcpu_arch {
 
 	/* Per-vcpu CCSIDR override or NULL */
 	u32 *ccsidr;
+
+#ifdef CONFIG_KVM_HISI_VIRT
+	/* Copy of current->cpus_ptr */
+	cpumask_t *cpus_ptr;
+	cpumask_t *pre_cpus_ptr;
+#endif
 };
 
 /*
