@@ -571,6 +571,9 @@ int vgic_v3_map_resources(struct kvm *kvm)
 	if (kvm_vgic_global_state.has_gicv4_1)
 		vgic_v4_configure_vsgis(kvm);
 
+	if (kvm_vgic_vtimer_irqbypass_support())
+		vgic_v4_configure_vtimer(kvm);
+
 	return 0;
 }
 
