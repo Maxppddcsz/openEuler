@@ -276,6 +276,9 @@ struct vgic_dist {
 	/* Wants SGIs without active state */
 	bool			nassgireq;
 
+	/* Indicate whether the vtimer irqbypass mode is used */
+	bool			vtimer_irqbypass;
+
 	struct vgic_irq		*spis;
 
 	struct vgic_io_device	dist_iodev;
@@ -349,8 +352,6 @@ struct vgic_cpu {
 
 	struct vgic_irq private_irqs[VGIC_NR_PRIVATE_IRQS];
 
-	/* Indicate whether the vtimer irqbypass mode is used */
-	bool vtimer_irqbypass;
 	struct vtimer_info vtimer;
 
 	raw_spinlock_t ap_list_lock;	/* Protects the ap_list */
