@@ -377,6 +377,9 @@ int kvm_smccc_call_handler(struct kvm_vcpu *vcpu)
 		vcpu->arch.pvsched.base = INVALID_GPA;
 		val[0] = SMCCC_RET_SUCCESS;
 		break;
+	case ARM_SMCCC_HV_PV_SCHED_KICK_CPU:
+		val[0] = kvm_pvsched_kick_vcpu(vcpu);
+		break;
 	default:
 		return kvm_psci_call(vcpu);
 	}
