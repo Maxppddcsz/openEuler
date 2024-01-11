@@ -35,6 +35,14 @@
 #define irq_is_spi(irq) ((irq) >= VGIC_NR_PRIVATE_IRQS && \
 			 (irq) <= VGIC_MAX_SPI)
 
+/* Information about HiSilicon implementation of vtimer (GICv4.1-based) */
+struct vtimer_info {
+	u32 intid;
+
+	bool (*get_active_stat)(struct kvm_vcpu *vcpu, int vintid);
+	void (*set_active_stat)(struct kvm_vcpu *vcpu, int vintid, bool active);
+};
+
 enum vgic_type {
 	VGIC_V2,		/* Good ol' GICv2 */
 	VGIC_V3,		/* New fancy GICv3 */
@@ -161,6 +169,8 @@ struct vgic_irq {
 
 	void *owner;			/* Opaque pointer to reserve an interrupt
 					   for in-kernel devices. */
+
+	struct vtimer_info *vtimer_info;        /* vtimer interrupt only */
 };
 
 static inline bool vgic_irq_needs_resampling(struct vgic_irq *irq)
@@ -337,6 +347,10 @@ struct vgic_cpu {
 
 	struct vgic_irq private_irqs[VGIC_NR_PRIVATE_IRQS];
 
+	/* Indicate whether the vtimer irqbypass mode is used */
+	bool vtimer_irqbypass;
+	struct vtimer_info vtimer;
+
 	raw_spinlock_t ap_list_lock;	/* Protects the ap_list */
 
 	/*
@@ -446,6 +460,9 @@ int kvm_vgic_v4_unset_forwarding(struct kvm *kvm, int irq,
 int vgic_v4_load(struct kvm_vcpu *vcpu);
 void vgic_v4_commit(struct kvm_vcpu *vcpu);
 int vgic_v4_put(struct kvm_vcpu *vcpu);
+int kvm_vgic_config_vtimer_irqbypass(struct kvm_vcpu *vcpu, u32 vintid,
+		bool (*get_as)(struct kvm_vcpu *, int),
+		void (*set_as)(struct kvm_vcpu *, int, bool));
 
 /* CPU HP callbacks */
 void kvm_vgic_cpu_up(void);
