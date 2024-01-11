@@ -818,12 +818,21 @@ static void bdev_unblock_mount(struct block_device *bdev)
 		bdev->bd_disk->part_writers--;
 }
 
+static bool bdev_lower_device_writes_blocked(struct block_device *bdev)
+{
+	if (bdev_opt(DETECT_WRITING_PART0))
+		return !!bdev->bd_holder;
+	else
+		return !!bdev->bd_holder && bdev->bd_holder != bd_may_claim;
+}
+
 static bool bdev_may_open(struct block_device *bdev, blk_mode_t mode)
 {
 	if (bdev_opt(ALLOW_WRITE_MOUNTED) && !bdev_opt(WRITE_MOUNTED_DUMP))
 		return true;
 	/* Writes blocked? */
-	if (mode & BLK_OPEN_WRITE && bdev_writes_blocked(bdev))
+	if (mode & BLK_OPEN_WRITE && (bdev_writes_blocked(bdev) ||
+				      bdev_lower_device_writes_blocked(bdev)))
 		blkdev_dump_conflict_opener(bdev, OPEN_EXCLUSIVE);
 	else if (mode & BLK_OPEN_RESTRICT_WRITES && bdev_mount_blocked(bdev))
 		blkdev_dump_conflict_opener(bdev, OPEN_FOR_EXCLUSIVE);
