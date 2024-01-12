@@ -149,6 +149,42 @@ bool __task_in_dynamic_pool(struct task_struct *tsk)
 	return !!dpool;
 }
 
+bool page_in_dynamic_pool(struct page *page)
+{
+	struct dynamic_pool *dpool;
+
+	if (!dpool_enabled)
+		return false;
+
+	if (PageDpool(page))
+		return true;
+
+	/*
+	 * If the page don't have the flags, it may be in pcp list.
+	 * Check it using the page range.
+	 */
+	dpool = dpool_get_from_page(page);
+	if (enable_dpagelist && dpool) {
+		unsigned long pfn = page_to_pfn(page);
+		int range_cnt = dpool->range_cnt;
+		struct range *range;
+		int i;
+
+		for (i = 0; i < range_cnt; i++) {
+			range = &dpool->pfn_ranges[i];
+			if (pfn >= range->start && pfn <= range->end)
+				goto put;
+		}
+
+		/* The pfn is not in the range, set dpool to NULL */
+		dpool = NULL;
+	}
+put:
+	dpool_put(dpool);
+
+	return !!dpool;
+}
+
 /* === demote and promote function ==================================== */
 
 static void dpool_disable_pcp_pool(struct dynamic_pool *dpool, bool drain);
