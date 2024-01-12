@@ -296,6 +296,15 @@ out:
 	local_irq_restore(flags);
 }
 
+DEFINE_STATIC_CALL(pv_qspinlock_queued_spin_lock_slowpath,
+		   __pv_queued_spin_lock_slowpath);
+EXPORT_STATIC_CALL(pv_qspinlock_queued_spin_lock_slowpath);
+DEFINE_STATIC_CALL(pv_qspinlock_queued_spin_unlock,
+		   __pv_queued_spin_unlock);
+EXPORT_STATIC_CALL(pv_qspinlock_queued_spin_unlock);
+DEFINE_STATIC_CALL(pv_qspinlock_wait, kvm_wait);
+DEFINE_STATIC_CALL(pv_qspinlock_kick, kvm_kick_cpu);
+
 void __init pv_qspinlock_init(void)
 {
 	/* Don't use the PV qspinlock code if there is only 1 vCPU. */
@@ -309,10 +318,13 @@ void __init pv_qspinlock_init(void)
 	pr_info("PV qspinlocks enabled\n");
 
 	__pv_init_lock_hash();
-	pv_ops.sched.queued_spin_lock_slowpath = __pv_queued_spin_lock_slowpath;
-	pv_ops.sched.queued_spin_unlock = __pv_queued_spin_unlock;
-	pv_ops.sched.wait = kvm_wait;
-	pv_ops.sched.kick = kvm_kick_cpu;
+
+	static_call_update(pv_qspinlock_queued_spin_lock_slowpath,
+			   __pv_queued_spin_lock_slowpath);
+	static_call_update(pv_qspinlock_queued_spin_unlock,
+			   __pv_queued_spin_unlock);
+	static_call_update(pv_qspinlock_wait, kvm_wait);
+	static_call_update(pv_qspinlock_kick, kvm_kick_cpu);
 }
 
 static __init int arm_parse_pvspin(char *arg)

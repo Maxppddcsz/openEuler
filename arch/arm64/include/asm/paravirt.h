@@ -33,26 +33,34 @@ static inline bool pv_vcpu_is_preempted(int cpu)
 #if defined(CONFIG_SMP) && defined(CONFIG_PARAVIRT_SPINLOCKS)
 void __init pv_qspinlock_init(void);
 bool pv_is_native_spin_unlock(void);
-DECLARE_STATIC_CALL(pv_qspinlock_queued_spin_lock_slowpath, native_queued_spin_lock_slowpath);
+
+void dummy_queued_spin_lock_slowpath(struct qspinlock *lock, u32 val);
+DECLARE_STATIC_CALL(pv_qspinlock_queued_spin_lock_slowpath,
+		    dummy_queued_spin_lock_slowpath);
 static inline void pv_queued_spin_lock_slowpath(struct qspinlock *lock, u32 val)
 {
 	return static_call(pv_qspinlock_queued_spin_lock_slowpath)(lock, val);
 }
 
-DECLARE_STATIC_CALL(pv_qspinlock_queued_spin_unlock, native_queued_spin_unlock);
+void dummy_queued_spin_unlock(struct qspinlock *lock);
+DECLARE_STATIC_CALL(pv_qspinlock_queued_spin_unlock, dummy_queued_spin_unlock);
 static inline void pv_queued_spin_unlock(struct qspinlock *lock)
 {
 	return static_call(pv_qspinlock_queued_spin_unlock)(lock);
 }
 
+void dummy_wait(u8 *ptr, u8 val);
+DECLARE_STATIC_CALL(pv_qspinlock_wait, dummy_wait);
 static inline void pv_wait(u8 *ptr, u8 val)
 {
-	return;
+	return static_call(pv_qspinlock_wait)(ptr, val);
 }
 
+void dummy_kick(int cpu);
+DECLARE_STATIC_CALL(pv_qspinlock_kick, dummy_kick);
 static inline void pv_kick(int cpu)
 {
-	return;
+	return static_call(pv_qspinlock_kick)(cpu);
 }
 #else
 
