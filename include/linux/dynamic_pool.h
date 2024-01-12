@@ -54,6 +54,8 @@ struct dynamic_pool {
 	unsigned long total_pages;
 };
 
+int dynamic_pool_can_attach(struct task_struct *tsk, struct mem_cgroup *memcg);
+
 void dynamic_pool_inherit(struct mem_cgroup *parent, struct mem_cgroup *memcg);
 int dynamic_pool_destroy(struct cgroup *cgrp, bool *clear_css_online);
 
@@ -66,6 +68,12 @@ int dynamic_pool_reserve_hugepage(struct mem_cgroup *memcg,
 
 #else
 struct dynamic_pool {};
+
+static inline int dynamic_pool_can_attach(struct task_struct *tsk,
+					  struct mem_cgroup *memcg)
+{
+	return 0;
+}
 
 static inline void dynamic_pool_inherit(struct mem_cgroup *parent,
 					struct mem_cgroup *memcg)
