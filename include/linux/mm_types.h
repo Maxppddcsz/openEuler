@@ -19,6 +19,7 @@
 #include <linux/workqueue.h>
 #include <linux/seqlock.h>
 #include <linux/percpu_counter.h>
+#include <linux/kabi.h>
 
 #include <asm/mmu.h>
 
@@ -940,6 +941,10 @@ struct mm_struct {
 #ifdef CONFIG_MEMORY_RELIABLE
 		/* total used reliable pages */
 		atomic_long_t reliable_nr_page;
+#endif
+#ifdef CONFIG_GMEM
+		KABI_RESERVE(gmem_0)
+		KABI_RESERVE(gmem_1)
 #endif
 	} __randomize_layout;
 
