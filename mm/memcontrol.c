@@ -66,6 +66,7 @@
 #include <linux/memcg_memfs_info.h>
 #include <linux/sched/isolation.h>
 #include <linux/parser.h>
+#include <linux/dynamic_pool.h>
 
 #ifdef CONFIG_MEMCG_SWAP_QOS
 #include <linux/blkdev.h>
@@ -6353,6 +6354,7 @@ mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 		page_counter_init(&memcg->kmem, &parent->kmem);
 		page_counter_init(&memcg->tcpmem, &parent->tcpmem);
 		memcg_swap_device_init(memcg, parent);
+		dynamic_pool_inherit(parent, memcg);
 	} else {
 		init_memcg_events();
 		page_counter_init(&memcg->memory, NULL);
