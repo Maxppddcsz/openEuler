@@ -18,7 +18,7 @@ void kvm_update_pvsched_preempted(struct kvm_vcpu *vcpu, u32 preempted)
 	u64 offset = offsetof(struct pvsched_vcpu_state, preempted);
 	int idx;
 
-	if (base == GPA_INVALID)
+	if (base == INVALID_GPA)
 		return;
 
 	/*
