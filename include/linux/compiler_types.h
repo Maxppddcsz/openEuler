@@ -223,6 +223,17 @@ struct ftrace_likely_data {
 #endif
 
 /*
+ * Some functions cannot be compiled correctly when the inline attribute is set
+ * and CONFIG_OPTIMIZE_INLINING=n. In such cases, use the INLINE_ATTR instead
+ * of inline.
+ */
+#if defined(CONFIG_OPTIMIZE_INLINING)
+#define INLINE_ATTR inline
+#else
+#define INLINE_ATTR
+#endif
+
+/*
  * gcc provides both __inline__ and __inline as alternate spellings of
  * the inline keyword, though the latter is undocumented. New kernel
  * code should only use the inline spelling, but some existing code
