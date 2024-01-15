@@ -100,8 +100,8 @@ struct sys_reg_desc {
 #define REG_USER_WI		(1 << 3) /* WI from userspace only */
 
 static __printf(2, 3)
-inline void print_sys_reg_msg(const struct sys_reg_params *p,
-				       char *fmt, ...)
+INLINE_ATTR void print_sys_reg_msg(const struct sys_reg_params *p,
+					char *fmt, ...)
 {
 	va_list va;
 

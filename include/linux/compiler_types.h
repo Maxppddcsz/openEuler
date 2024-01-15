@@ -206,13 +206,32 @@ struct ftrace_likely_data {
 #define __naked			__attribute__((__naked__)) notrace
 
 /*
+ * Force always-inline if the user requests it so via the .config.
  * Prefer gnu_inline, so that extern inline functions do not emit an
  * externally visible function. This makes extern inline behave as per gnu89
  * semantics rather than c99. This prevents multiple symbol definition errors
  * of extern inline functions at link time.
  * A lot of inline functions can cause havoc with function tracing.
+ * Do not use __always_inline here, since currently it expands to inline again
+ * (which would break users of __always_inline).
  */
+#if !defined(CONFIG_OPTIMIZE_INLINING)
+#define inline inline __attribute__((__always_inline__)) __gnu_inline \
+	__inline_maybe_unused notrace
+#else
 #define inline inline __gnu_inline __inline_maybe_unused notrace
+#endif
+
+/*
+ * Some functions cannot be compiled correctly when the inline attribute is set
+ * and CONFIG_OPTIMIZE_INLINING=n. In such cases, use the INLINE_ATTR instead
+ * of inline.
+ */
+#if defined(CONFIG_OPTIMIZE_INLINING)
+#define INLINE_ATTR inline
+#else
+#define INLINE_ATTR
+#endif
 
 /*
  * gcc provides both __inline__ and __inline as alternate spellings of
