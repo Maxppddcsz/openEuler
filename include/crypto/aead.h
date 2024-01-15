@@ -13,6 +13,7 @@
 #include <linux/crypto.h>
 #include <linux/slab.h>
 #include <linux/types.h>
+#include <linux/kabi.h>
 
 /**
  * DOC: Authenticated Encryption With Associated Data (AEAD) Cipher API
@@ -97,6 +98,7 @@ struct aead_request {
 
 	struct scatterlist *src;
 	struct scatterlist *dst;
+	KABI_RESERVE(1);
 
 	void *__ctx[] CRYPTO_MINALIGN_ATTR;
 };
@@ -169,6 +171,7 @@ struct aead_alg {
 	unsigned int ivsize;
 	unsigned int maxauthsize;
 	unsigned int chunksize;
+	KABI_RESERVE(1);
 
 	struct crypto_alg base;
 };
@@ -177,6 +180,7 @@ struct crypto_aead {
 	unsigned int authsize;
 	unsigned int reqsize;
 
+	KABI_RESERVE(1);
 	struct crypto_tfm base;
 };
 
