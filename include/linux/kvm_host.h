@@ -631,6 +631,11 @@ struct kvm_xen_evtchn {
 	u32 priority;
 };
 
+struct kire_data {
+	bool    valid;
+	void    *data;
+};
+
 struct kvm_kernel_irq_routing_entry {
 	u32 gsi;
 	u32 type;
@@ -654,6 +659,8 @@ struct kvm_kernel_irq_routing_entry {
 		struct kvm_xen_evtchn xen_evtchn;
 	};
 	struct hlist_node link;
+
+	struct kire_data cache;
 };
 
 #ifdef CONFIG_HAVE_KVM_IRQ_ROUTING
@@ -1640,6 +1647,8 @@ int kvm_request_irq_source_id(struct kvm *kvm);
 void kvm_free_irq_source_id(struct kvm *kvm, int irq_source_id);
 bool kvm_arch_irqfd_allowed(struct kvm *kvm, struct kvm_irqfd *args);
 
+void kire_arch_cached_data_update(struct kvm *kvm,
+				  struct kvm_kernel_irq_routing_entry *e);
 /*
  * Returns a pointer to the memslot if it contains gfn.
  * Otherwise returns NULL.

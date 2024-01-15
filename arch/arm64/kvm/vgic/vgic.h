@@ -145,6 +145,16 @@ static inline int vgic_write_guest_lock(struct kvm *kvm, gpa_t gpa,
 	return ret;
 }
 
+static inline bool vgic_direct_sgi_or_ppi(struct vgic_irq *irq)
+{
+	bool direct_sgi, direct_ppi;
+
+	direct_sgi = irq->hw && vgic_irq_is_sgi(irq->intid);
+	direct_ppi = !!(irq->vtimer_info);
+
+	return direct_sgi || direct_ppi;
+}
+
 /*
  * This struct provides an intermediate representation of the fields contained
  * in the GICH_VMCR and ICH_VMCR registers, such that code exporting the GIC
@@ -341,5 +351,6 @@ void vgic_v4_teardown(struct kvm *kvm);
 void vgic_v4_configure_vsgis(struct kvm *kvm);
 void vgic_v4_get_vlpi_state(struct vgic_irq *irq, bool *val);
 int vgic_v4_request_vpe_irq(struct kvm_vcpu *vcpu, int irq);
+void vgic_v4_configure_vtimer(struct kvm *kvm);
 
 #endif

@@ -56,6 +56,9 @@ void kvm_vgic_early_init(struct kvm *kvm)
 	INIT_LIST_HEAD(&dist->lpi_list_head);
 	INIT_LIST_HEAD(&dist->lpi_translation_cache);
 	raw_spin_lock_init(&dist->lpi_list_lock);
+
+	INIT_LIST_HEAD(&dist->sdev_list_head);
+	raw_spin_lock_init(&dist->sdev_list_lock);
 }
 
 /* CREATION */
@@ -225,6 +228,9 @@ int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu)
 			/* PPIs */
 			irq->config = VGIC_CONFIG_LEVEL;
 		}
+
+		/* Needed? */
+		irq->vtimer_info = NULL;
 	}
 
 	if (!irqchip_in_kernel(vcpu->kvm))
