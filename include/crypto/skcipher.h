@@ -14,6 +14,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/types.h>
+#include <linux/kabi.h>
 
 struct scatterlist;
 
@@ -35,6 +36,7 @@ struct skcipher_request {
 	struct scatterlist *dst;
 
 	struct crypto_async_request base;
+	KABI_RESERVE(0);
 
 	void *__ctx[] CRYPTO_MINALIGN_ATTR;
 };
@@ -142,6 +144,7 @@ struct skcipher_alg {
 #endif
 
 	struct crypto_alg base;
+	KABI_RESERVE(0);
 };
 
 #define MAX_SYNC_SKCIPHER_REQSIZE      384

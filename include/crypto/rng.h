@@ -12,6 +12,7 @@
 #include <linux/atomic.h>
 #include <linux/container_of.h>
 #include <linux/crypto.h>
+#include <linux/kabi.h>
 
 struct crypto_rng;
 
@@ -70,6 +71,7 @@ struct rng_alg {
 	unsigned int seedsize;
 
 	struct crypto_alg base;
+	KABI_RESERVE(0);
 };
 
 struct crypto_rng {
