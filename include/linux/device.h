@@ -31,6 +31,7 @@
 #include <linux/device/class.h>
 #include <linux/device/driver.h>
 #include <linux/cleanup.h>
+#include <linux/kabi.h>
 #include <asm/device.h>
 
 struct device;
@@ -804,6 +805,9 @@ struct device {
 #endif
 #ifdef CONFIG_DMA_OPS_BYPASS
 	bool			dma_ops_bypass : 1;
+#endif
+#ifdef CONFIG_GMEM
+	KABI_RESERVE(gmem_0)
 #endif
 };
 
