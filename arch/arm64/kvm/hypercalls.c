@@ -332,6 +332,9 @@ int kvm_smccc_call_handler(struct kvm_vcpu *vcpu)
 				     &smccc_feat->std_hyp_bmap))
 				val[0] = SMCCC_RET_SUCCESS;
 			break;
+		case ARM_SMCCC_HV_PV_SCHED_FEATURES:
+			val[0] = SMCCC_RET_SUCCESS;
+			break;
 		}
 		break;
 	case ARM_SMCCC_HV_PV_TIME_FEATURES:
@@ -360,6 +363,23 @@ int kvm_smccc_call_handler(struct kvm_vcpu *vcpu)
 	case ARM_SMCCC_TRNG_RND32:
 	case ARM_SMCCC_TRNG_RND64:
 		return kvm_trng_call(vcpu);
+	case ARM_SMCCC_HV_PV_SCHED_FEATURES:
+		val[0] = kvm_hypercall_pvsched_features(vcpu);
+		break;
+	case ARM_SMCCC_HV_PV_SCHED_IPA_INIT:
+		gpa = smccc_get_arg1(vcpu);
+		if (gpa != INVALID_GPA) {
+			vcpu->arch.pvsched.base = gpa;
+			val[0] = SMCCC_RET_SUCCESS;
+		}
+		break;
+	case ARM_SMCCC_HV_PV_SCHED_IPA_RELEASE:
+		vcpu->arch.pvsched.base = INVALID_GPA;
+		val[0] = SMCCC_RET_SUCCESS;
+		break;
+	case ARM_SMCCC_HV_PV_SCHED_KICK_CPU:
+		val[0] = kvm_pvsched_kick_vcpu(vcpu);
+		break;
 	default:
 		return kvm_psci_call(vcpu);
 	}
