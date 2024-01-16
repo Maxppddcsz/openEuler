@@ -74,6 +74,14 @@ bool is_kvm_arm_initialised(void)
 	return kvm_arm_initialised;
 }
 
+#ifdef CONFIG_ARM64_TWED
+bool twed_enable = false;
+module_param(twed_enable, bool, S_IRUGO | S_IWUSR);
+
+unsigned int twedel = 0;
+module_param(twedel, uint, S_IRUGO | S_IWUSR);
+#endif
+
 int kvm_arch_vcpu_should_kick(struct kvm_vcpu *vcpu)
 {
 	return kvm_vcpu_exiting_guest_mode(vcpu) == IN_GUEST_MODE;
@@ -1026,6 +1034,13 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu)
 
 		kvm_arm_setup_debug(vcpu);
 		kvm_arch_vcpu_ctxflush_fp(vcpu);
+
+		if (use_twed()) {
+			vcpu_twed_enable(vcpu);
+			vcpu_set_twed(vcpu);
+		} else {
+			vcpu_twed_disable(vcpu);
+		}
 
 		/**************************************************************
 		 * Enter the guest
