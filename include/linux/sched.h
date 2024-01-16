@@ -2476,7 +2476,10 @@ void rseq_syscall(struct pt_regs *regs);
 static inline void rseq_syscall(struct pt_regs *regs)
 {
 }
+#endif
 
+#ifdef CONFIG_BPF_SCHED
+extern void sched_settag(struct task_struct *tsk, s64 tag);
 #endif
 
 #ifdef CONFIG_SCHED_CORE
