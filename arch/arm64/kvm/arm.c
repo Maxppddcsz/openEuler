@@ -147,6 +147,12 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 {
 	int ret;
 
+#ifdef CONFIG_KVM_HISI_VIRT
+	ret = kvm_hisi_init_dvmbm(kvm);
+	if (ret)
+		return ret;
+#endif
+
 	mutex_init(&kvm->arch.config_lock);
 
 #ifdef CONFIG_LOCKDEP
@@ -158,6 +164,7 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 #endif
 
 	ret = kvm_share_hyp(kvm, kvm + 1);
+
 	if (ret)
 		return ret;
 
@@ -207,6 +214,10 @@ vm_fault_t kvm_arch_vcpu_fault(struct kvm_vcpu *vcpu, struct vm_fault *vmf)
  */
 void kvm_arch_destroy_vm(struct kvm *kvm)
 {
+#ifdef CONFIG_KVM_HISI_VIRT
+	kvm_hisi_destroy_dvmbm(kvm);
+#endif
+
 	bitmap_free(kvm->arch.pmu_filter);
 	free_cpumask_var(kvm->arch.supported_cpus);
 
