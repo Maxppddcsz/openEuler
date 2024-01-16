@@ -30,6 +30,31 @@ static inline bool pv_vcpu_is_preempted(int cpu)
 	return static_call(pv_vcpu_preempted)(cpu);
 }
 
+#if defined(CONFIG_SMP) && defined(CONFIG_PARAVIRT_SPINLOCKS)
+bool pv_is_native_spin_unlock(void);
+DECLARE_STATIC_CALL(pv_qspinlock_queued_spin_lock_slowpath, native_queued_spin_lock_slowpath);
+static inline void pv_queued_spin_lock_slowpath(struct qspinlock *lock, u32 val)
+{
+	return static_call(pv_qspinlock_queued_spin_lock_slowpath)(lock, val);
+}
+
+DECLARE_STATIC_CALL(pv_qspinlock_queued_spin_unlock, native_queued_spin_unlock);
+static inline void pv_queued_spin_unlock(struct qspinlock *lock)
+{
+	return static_call(pv_qspinlock_queued_spin_unlock)(lock);
+}
+
+static inline void pv_wait(u8 *ptr, u8 val)
+{
+	return;
+}
+
+static inline void pv_kick(int cpu)
+{
+	return;
+}
+#endif /* SMP && PARAVIRT_SPINLOCKS */
+
 #else
 
 #define pv_time_init() do {} while (0)
