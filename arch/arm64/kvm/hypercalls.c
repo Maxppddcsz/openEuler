@@ -332,9 +332,11 @@ int kvm_smccc_call_handler(struct kvm_vcpu *vcpu)
 				     &smccc_feat->std_hyp_bmap))
 				val[0] = SMCCC_RET_SUCCESS;
 			break;
+#ifdef CONFIG_PARAVIRT_SCHED
 		case ARM_SMCCC_HV_PV_SCHED_FEATURES:
 			val[0] = SMCCC_RET_SUCCESS;
 			break;
+#endif
 		}
 		break;
 	case ARM_SMCCC_HV_PV_TIME_FEATURES:
@@ -363,6 +365,7 @@ int kvm_smccc_call_handler(struct kvm_vcpu *vcpu)
 	case ARM_SMCCC_TRNG_RND32:
 	case ARM_SMCCC_TRNG_RND64:
 		return kvm_trng_call(vcpu);
+#ifdef CONFIG_PARAVIRT_SCHED
 	case ARM_SMCCC_HV_PV_SCHED_FEATURES:
 		val[0] = kvm_hypercall_pvsched_features(vcpu);
 		break;
@@ -380,6 +383,7 @@ int kvm_smccc_call_handler(struct kvm_vcpu *vcpu)
 	case ARM_SMCCC_HV_PV_SCHED_KICK_CPU:
 		val[0] = kvm_pvsched_kick_vcpu(vcpu);
 		break;
+#endif
 	default:
 		return kvm_psci_call(vcpu);
 	}

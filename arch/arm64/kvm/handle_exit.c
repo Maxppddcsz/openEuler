@@ -121,7 +121,9 @@ static int kvm_handle_wfx(struct kvm_vcpu *vcpu)
 	} else {
 		trace_kvm_wfx_arm64(*vcpu_pc(vcpu), false);
 		vcpu->stat.wfi_exit_stat++;
+#ifdef CONFIG_PARAVIRT_SCHED
 		vcpu->arch.pvsched.pv_unhalted = false;
+#endif
 	}
 
 	if (esr & ESR_ELx_WFx_ISS_WFxT) {

@@ -386,7 +386,9 @@ int kvm_arch_vcpu_create(struct kvm_vcpu *vcpu)
 
 	kvm_arm_pvtime_vcpu_init(&vcpu->arch);
 
+#ifdef CONFIG_PARAVIRT_SCHED
 	kvm_arm_pvsched_vcpu_init(&vcpu->arch);
+#endif
 
 	vcpu->arch.hw_mmu = &vcpu->kvm->arch.mmu;
 
@@ -469,8 +471,10 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	if (!cpumask_test_cpu(cpu, vcpu->kvm->arch.supported_cpus))
 		vcpu_set_on_unsupported_cpu(vcpu);
 
+#ifdef CONFIG_PARAVIRT_SCHED
 	if (kvm_arm_is_pvsched_enabled(&vcpu->arch))
 		kvm_update_pvsched_preempted(vcpu, 0);
+#endif
 
 #ifdef CONFIG_KVM_HISI_VIRT
 	kvm_hisi_dvmbm_load(vcpu);
@@ -491,8 +495,10 @@ void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
 	vcpu_clear_on_unsupported_cpu(vcpu);
 	vcpu->cpu = -1;
 
+#ifdef CONFIG_PARAVIRT_SCHED
 	if (kvm_arm_is_pvsched_enabled(&vcpu->arch))
 		kvm_update_pvsched_preempted(vcpu, 1);
+#endif
 
 #ifdef CONFIG_KVM_HISI_VIRT
 	kvm_hisi_dvmbm_put(vcpu);
@@ -574,10 +580,15 @@ int kvm_arch_vcpu_ioctl_set_mpstate(struct kvm_vcpu *vcpu,
 int kvm_arch_vcpu_runnable(struct kvm_vcpu *v)
 {
 	bool irq_lines = *vcpu_hcr(v) & (HCR_VI | HCR_VF);
+#ifdef CONFIG_PARAVIRT_SCHED
 	bool pv_unhalted = v->arch.pvsched.pv_unhalted;
 
 	return ((irq_lines || kvm_vgic_vcpu_pending_irq(v) || pv_unhalted)
 		&& !kvm_arm_vcpu_stopped(v) && !v->arch.pause);
+#else
+	return ((irq_lines || kvm_vgic_vcpu_pending_irq(v))
+		&& !kvm_arm_vcpu_stopped(v) && !v->arch.pause);
+#endif
 }
 
 bool kvm_arch_vcpu_in_kernel(struct kvm_vcpu *vcpu)
@@ -1351,7 +1362,9 @@ static int kvm_arch_vcpu_ioctl_vcpu_init(struct kvm_vcpu *vcpu,
 
 	spin_unlock(&vcpu->arch.mp_state_lock);
 
+#ifdef CONFIG_PARAVIRT_SCHED
 	kvm_arm_pvsched_vcpu_init(&vcpu->arch);
+#endif
 
 	return 0;
 }
