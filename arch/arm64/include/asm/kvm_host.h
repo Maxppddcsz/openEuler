@@ -1061,12 +1061,12 @@ void kvm_update_pvsched_preempted(struct kvm_vcpu *vcpu, u32 preempted);
 
 static inline void kvm_arm_pvsched_vcpu_init(struct kvm_vcpu_arch *vcpu_arch)
 {
-	vcpu_arch->pvsched.base = GPA_INVALID;
+	vcpu_arch->pvsched.base = INVALID_GPA;
 }
 
 static inline bool kvm_arm_is_pvsched_enabled(struct kvm_vcpu_arch *vcpu_arch)
 {
-	return (vcpu_arch->pvsched.base != GPA_INVALID);
+	return (vcpu_arch->pvsched.base != INVALID_GPA);
 }
 
 void kvm_set_sei_esr(struct kvm_vcpu *vcpu, u64 syndrome);
