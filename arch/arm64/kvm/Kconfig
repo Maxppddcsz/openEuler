@@ -72,6 +72,12 @@ config PROTECTED_NVHE_STACKTRACE
 
 	  If unsure, or not using protected nVHE (pKVM), say N.
 
+config KVM_ARM_LPI_TRANSLATE_CACHE_CNT
+	int "number of LPI translation caches"
+	range 1 8
+	depends on ARM_GIC_V3_ITS
+	default "1"
+
 config ARCH_VCPU_STAT
 	bool "export kvm exits to vcpu_stat"
 	depends on KVM

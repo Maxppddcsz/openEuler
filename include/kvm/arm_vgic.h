@@ -65,7 +65,7 @@ u16 kvm_vgic_get_vcpu_vpeid(struct kvm_vcpu *vcpu);
 #endif
 
 /* The number of lpi translation cache lists */
-#define LPI_TRANS_CACHES_NUM 8
+#define LPI_TRANS_CACHES_NUM CONFIG_KVM_ARM_LPI_TRANSLATE_CACHE_CNT
 
 enum vgic_type {
 	VGIC_V2,		/* Good ol' GICv2 */
