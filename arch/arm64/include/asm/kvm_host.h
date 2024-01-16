@@ -279,6 +279,11 @@ struct kvm_arch {
 	 * the associated pKVM instance in the hypervisor.
 	 */
 	struct kvm_protected_vm pkvm;
+
+#ifdef CONFIG_KVM_HISI_VIRT
+	spinlock_t dvm_lock;
+	cpumask_t *dvm_cpumask;	/* Union of all vcpu's cpus_ptr */
+#endif
 };
 
 struct kvm_vcpu_fault_info {
