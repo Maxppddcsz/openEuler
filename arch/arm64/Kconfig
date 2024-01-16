@@ -1561,6 +1561,13 @@ config PARAVIRT_SPINLOCKS
 
 	  If you are unsure how to answer this question, answer Y.
 
+config PARAVIRT_SCHED
+	bool "Paravirtualization layer for sched"
+	depends on PARAVIRT
+	help
+
+	  If you are unsure how to answer this question, answer Y.
+
 config PARAVIRT_TIME_ACCOUNTING
 	bool "Paravirtual steal time accounting"
 	select PARAVIRT

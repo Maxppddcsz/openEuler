@@ -20,7 +20,9 @@ static inline u64 paravirt_steal_clock(int cpu)
 
 int __init pv_time_init(void);
 
+#ifdef CONFIG_PARAVIRT_SCHED
 int __init pv_sched_init(void);
+#endif
 
 __visible bool __native_vcpu_is_preempted(int cpu);
 DECLARE_STATIC_CALL(pv_vcpu_preempted, __native_vcpu_is_preempted);

@@ -4,6 +4,7 @@
  * Author: Zengruan Ye <yezengruan@huawei.com>
  */
 
+#ifdef CONFIG_PARAVIRT_SCHED
 #include <linux/arm-smccc.h>
 #include <linux/kvm_host.h>
 
@@ -77,3 +78,4 @@ long kvm_hypercall_pvsched_features(struct kvm_vcpu *vcpu)
 
 	return val;
 }
+#endif  /* CONFIG_PARAVIRT_SCHED */

@@ -180,7 +180,7 @@ int __init pv_time_init(void)
 	return 0;
 }
 
-
+#ifdef CONFIG_PARAVIRT_SCHED
 DEFINE_PER_CPU(struct pvsched_vcpu_state, pvsched_vcpu_region) __aligned(64);
 EXPORT_PER_CPU_SYMBOL(pvsched_vcpu_region);
 
@@ -263,6 +263,33 @@ static bool has_kvm_pvsched(void)
 	return (res.a0 == SMCCC_RET_SUCCESS);
 }
 
+int __init pv_sched_init(void)
+{
+	int ret;
+
+	if (is_hyp_mode_available())
+		return 0;
+
+	if (!has_kvm_pvsched()) {
+		pr_warn("PV sched is not available\n");
+		return 0;
+	}
+
+	ret = kvm_arm_init_pvsched();
+	if (ret)
+		return ret;
+
+	static_call_update(pv_vcpu_preempted, kvm_vcpu_is_preempted);
+	pr_info("using PV sched preempted\n");
+
+	pv_qspinlock_init();
+
+	return 0;
+}
+
+early_initcall(pv_sched_init);
+#endif  /* CONFIG_PARAVIRT_SCHED */
+
 #ifdef CONFIG_PARAVIRT_SPINLOCKS
 static bool arm_pvspin = false;
 
@@ -336,28 +363,3 @@ static __init int arm_parse_pvspin(char *arg)
 }
 early_param("arm_pvspin", arm_parse_pvspin);
 #endif  /* CONFIG_PARAVIRT_SPINLOCKS */
-
-int __init pv_sched_init(void)
-{
-	int ret;
-
-	if (is_hyp_mode_available())
-		return 0;
-
-	if (!has_kvm_pvsched()) {
-		pr_warn("PV sched is not available\n");
-		return 0;
-	}
-
-	ret = kvm_arm_init_pvsched();
-	if (ret)
-		return ret;
-
-	static_call_update(pv_vcpu_preempted, kvm_vcpu_is_preempted);
-	pr_info("using PV sched preempted\n");
-
-	pv_qspinlock_init();
-
-	return 0;
-}
-early_initcall(pv_sched_init);
