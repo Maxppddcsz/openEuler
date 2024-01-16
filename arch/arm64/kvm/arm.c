@@ -47,6 +47,10 @@
 
 static enum kvm_mode kvm_mode = KVM_MODE_DEFAULT;
 
+#ifdef CONFIG_KVM_HISI_VIRT
+#include "hisilicon/hisi_virt.h"
+#endif
+
 DECLARE_KVM_HYP_PER_CPU(unsigned long, kvm_hyp_vector);
 
 DEFINE_PER_CPU(unsigned long, kvm_arm_hyp_stack_page);
@@ -56,6 +60,12 @@ DECLARE_KVM_NVHE_PER_CPU(struct kvm_cpu_context, kvm_hyp_ctxt);
 
 static bool vgic_present, kvm_arm_initialised;
 
+/* Capability of non-cacheable snooping */
+bool kvm_ncsnp_support;
+
+/* Capability of DVMBM */
+bool kvm_dvmbm_support;
+
 static DEFINE_PER_CPU(unsigned char, kvm_hyp_initialized);
 DEFINE_STATIC_KEY_FALSE(userspace_irqchip_in_use);
 
@@ -63,6 +73,14 @@ bool is_kvm_arm_initialised(void)
 {
 	return kvm_arm_initialised;
 }
+
+#ifdef CONFIG_ARM64_TWED
+bool twed_enable = false;
+module_param(twed_enable, bool, S_IRUGO | S_IWUSR);
+
+unsigned int twedel = 0;
+module_param(twedel, uint, S_IRUGO | S_IWUSR);
+#endif
 
 int kvm_arch_vcpu_should_kick(struct kvm_vcpu *vcpu)
 {
@@ -137,6 +155,12 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 {
 	int ret;
 
+#ifdef CONFIG_KVM_HISI_VIRT
+	ret = kvm_hisi_init_dvmbm(kvm);
+	if (ret)
+		return ret;
+#endif
+
 	mutex_init(&kvm->arch.config_lock);
 
 #ifdef CONFIG_LOCKDEP
@@ -148,6 +172,7 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 #endif
 
 	ret = kvm_share_hyp(kvm, kvm + 1);
+
 	if (ret)
 		return ret;
 
@@ -197,6 +222,10 @@ vm_fault_t kvm_arch_vcpu_fault(struct kvm_vcpu *vcpu, struct vm_fault *vmf)
  */
 void kvm_arch_destroy_vm(struct kvm *kvm)
 {
+#ifdef CONFIG_KVM_HISI_VIRT
+	kvm_hisi_destroy_dvmbm(kvm);
+#endif
+
 	bitmap_free(kvm->arch.pmu_filter);
 	free_cpumask_var(kvm->arch.supported_cpus);
 
@@ -386,11 +415,21 @@ int kvm_arch_vcpu_create(struct kvm_vcpu *vcpu)
 
 	kvm_arm_pvtime_vcpu_init(&vcpu->arch);
 
+#ifdef CONFIG_PARAVIRT_SCHED
+	kvm_arm_pvsched_vcpu_init(&vcpu->arch);
+#endif
+
 	vcpu->arch.hw_mmu = &vcpu->kvm->arch.mmu;
 
 	err = kvm_vgic_vcpu_init(vcpu);
 	if (err)
 		return err;
+
+#ifdef CONFIG_KVM_HISI_VIRT
+	err = kvm_hisi_dvmbm_vcpu_init(vcpu);
+	if (err)
+		return err;
+#endif
 
 	return kvm_share_hyp(vcpu, vcpu + 1);
 }
@@ -409,6 +448,10 @@ void kvm_arch_vcpu_destroy(struct kvm_vcpu *vcpu)
 	kvm_pmu_vcpu_destroy(vcpu);
 
 	kvm_arm_vcpu_destroy(vcpu);
+
+#ifdef CONFIG_KVM_HISI_VIRT
+	kvm_hisi_dvmbm_vcpu_destroy(vcpu);
+#endif
 }
 
 void kvm_arch_vcpu_blocking(struct kvm_vcpu *vcpu)
@@ -461,10 +504,20 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 
 	if (vcpu_has_ptrauth(vcpu))
 		vcpu_ptrauth_disable(vcpu);
+
 	kvm_arch_vcpu_load_debug_state_flags(vcpu);
 
 	if (!cpumask_test_cpu(cpu, vcpu->kvm->arch.supported_cpus))
 		vcpu_set_on_unsupported_cpu(vcpu);
+
+#ifdef CONFIG_PARAVIRT_SCHED
+	if (kvm_arm_is_pvsched_enabled(&vcpu->arch))
+		kvm_update_pvsched_preempted(vcpu, 0);
+#endif
+
+#ifdef CONFIG_KVM_HISI_VIRT
+	kvm_hisi_dvmbm_load(vcpu);
+#endif
 }
 
 void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
@@ -480,6 +533,15 @@ void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
 
 	vcpu_clear_on_unsupported_cpu(vcpu);
 	vcpu->cpu = -1;
+
+#ifdef CONFIG_PARAVIRT_SCHED
+	if (kvm_arm_is_pvsched_enabled(&vcpu->arch))
+		kvm_update_pvsched_preempted(vcpu, 1);
+#endif
+
+#ifdef CONFIG_KVM_HISI_VIRT
+	kvm_hisi_dvmbm_put(vcpu);
+#endif
 }
 
 static void __kvm_arm_vcpu_power_off(struct kvm_vcpu *vcpu)
@@ -557,8 +619,15 @@ int kvm_arch_vcpu_ioctl_set_mpstate(struct kvm_vcpu *vcpu,
 int kvm_arch_vcpu_runnable(struct kvm_vcpu *v)
 {
 	bool irq_lines = *vcpu_hcr(v) & (HCR_VI | HCR_VF);
+#ifdef CONFIG_PARAVIRT_SCHED
+	bool pv_unhalted = v->arch.pvsched.pv_unhalted;
+
+	return ((irq_lines || kvm_vgic_vcpu_pending_irq(v) || pv_unhalted)
+		&& !kvm_arm_vcpu_stopped(v) && !v->arch.pause);
+#else
 	return ((irq_lines || kvm_vgic_vcpu_pending_irq(v))
 		&& !kvm_arm_vcpu_stopped(v) && !v->arch.pause);
+#endif
 }
 
 bool kvm_arch_vcpu_in_kernel(struct kvm_vcpu *vcpu)
@@ -812,6 +881,11 @@ static int check_vcpu_requests(struct kvm_vcpu *vcpu)
 
 		if (kvm_dirty_ring_check_request(vcpu))
 			return 0;
+
+#ifdef CONFIG_KVM_HISI_VIRT
+		if (kvm_check_request(KVM_REQ_RELOAD_DVMBM, vcpu))
+			kvm_hisi_reload_lsudvmbm(vcpu->kvm);
+#endif
 	}
 
 	return 1;
@@ -982,6 +1056,13 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu)
 
 		kvm_arm_setup_debug(vcpu);
 		kvm_arch_vcpu_ctxflush_fp(vcpu);
+
+		if (use_twed()) {
+			vcpu_twed_enable(vcpu);
+			vcpu_set_twed(vcpu);
+		} else {
+			vcpu_twed_disable(vcpu);
+		}
 
 		/**************************************************************
 		 * Enter the guest
@@ -1331,6 +1412,10 @@ static int kvm_arch_vcpu_ioctl_vcpu_init(struct kvm_vcpu *vcpu,
 		WRITE_ONCE(vcpu->arch.mp_state.mp_state, KVM_MP_STATE_RUNNABLE);
 
 	spin_unlock(&vcpu->arch.mp_state_lock);
+
+#ifdef CONFIG_PARAVIRT_SCHED
+	kvm_arm_pvsched_vcpu_init(&vcpu->arch);
+#endif
 
 	return 0;
 }
@@ -2414,6 +2499,14 @@ static __init int kvm_arm_init(void)
 		kvm_info("Error initializing system register tables");
 		return err;
 	}
+
+#ifdef CONFIG_KVM_HISI_VIRT
+	probe_hisi_cpu_type();
+	kvm_ncsnp_support = hisi_ncsnp_supported();
+	kvm_dvmbm_support = hisi_dvmbm_supported();
+#endif
+	kvm_info("KVM ncsnp %s\n", kvm_ncsnp_support ? "enabled" : "disabled");
+	kvm_info("KVM dvmbm %s\n", kvm_dvmbm_support ? "enabled" : "disabled");
 
 	in_hyp_mode = is_kernel_in_hyp_mode();
 

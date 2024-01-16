@@ -1548,6 +1548,26 @@ config PARAVIRT
 	  under a hypervisor, potentially improving performance significantly
 	  over full virtualization.
 
+config PARAVIRT_SPINLOCKS
+	bool "Paravirtualization layer for spinlocks"
+	depends on PARAVIRT && SMP
+	help
+	  Paravirtualized spinlocks allow a pvops backend to replace the
+	  spinlock implementation with something virtualization-friendly
+	  (for example, block the virtual CPU rather than spinning).
+
+	  It has a minimal impact on native kernels and gives a nice performance
+	  benefit on paravirtualized KVM kernels.
+
+	  If you are unsure how to answer this question, answer Y.
+
+config PARAVIRT_SCHED
+	bool "Paravirtualization layer for sched"
+	depends on PARAVIRT
+	help
+
+	  If you are unsure how to answer this question, answer Y.
+
 config PARAVIRT_TIME_ACCOUNTING
 	bool "Paravirtual steal time accounting"
 	select PARAVIRT
@@ -2174,6 +2194,16 @@ config ARM64_EPAN
 	  The feature is detected at runtime, and will remain disabled
 	  if the cpu does not implement the feature.
 endmenu # "ARMv8.7 architectural features"
+
+menu "ARMv8.6 architectural features"
+
+config ARM64_TWED
+	bool "Enable support for delayed trapping of WFE"
+	default y
+	help
+	  Delayed Trapping of WFE (part of the ARMv8.6 Extensions)
+
+endmenu
 
 config ARM64_SVE
 	bool "ARM Scalable Vector Extension support"

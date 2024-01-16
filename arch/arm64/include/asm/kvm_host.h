@@ -50,6 +50,7 @@
 #define KVM_REQ_RELOAD_PMU	KVM_ARCH_REQ(5)
 #define KVM_REQ_SUSPEND		KVM_ARCH_REQ(6)
 #define KVM_REQ_RESYNC_PMU_EL0	KVM_ARCH_REQ(7)
+#define KVM_REQ_RELOAD_DVMBM	KVM_ARCH_REQ(8)
 
 #define KVM_DIRTY_LOG_MANUAL_CAPS   (KVM_DIRTY_LOG_MANUAL_PROTECT_ENABLE | \
 				     KVM_DIRTY_LOG_INITIALLY_SET)
@@ -279,6 +280,12 @@ struct kvm_arch {
 	 * the associated pKVM instance in the hypervisor.
 	 */
 	struct kvm_protected_vm pkvm;
+
+#ifdef CONFIG_KVM_HISI_VIRT
+	spinlock_t dvm_lock;
+	cpumask_t *dvm_cpumask;	/* Union of all vcpu's cpus_ptr */
+	u64 lsudvmbm_el2;
+#endif
 };
 
 struct kvm_vcpu_fault_info {
@@ -589,8 +596,22 @@ struct kvm_vcpu_arch {
 		gpa_t base;
 	} steal;
 
+#ifdef CONFIG_PARAVIRT_SCHED
+	/* Guest PV sched state */
+	struct {
+		bool pv_unhalted;
+		gpa_t base;
+	} pvsched;
+#endif
+
 	/* Per-vcpu CCSIDR override or NULL */
 	u32 *ccsidr;
+
+#ifdef CONFIG_KVM_HISI_VIRT
+	/* Copy of current->cpus_ptr */
+	cpumask_t *cpus_ptr;
+	cpumask_t *pre_cpus_ptr;
+#endif
 };
 
 /*
@@ -905,6 +926,21 @@ struct kvm_vcpu_stat {
 	u64 mmio_exit_kernel;
 	u64 signal_exits;
 	u64 exits;
+	u64 fp_asimd_exit_stat;
+	u64 irq_exit_stat;
+	u64 sys64_exit_stat;
+	u64 mabt_exit_stat;
+	u64 fail_entry_exit_stat;
+	u64 internal_error_exit_stat;
+	u64 unknown_ec_exit_stat;
+	u64 cp15_32_exit_stat;
+	u64 cp15_64_exit_stat;
+	u64 cp14_mr_exit_stat;
+	u64 cp14_ls_exit_stat;
+	u64 cp14_64_exit_stat;
+	u64 smc_exit_stat;
+	u64 sve_exit_stat;
+	u64 debug_exit_stat;
 };
 
 unsigned long kvm_arm_num_regs(struct kvm_vcpu *vcpu);
@@ -1038,6 +1074,22 @@ static inline bool kvm_arm_is_pvtime_enabled(struct kvm_vcpu_arch *vcpu_arch)
 	return (vcpu_arch->steal.base != INVALID_GPA);
 }
 
+#ifdef CONFIG_PARAVIRT_SCHED
+long kvm_hypercall_pvsched_features(struct kvm_vcpu *vcpu);
+void kvm_update_pvsched_preempted(struct kvm_vcpu *vcpu, u32 preempted);
+long kvm_pvsched_kick_vcpu(struct kvm_vcpu *vcpu);
+
+static inline void kvm_arm_pvsched_vcpu_init(struct kvm_vcpu_arch *vcpu_arch)
+{
+	vcpu_arch->pvsched.base = INVALID_GPA;
+}
+
+static inline bool kvm_arm_is_pvsched_enabled(struct kvm_vcpu_arch *vcpu_arch)
+{
+	return (vcpu_arch->pvsched.base != INVALID_GPA);
+}
+#endif
+
 void kvm_set_sei_esr(struct kvm_vcpu *vcpu, u64 syndrome);
 
 struct kvm_vcpu *kvm_mpidr_to_vcpu(struct kvm *kvm, unsigned long mpidr);
@@ -1153,5 +1205,16 @@ static inline void kvm_hyp_reserve(void) { }
 
 void kvm_arm_vcpu_power_off(struct kvm_vcpu *vcpu);
 bool kvm_arm_vcpu_stopped(struct kvm_vcpu *vcpu);
+
+#ifdef CONFIG_ARM64_TWED
+#define use_twed() (has_twed() && twed_enable)
+extern bool twed_enable;
+extern unsigned int twedel;
+#else
+#define use_twed() (false)
+#endif
+
+extern bool kvm_ncsnp_support;
+extern bool kvm_dvmbm_support;
 
 #endif /* __ARM64_KVM_HOST_H__ */
