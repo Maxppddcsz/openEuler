@@ -402,6 +402,12 @@ int kvm_arch_vcpu_create(struct kvm_vcpu *vcpu)
 	if (err)
 		return err;
 
+#ifdef CONFIG_KVM_HISI_VIRT
+	err = kvm_hisi_dvmbm_vcpu_init(vcpu);
+	if (err)
+		return err;
+#endif
+
 	return kvm_share_hyp(vcpu, vcpu + 1);
 }
 
@@ -419,6 +425,10 @@ void kvm_arch_vcpu_destroy(struct kvm_vcpu *vcpu)
 	kvm_pmu_vcpu_destroy(vcpu);
 
 	kvm_arm_vcpu_destroy(vcpu);
+
+#ifdef CONFIG_KVM_HISI_VIRT
+	kvm_hisi_dvmbm_vcpu_destroy(vcpu);
+#endif
 }
 
 void kvm_arch_vcpu_blocking(struct kvm_vcpu *vcpu)
@@ -475,6 +485,10 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 
 	if (!cpumask_test_cpu(cpu, vcpu->kvm->arch.supported_cpus))
 		vcpu_set_on_unsupported_cpu(vcpu);
+
+#ifdef CONFIG_KVM_HISI_VIRT
+	kvm_hisi_dvmbm_load(vcpu);
+#endif
 }
 
 void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
@@ -490,6 +504,10 @@ void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
 
 	vcpu_clear_on_unsupported_cpu(vcpu);
 	vcpu->cpu = -1;
+
+#ifdef CONFIG_KVM_HISI_VIRT
+	kvm_hisi_dvmbm_put(vcpu);
+#endif
 }
 
 static void __kvm_arm_vcpu_power_off(struct kvm_vcpu *vcpu)
