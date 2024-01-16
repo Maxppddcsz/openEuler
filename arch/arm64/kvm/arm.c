@@ -851,6 +851,11 @@ static int check_vcpu_requests(struct kvm_vcpu *vcpu)
 
 		if (kvm_dirty_ring_check_request(vcpu))
 			return 0;
+
+#ifdef CONFIG_KVM_HISI_VIRT
+		if (kvm_check_request(KVM_REQ_RELOAD_DVMBM, vcpu))
+			kvm_hisi_reload_lsudvmbm(vcpu->kvm);
+#endif
 	}
 
 	return 1;
