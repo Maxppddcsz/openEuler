@@ -1547,6 +1547,10 @@ struct task_struct {
 	struct user_event_mm		*user_event_mm;
 #endif
 
+#ifdef CONFIG_BPF_SCHED
+	long tag;
+#endif
+
 #ifdef CONFIG_QOS_SCHED_DYNAMIC_AFFINITY
 	cpumask_t			*prefer_cpus;
 	const cpumask_t			*select_cpus;
@@ -1555,6 +1559,7 @@ struct task_struct {
 #ifdef CONFIG_PSI_FINE_GRAINED
 	int memstall_type;
 #endif
+
 	/*
 	 * New fields for task_struct should be added above here, so that
 	 * they are included in the randomized portion of task_struct.
