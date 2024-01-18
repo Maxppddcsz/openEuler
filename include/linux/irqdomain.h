@@ -36,6 +36,7 @@
 #include <linux/of.h>
 #include <linux/mutex.h>
 #include <linux/radix-tree.h>
+#include <linux/kabi.h>
 
 struct device_node;
 struct fwnode_handle;
@@ -170,6 +171,14 @@ struct irq_domain {
 	const struct msi_parent_ops	*msi_parent_ops;
 #endif
 
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
+	KABI_RESERVE(5)
+	KABI_RESERVE(6)
+	KABI_RESERVE(7)
+	KABI_RESERVE(8)
 	/* reverse map data. The linear map gets appended to the irq_domain */
 	irq_hw_number_t			hwirq_max;
 	unsigned int			revmap_size;
