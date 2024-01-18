@@ -36,6 +36,7 @@ struct drm_fb_helper;
 #include <linux/fb.h>
 
 #include <drm/drm_client.h>
+#include <linux/kabi.h>
 
 /**
  * struct drm_fb_helper_surface_size - describes fbdev size and scanout surface size
@@ -99,6 +100,10 @@ struct drm_fb_helper_funcs {
 	 * 0 on success, or an error code otherwise.
 	 */
 	int (*fb_dirty)(struct drm_fb_helper *helper, struct drm_clip_rect *clip);
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 };
 
 /**
@@ -206,6 +211,8 @@ struct drm_fb_helper {
 	 */
 	struct fb_deferred_io fbdefio;
 #endif
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 static inline struct drm_fb_helper *
