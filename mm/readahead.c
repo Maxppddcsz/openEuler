@@ -236,6 +236,10 @@ void page_cache_ra_unbounded(struct readahead_control *ractl,
 		if (i == nr_to_read - lookahead_size)
 			SetPageReadahead(page);
 		ractl->_nr_pages++;
+		if (unlikely(PageActive(page)))
+			ractl->_active_refault++;
+		else if (unlikely(ractl->_active_refault))
+			ractl->_active_refault--;
 	}
 
 	/*

@@ -2868,6 +2868,7 @@ EXPORT_SYMBOL(mapping_seek_hole_data);
 
 #ifdef CONFIG_MMU
 #define MMAP_LOTSAMISS  (100)
+#define ACTIVE_REFAULT_LIMIT	(10000)
 /*
  * lock_page_maybe_drop_mmap - lock the page, possibly dropping the mmap_lock
  * @vmf - the vm_fault for this fault.
@@ -2952,6 +2953,18 @@ static struct file *do_sync_mmap_readahead(struct vm_fault *vmf)
 	if (mmap_miss > MMAP_LOTSAMISS)
 		return fpin;
 
+	ractl._active_refault = READ_ONCE(ra->active_refault);
+	if (ractl._active_refault)
+		WRITE_ONCE(ra->active_refault, --ractl._active_refault);
+
+	/*
+	 * If there are a lot of refault of active pages in this file,
+	 * that means the memory reclaim is ongoing. Stop bothering with
+	 * read-ahead since it will only waste IO.
+	 */
+	if (ractl._active_refault >= ACTIVE_REFAULT_LIMIT)
+		return fpin;
+
 	/*
 	 * mmap read-around
 	 */
@@ -2961,6 +2974,9 @@ static struct file *do_sync_mmap_readahead(struct vm_fault *vmf)
 	ra->async_size = ra->ra_pages / 4;
 	ractl._index = ra->start;
 	do_page_cache_ra(&ractl, ra->size, ra->async_size);
+
+	WRITE_ONCE(ra->active_refault, ractl._active_refault);
+
 	return fpin;
 }
 
