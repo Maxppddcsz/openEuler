@@ -10,6 +10,7 @@
 #define MTD_PARTITIONS_H
 
 #include <linux/types.h>
+#include <linux/kabi.h>
 
 
 /*
@@ -51,6 +52,8 @@ struct mtd_partition {
 	uint32_t mask_flags;		/* master MTD flags to mask out for this partition */
 	uint32_t add_flags;		/* flags to add to the partition */
 	struct device_node *of_node;
+	KABI_RESERVE(0);
+	KABI_RESERVE(1);
 };
 
 #define MTDPART_OFS_RETAIN	(-3)
