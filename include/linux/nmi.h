@@ -154,7 +154,7 @@ static inline void touch_nmi_watchdog(void)
  * base function. Return whether such support was available,
  * to allow calling code to fall back to some other mechanism:
  */
-#ifdef arch_trigger_cpumask_backtrace
+#if defined(arch_trigger_cpumask_backtrace)
 static inline bool trigger_all_cpu_backtrace(void)
 {
 	return arch_trigger_cpumask_backtrace(cpu_online_mask, -1);
