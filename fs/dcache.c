@@ -776,6 +776,7 @@ static inline bool fast_dput(struct dentry *dentry)
 {
 	int ret;
 	unsigned int d_flags;
+	struct dentry *parent;
 
 	/*
 	 * If we have a d_op->d_delete() operation, we sould not
@@ -837,8 +838,25 @@ static inline bool fast_dput(struct dentry *dentry)
 	d_flags &= DCACHE_REFERENCED | DCACHE_LRU_LIST | DCACHE_DISCONNECTED;
 
 	/* Nothing to do? Dropping the reference was all we needed? */
-	if (d_flags == (DCACHE_REFERENCED | DCACHE_LRU_LIST) && !d_unhashed(dentry))
-		return true;
+	if (d_flags == (DCACHE_REFERENCED | DCACHE_LRU_LIST) && !d_unhashed(dentry)) {
+		parent = dentry->d_parent;
+		if (!parent)
+			return true;
+
+		WARN_ON((atomic_read(&parent->d_neg_dnum) < 0));
+		if (!dentry->d_inode) {
+			if (!(dentry->d_flags & DCACHE_NEGATIVE_ACCOUNT)) {
+				unsigned int flags = READ_ONCE(dentry->d_flags);
+
+				flags |= DCACHE_NEGATIVE_ACCOUNT;
+				WRITE_ONCE(dentry->d_flags, flags);
+				atomic_inc(&parent->d_neg_dnum);
+			}
+		}
+		if (dentry->d_inode ||
+				atomic_read(&parent->d_neg_dnum) < NEG_DENTRY_LIMIT)
+			return true;
+	}
 
 	/*
 	 * Not the fast normal case? Get the lock. We've already decremented
