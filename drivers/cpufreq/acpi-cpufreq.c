@@ -663,8 +663,60 @@ static u64 get_max_boost_ratio(unsigned int cpu)
 
 	return div_u64(highest_perf << SCHED_CAPACITY_SHIFT, nominal_perf);
 }
+
+/* The work item is needed to avoid CPU hotplug locking issues */
+static void cpufreq_sched_itmt_work_fn(struct work_struct *work)
+{
+	sched_set_itmt_support();
+}
+
+static DECLARE_WORK(sched_itmt_work, cpufreq_sched_itmt_work_fn);
+
+static void cpufreq_set_itmt_prio(int cpu)
+{
+	static bool cppc_highest_perf_diff;
+	static struct cpumask core_prior_mask;
+	u64 highest_perf, nominal_perf;
+	static u64 max_highest_perf = 0, min_highest_perf = U64_MAX;
+	int ret;
+
+	ret = cppc_get_highest_perf(cpu, &highest_perf);
+	if (ret)
+		return;
+
+	sched_set_itmt_core_prio(highest_perf, cpu);
+	cpumask_set_cpu(cpu, &core_prior_mask);
+
+	if (max_highest_perf <= min_highest_perf) {
+		if (highest_perf > max_highest_perf)
+			max_highest_perf = highest_perf;
+
+		if (highest_perf < min_highest_perf)
+			min_highest_perf = highest_perf;
+
+		if (max_highest_perf > min_highest_perf) {
+			/*
+			 * This code can be run during CPU online under the
+			 * CPU hotplug locks, so sched_set_itmt_support()
+			 * cannot be called from here.  Queue up a work item
+			 * to invoke it.
+			 */
+			cppc_highest_perf_diff = true;
+		}
+	}
+
+	if (cppc_highest_perf_diff && cpumask_equal(&core_prior_mask, cpu_online_mask)) {
+		pr_debug("queue a work to set itmt enabled\n");
+		schedule_work(&sched_itmt_work);
+	}
+}
 #else
 static inline u64 get_max_boost_ratio(unsigned int cpu) { return 0; }
+static void cpufreq_set_itmt_prio(int cpu)
+{
+
+}
+
 #endif
 
 static int acpi_cpufreq_cpu_init(struct cpufreq_policy *policy)
@@ -741,6 +793,11 @@ static int acpi_cpufreq_cpu_init(struct cpufreq_policy *policy)
 		pr_info_once("overriding BIOS provided _PSD data\n");
 	}
 #endif
+	if (c->x86_vendor == X86_VENDOR_CENTAUR || c->x86_vendor == X86_VENDOR_ZHAOXIN) {
+		for_each_cpu(j, policy->cpus) {
+			cpufreq_set_itmt_prio(j);
+		}
+	}
 
 	/* capability check */
 	if (perf->state_count <= 1) {
