@@ -7,6 +7,7 @@
 #include <linux/const.h>
 #include <asm/assembler.h>
 #include <asm/page.h>
+#include <asm/alternative.h>
 
 /*
  * Clear page @dest
@@ -16,7 +17,7 @@
  */
 SYM_FUNC_START(__pi_clear_page)
 	mrs	x1, dczid_el0
-	tbnz	x1, #4, 2f	/* Branch if DC ZVA is prohibited */
+	ALTERNATIVE("nop", "b 2f", ARM64_HAS_NO_DCZVA)
 	and	w1, w1, #0xf
 	mov	x2, #4
 	lsl	x1, x2, x1

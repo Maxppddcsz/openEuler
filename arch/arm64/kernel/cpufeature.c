@@ -2244,6 +2244,24 @@ cpucap_panic_on_conflict(const struct arm64_cpu_capabilities *cap)
 	return !!(cap->type & ARM64_CPUCAP_PANIC_ON_CONFLICT);
 }
 
+static bool use_clearpage_stnp;
+
+static int __init early_use_clearpage_stnp(char *p)
+{
+	return strtobool(p, &use_clearpage_stnp);
+}
+early_param("mm.use_clearpage_stnp", early_use_clearpage_stnp);
+
+static bool is_datazero_prohibited(const struct arm64_cpu_capabilities *entry,
+				   int scope)
+{
+	/* Active if DC ZVA is prohibited */
+	if (read_sysreg(dczid_el0) & BIT(DCZID_EL0_DZP_SHIFT))
+		return true;
+
+	return use_clearpage_stnp;
+}
+
 static const struct arm64_cpu_capabilities arm64_features[] = {
 	{
 		.capability = ARM64_ALWAYS_BOOT,
@@ -2723,6 +2741,12 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
 		.matches = has_cpuid_feature,
 		ARM64_CPUID_FIELDS(ID_AA64MMFR2_EL1, EVT, IMP)
+	},
+	{
+		.desc = "Data Zero Prohibited",
+		.capability = ARM64_HAS_NO_DCZVA,
+		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
+		.matches = is_datazero_prohibited,
 	},
 	{},
 };
