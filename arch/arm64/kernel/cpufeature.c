@@ -1433,6 +1433,22 @@ u64 __read_sysreg_by_encoding(u32 sys_id)
 
 #include <linux/irqchip/arm-gic-v3.h>
 
+#ifdef CONFIG_ARM64_LSE_ATOMICS
+static bool lse_disabled;
+
+static int __init parse_lse(char *str)
+{
+	if (str == NULL)
+		return 1;
+
+	if (!strncmp(str, "off", 3))
+		lse_disabled = true;
+
+	return 0;
+}
+early_param("lse", parse_lse);
+#endif
+
 static bool
 has_always(const struct arm64_cpu_capabilities *entry, int scope)
 {
@@ -1540,6 +1556,20 @@ static bool has_32bit_el0(const struct arm64_cpu_capabilities *entry, int scope)
 
 	return true;
 }
+
+#ifdef CONFIG_ARM64_LSE_ATOMICS
+static bool has_cpuid_feature_lse(const struct arm64_cpu_capabilities *entry,
+				  int scope)
+{
+	if (lse_disabled) {
+		pr_info_once("%s forced OFF by command line option\n",
+			     entry->desc);
+		return false;
+	}
+
+	return has_cpuid_feature(entry, scope);
+}
+#endif
 
 static bool has_useable_gicv3_cpuif(const struct arm64_cpu_capabilities *entry, int scope)
 {
@@ -2300,7 +2330,7 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.desc = "LSE atomic instructions",
 		.capability = ARM64_HAS_LSE_ATOMICS,
 		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
-		.matches = has_cpuid_feature,
+		.matches = has_cpuid_feature_lse,
 		ARM64_CPUID_FIELDS(ID_AA64ISAR0_EL1, ATOMIC, IMP)
 	},
 #endif /* CONFIG_ARM64_LSE_ATOMICS */
