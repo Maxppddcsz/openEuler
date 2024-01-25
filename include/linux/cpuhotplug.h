@@ -3,6 +3,7 @@
 #define __CPUHOTPLUG_H
 
 #include <linux/types.h>
+#include <linux/kabi.h>
 
 /*
  * CPU-up			CPU-down
@@ -258,6 +259,14 @@ enum cpuhp_state {
 	CPUHP_AP_X86_KVM_CLK_ONLINE,
 	CPUHP_AP_ACTIVE,
 	CPUHP_ONLINE,
+	CPUHP_AP_KABI_RESERVE_1,
+	CPUHP_AP_KABI_RESERVE_2,
+	CPUHP_AP_KABI_RESERVE_3,
+	CPUHP_AP_KABI_RESERVE_4,
+	CPUHP_AP_KABI_RESERVE_5,
+	CPUHP_AP_KABI_RESERVE_6,
+	CPUHP_AP_KABI_RESERVE_7,
+	CPUHP_AP_KABI_RESERVE_8,
 };
 
 int __cpuhp_setup_state(enum cpuhp_state state,	const char *name, bool invoke,
