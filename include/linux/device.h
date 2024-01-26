@@ -603,6 +603,12 @@ struct device_physical_location {
 };
 
 /**
+ * struct device_extended_resvd - KABI extension struct
+ */
+struct device_extended_resvd {
+};
+
+/**
  * struct device - The basic device structure
  * @parent:	The device's "parent" device, the device to which it is attached.
  * 		In most cases, a parent device is some sort of bus or host
@@ -805,6 +811,8 @@ struct device {
 #ifdef CONFIG_DMA_OPS_BYPASS
 	bool			dma_ops_bypass : 1;
 #endif
+	/* Use device_extended after all KABI_RESERVE fields used */
+	KABI_AUX_PTR(device_extended)
 };
 
 /**

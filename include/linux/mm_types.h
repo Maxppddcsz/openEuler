@@ -688,6 +688,13 @@ struct mm_cid {
 #endif
 
 struct kioctx_table;
+
+/**
+ * struct mm_struct_extended_resvd - KABI extension struct
+ */
+struct mm_struct_extended_resvd {
+};
+
 struct mm_struct {
 	struct {
 		/*
@@ -946,6 +953,9 @@ struct mm_struct {
 		struct kvm *kvm;
 #endif
 	} __randomize_layout;
+
+	/* Use mm_struct_extended after all KABI_RESERVE fields used */
+	KABI_AUX_PTR(mm_struct_extended)
 
 	/*
 	 * The mm_cpumask needs to be at the end of mm_struct, because it

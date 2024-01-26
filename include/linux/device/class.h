@@ -23,6 +23,12 @@ struct device;
 struct fwnode_handle;
 
 /**
+ * struct class_extended_resvd - KABI extension struct
+ */
+struct class_extended_resvd {
+};
+
+/**
  * struct class - device classes
  * @name:	Name of the class.
  * @class_groups: Default attributes of this class.
@@ -69,6 +75,8 @@ struct class {
 	void (*get_ownership)(const struct device *dev, kuid_t *uid, kgid_t *gid);
 
 	const struct dev_pm_ops *pm;
+	/* Use class_extended after all KABI_RESERVE fields used */
+	KABI_AUX_PTR(class_extended)
 };
 
 struct class_dev_iter {
