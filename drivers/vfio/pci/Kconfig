@@ -11,6 +11,14 @@ config VFIO_PCI
 
 	  If you don't know what to do here, say N.
 
+config VFIO_PCI_IOV
+	bool "VFIO PCI-IOV support"
+	depends on VFIO_PCI && PCI_IOV
+	help
+	  Support for SR-IOV capability. This exposes SR-IOV capability in
+	  physical functions, intercepts relevant bits in this capability to
+	  create and destroy VFs.
+
 config VFIO_PCI_VGA
 	bool "VFIO PCI support for VGA devices"
 	depends on VFIO_PCI && X86 && VGA_ARB

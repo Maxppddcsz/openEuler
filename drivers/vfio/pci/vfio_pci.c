@@ -210,72 +210,78 @@ static inline bool vfio_pci_is_vga(struct pci_dev *pdev)
 	return (pdev->class >> 8) == PCI_CLASS_DISPLAY_VGA;
 }
 
+void vfio_pci_probe_one_mmap(struct vfio_pci_device *vdev, int bar)
+{
+	struct resource *res = &vdev->pdev->resource[bar];
+	struct vfio_pci_dummy_resource *dummy_res;
+
+	if (!IS_ENABLED(CONFIG_VFIO_PCI_MMAP))
+		goto no_mmap;
+
+	if (!(res->flags & IORESOURCE_MEM))
+		goto no_mmap;
+
+	/*
+	 * The PCI core shouldn't set up a resource with a
+	 * type but zero size. But there may be bugs that
+	 * cause us to do that.
+	 */
+	if (!resource_size(res))
+		goto no_mmap;
+
+	if (resource_size(res) >= PAGE_SIZE) {
+		vdev->bar_mmap_supported[bar] = true;
+		return;
+	}
+
+	if (!(res->start & ~PAGE_MASK)) {
+		/*
+		 * Add a dummy resource to reserve the remainder
+		 * of the exclusive page in case that hot-add
+		 * device's bar is assigned into it.
+		 */
+		dummy_res = kzalloc(sizeof(*dummy_res), GFP_KERNEL);
+		if (dummy_res == NULL)
+			goto no_mmap;
+
+		dummy_res->resource.name = "vfio sub-page reserved";
+		dummy_res->resource.start = res->end + 1;
+		dummy_res->resource.end = res->start + PAGE_SIZE - 1;
+		dummy_res->resource.flags = res->flags;
+		if (request_resource(res->parent,
+					&dummy_res->resource)) {
+			kfree(dummy_res);
+			goto no_mmap;
+		}
+		dummy_res->index = bar;
+		list_add(&dummy_res->res_next,
+				&vdev->dummy_resources_list);
+		vdev->bar_mmap_supported[bar] = true;
+		return;
+	}
+	/*
+	 * Here we don't handle the case when the BAR is not page
+	 * aligned because we can't expect the BAR will be
+	 * assigned into the same location in a page in guest
+	 * when we passthrough the BAR. And it's hard to access
+	 * this BAR in userspace because we have no way to get
+	 * the BAR's location in a page.
+	 */
+no_mmap:
+	vdev->bar_mmap_supported[bar] = false;
+}
+
 static void vfio_pci_probe_mmaps(struct vfio_pci_device *vdev)
 {
-	struct resource *res;
 	int i;
-	struct vfio_pci_dummy_resource *dummy_res;
 
 	for (i = 0; i < PCI_STD_NUM_BARS; i++) {
 		int bar = i + PCI_STD_RESOURCES;
 
-		res = &vdev->pdev->resource[bar];
-
-		if (!IS_ENABLED(CONFIG_VFIO_PCI_MMAP))
-			goto no_mmap;
-
-		if (!(res->flags & IORESOURCE_MEM))
-			goto no_mmap;
-
-		/*
-		 * The PCI core shouldn't set up a resource with a
-		 * type but zero size. But there may be bugs that
-		 * cause us to do that.
-		 */
-		if (!resource_size(res))
-			goto no_mmap;
-
-		if (resource_size(res) >= PAGE_SIZE) {
-			vdev->bar_mmap_supported[bar] = true;
-			continue;
-		}
-
-		if (!(res->start & ~PAGE_MASK)) {
-			/*
-			 * Add a dummy resource to reserve the remainder
-			 * of the exclusive page in case that hot-add
-			 * device's bar is assigned into it.
-			 */
-			dummy_res = kzalloc(sizeof(*dummy_res), GFP_KERNEL);
-			if (dummy_res == NULL)
-				goto no_mmap;
-
-			dummy_res->resource.name = "vfio sub-page reserved";
-			dummy_res->resource.start = res->end + 1;
-			dummy_res->resource.end = res->start + PAGE_SIZE - 1;
-			dummy_res->resource.flags = res->flags;
-			if (request_resource(res->parent,
-						&dummy_res->resource)) {
-				kfree(dummy_res);
-				goto no_mmap;
-			}
-			dummy_res->index = bar;
-			list_add(&dummy_res->res_next,
-					&vdev->dummy_resources_list);
-			vdev->bar_mmap_supported[bar] = true;
-			continue;
-		}
-		/*
-		 * Here we don't handle the case when the BAR is not page
-		 * aligned because we can't expect the BAR will be
-		 * assigned into the same location in a page in guest
-		 * when we passthrough the BAR. And it's hard to access
-		 * this BAR in userspace because we have no way to get
-		 * the BAR's location in a page.
-		 */
-no_mmap:
-		vdev->bar_mmap_supported[bar] = false;
+		vfio_pci_probe_one_mmap(vdev, bar);
 	}
+
+	vfio_pci_probe_vf_bar_mmaps(vdev);
 }
 
 static void vfio_pci_try_bus_reset(struct vfio_pci_device *vdev);
@@ -430,9 +436,14 @@ static int vfio_pci_enable(struct vfio_pci_device *vdev)
 	} else
 		vdev->msix_bar = 0xFF;
 
+	ret = vfio_pci_sriov_region_init(vdev);
+	if (ret && ret != -ENODEV) {
+		pci_warn(pdev, "Failed to setup SR-IOV VF BAR regions\n");
+		goto disable_exit;
+	}
+
 	if (!vfio_vga_disabled() && vfio_pci_is_vga(pdev))
 		vdev->has_vga = true;
-
 
 	if (vfio_pci_is_vga(pdev) &&
 	    pdev->vendor == PCI_VENDOR_ID_INTEL &&
@@ -471,12 +482,23 @@ disable_exit:
 	return ret;
 }
 
+void vfio_pci_release_region(struct vfio_pci_device *vdev, unsigned int index)
+{
+	struct pci_dev *pdev = vdev->pdev;
+
+	if (!vdev->barmap[index])
+		return;
+	pci_iounmap(pdev, vdev->barmap[index]);
+	pci_release_selected_regions(pdev, 1 << index);
+	vdev->barmap[index] = NULL;
+}
+
 static void vfio_pci_disable(struct vfio_pci_device *vdev)
 {
 	struct pci_dev *pdev = vdev->pdev;
 	struct vfio_pci_dummy_resource *dummy_res, *tmp;
 	struct vfio_pci_ioeventfd *ioeventfd, *ioeventfd_tmp;
-	int i, bar;
+	int i;
 
 	/* Stop the device from further DMA */
 	pci_clear_master(pdev);
@@ -505,14 +527,8 @@ static void vfio_pci_disable(struct vfio_pci_device *vdev)
 
 	vfio_config_free(vdev);
 
-	for (i = 0; i < PCI_STD_NUM_BARS; i++) {
-		bar = i + PCI_STD_RESOURCES;
-		if (!vdev->barmap[bar])
-			continue;
-		pci_iounmap(pdev, vdev->barmap[bar]);
-		pci_release_selected_regions(pdev, 1 << bar);
-		vdev->barmap[bar] = NULL;
-	}
+	for (i = 0; i < PCI_STD_NUM_BARS; i++)
+		vfio_pci_release_region(vdev, i);
 
 	list_for_each_entry_safe(dummy_res, tmp,
 				 &vdev->dummy_resources_list, res_next) {
@@ -1722,33 +1738,13 @@ static const struct vm_operations_struct vfio_pci_mmap_ops = {
 	.fault = vfio_pci_mmap_fault,
 };
 
-int vfio_pci_mmap(void *device_data, struct vm_area_struct *vma)
+int vfio_pci_mmap_region(struct vfio_pci_device *vdev, unsigned int index,
+			 struct vm_area_struct *vma)
 {
-	struct vfio_pci_device *vdev = device_data;
 	struct pci_dev *pdev = vdev->pdev;
-	unsigned int index;
 	u64 phys_len, req_len, pgoff, req_start;
 	int ret;
 
-	index = vma->vm_pgoff >> (VFIO_PCI_OFFSET_SHIFT - PAGE_SHIFT);
-
-	if (index >= VFIO_PCI_NUM_REGIONS + vdev->num_regions)
-		return -EINVAL;
-	if (vma->vm_end < vma->vm_start)
-		return -EINVAL;
-	if ((vma->vm_flags & VM_SHARED) == 0)
-		return -EINVAL;
-	if (index >= VFIO_PCI_NUM_REGIONS) {
-		int regnum = index - VFIO_PCI_NUM_REGIONS;
-		struct vfio_pci_region *region = vdev->region + regnum;
-
-		if (region->ops && region->ops->mmap &&
-		    (region->flags & VFIO_REGION_INFO_FLAG_MMAP))
-			return region->ops->mmap(vdev, region, vma);
-		return -EINVAL;
-	}
-	if (index >= VFIO_PCI_ROM_REGION_INDEX)
-		return -EINVAL;
 	if (!vdev->bar_mmap_supported[index])
 		return -EINVAL;
 
@@ -1790,6 +1786,34 @@ int vfio_pci_mmap(void *device_data, struct vm_area_struct *vma)
 	vma->vm_ops = &vfio_pci_mmap_ops;
 
 	return 0;
+}
+
+int vfio_pci_mmap(void *device_data, struct vm_area_struct *vma)
+{
+	struct vfio_pci_device *vdev = device_data;
+	unsigned int index;
+
+	index = vma->vm_pgoff >> (VFIO_PCI_OFFSET_SHIFT - PAGE_SHIFT);
+
+	if (index >= VFIO_PCI_NUM_REGIONS + vdev->num_regions)
+		return -EINVAL;
+	if (vma->vm_end < vma->vm_start)
+		return -EINVAL;
+	if ((vma->vm_flags & VM_SHARED) == 0)
+		return -EINVAL;
+	if (index >= VFIO_PCI_NUM_REGIONS) {
+		int regnum = index - VFIO_PCI_NUM_REGIONS;
+		struct vfio_pci_region *region = vdev->region + regnum;
+
+		if (region->ops && region->ops->mmap &&
+		    (region->flags & VFIO_REGION_INFO_FLAG_MMAP))
+			return region->ops->mmap(vdev, region, vma);
+		return -EINVAL;
+	}
+	if (index >= VFIO_PCI_ROM_REGION_INDEX)
+		return -EINVAL;
+
+	return vfio_pci_mmap_region(vdev, index, vma);
 }
 EXPORT_SYMBOL_GPL(vfio_pci_mmap);
 

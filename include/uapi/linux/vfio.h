@@ -328,6 +328,7 @@ struct vfio_region_info_cap_type {
 #define VFIO_REGION_TYPE_GFX                    (1)
 #define VFIO_REGION_TYPE_CCW			(2)
 #define VFIO_REGION_TYPE_MIGRATION              (3)
+#define VFIO_REGION_TYPE_SRIOV_VF_BAR           (4)
 
 /* sub-types for VFIO_REGION_TYPE_PCI_* */
 
@@ -630,6 +631,14 @@ struct vfio_device_migration_info {
 	__u64 data_offset;
 	__u64 data_size;
 };
+
+/* sub-types for VFIO_REGION_TYPE_SRIOV_VF_BAR */
+#define VFIO_REGION_SUBTYPE_SRIOV_VF_BAR0            (0)
+#define VFIO_REGION_SUBTYPE_SRIOV_VF_BAR1            (1)
+#define VFIO_REGION_SUBTYPE_SRIOV_VF_BAR2            (2)
+#define VFIO_REGION_SUBTYPE_SRIOV_VF_BAR3            (3)
+#define VFIO_REGION_SUBTYPE_SRIOV_VF_BAR4            (4)
+#define VFIO_REGION_SUBTYPE_SRIOV_VF_BAR5            (5)
 
 /*
  * The MSIX mappable capability informs that MSIX data of a BAR can be mmapped
