@@ -1246,14 +1246,24 @@ PAGE_SIZE multiple when read back.
 	This is a simple interface to trigger memory reclaim in the
 	target cgroup.
 
-	This file accepts a single key, the number of bytes to reclaim.
-
 	Example::
 
 	  echo "1G" > memory.reclaim
 
-	This file also accepts nested keys, the number of bytes to reclaim
-	with the type of memory to reclaim.
+	The following nested keys are defined.
+
+	  ==========            ================================
+	  swappiness            Swappiness value to reclaim with
+	  type					The type of memory to reclaim
+	  ==========            ================================
+
+	Specifying a swappiness value instructs the kernel to perform
+	the reclaim with that swappiness value. Note that this has the
+	same semantics as vm.swappiness applied to memcg reclaim with
+	all the existing limitations and potential future extensions.
+
+	Specifying a type value instructs the kernel to reclaim with
+	the type of memory.
 
 	Example::
 	  echo "1G type=file" > memory.reclaim

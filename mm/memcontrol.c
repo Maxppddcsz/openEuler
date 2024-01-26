@@ -52,6 +52,7 @@
 #include <linux/sort.h>
 #include <linux/fs.h>
 #include <linux/seq_file.h>
+#include <linux/parser.h>
 #include <linux/vmpressure.h>
 #include <linux/memremap.h>
 #include <linux/mm_inline.h>
@@ -2452,7 +2453,8 @@ static unsigned long reclaim_high(struct mem_cgroup *memcg,
 		psi_memstall_enter(&pflags);
 		nr_reclaimed += try_to_free_mem_cgroup_pages(memcg, nr_pages,
 							gfp_mask,
-							MEMCG_RECLAIM_MAY_SWAP);
+							MEMCG_RECLAIM_MAY_SWAP,
+							NULL);
 		psi_memstall_leave(&pflags);
 	} while ((memcg = parent_mem_cgroup(memcg)) &&
 		 !mem_cgroup_is_root(memcg));
@@ -2490,7 +2492,8 @@ static void async_reclaim_high(struct mem_cgroup *memcg)
 	psi_memstall_enter(&pflags);
 	nr_pages = memcg_usage > safe_pages ? memcg_usage - safe_pages :
 		   MEMCG_CHARGE_BATCH;
-	try_to_free_mem_cgroup_pages(memcg, nr_pages, GFP_KERNEL, MEMCG_RECLAIM_MAY_SWAP);
+	try_to_free_mem_cgroup_pages(memcg, nr_pages, GFP_KERNEL, MEMCG_RECLAIM_MAY_SWAP,
+								NULL);
 	psi_memstall_leave(&pflags);
 	WRITE_ONCE(memcg->high_async_reclaim, false);
 }
@@ -2786,7 +2789,7 @@ retry:
 	pflags = PSI_MEMCG_RECLAIM;
 	psi_memstall_enter(&pflags);
 	nr_reclaimed = try_to_free_mem_cgroup_pages(mem_over_limit, nr_pages,
-						    gfp_mask, reclaim_options);
+						    gfp_mask, reclaim_options, NULL);
 	psi_memstall_leave(&pflags);
 
 	if (mem_cgroup_margin(mem_over_limit) >= nr_pages)
@@ -3632,7 +3635,7 @@ static int mem_cgroup_resize_max(struct mem_cgroup *memcg,
 		}
 
 		if (!try_to_free_mem_cgroup_pages(memcg, 1, GFP_KERNEL,
-					memsw ? 0 : MEMCG_RECLAIM_MAY_SWAP)) {
+					memsw ? 0 : MEMCG_RECLAIM_MAY_SWAP, NULL)) {
 			ret = -EBUSY;
 			break;
 		}
@@ -3746,7 +3749,7 @@ int mem_cgroup_force_empty(struct mem_cgroup *memcg)
 			return -EINTR;
 
 		if (!try_to_free_mem_cgroup_pages(memcg, 1, GFP_KERNEL,
-						  MEMCG_RECLAIM_MAY_SWAP))
+						  MEMCG_RECLAIM_MAY_SWAP, NULL))
 			nr_retries--;
 	}
 
@@ -7600,7 +7603,7 @@ static ssize_t memory_high_write(struct kernfs_open_file *of,
 		}
 
 		reclaimed = try_to_free_mem_cgroup_pages(memcg, nr_pages - high,
-					GFP_KERNEL, MEMCG_RECLAIM_MAY_SWAP);
+					GFP_KERNEL, MEMCG_RECLAIM_MAY_SWAP, NULL);
 
 		if (!reclaimed && !nr_retries--)
 			break;
@@ -7649,7 +7652,7 @@ static ssize_t memory_max_write(struct kernfs_open_file *of,
 
 		if (nr_reclaims) {
 			if (!try_to_free_mem_cgroup_pages(memcg, nr_pages - max,
-					GFP_KERNEL, MEMCG_RECLAIM_MAY_SWAP))
+					GFP_KERNEL, MEMCG_RECLAIM_MAY_SWAP, NULL))
 				nr_reclaims--;
 			continue;
 		}
@@ -7775,11 +7778,13 @@ static ssize_t memory_oom_group_write(struct kernfs_open_file *of,
 }
 
 enum {
-	MEMORY_RECLAIM_TYPE = 0,
+	MEMORY_RECLAIM_SWAPPINESS = 0,
+	MEMORY_RECLAIM_TYPE = 1,
 	MEMORY_RECLAIM_NULL,
 };
 
 static const match_table_t tokens = {
+	{ MEMORY_RECLAIM_SWAPPINESS, "swappiness=%d"},
 	{ MEMORY_RECLAIM_TYPE, "type=%s"},
 	{ MEMORY_RECLAIM_NULL, NULL },
 };
@@ -7787,7 +7792,7 @@ static const match_table_t tokens = {
 #define RECLAIM_TYPE_SIZE 8
 
 static int reclaim_param_parse(char *buf, unsigned long *nr_pages,
-			       unsigned int *reclaim_options)
+			       unsigned int *reclaim_options, int *swappiness)
 {
 	char *old_buf, *start;
 	char type[RECLAIM_TYPE_SIZE];
@@ -7813,6 +7818,12 @@ static int reclaim_param_parse(char *buf, unsigned long *nr_pages,
 			continue;
 
 		switch (match_token(start, tokens, args)) {
+		case MEMORY_RECLAIM_SWAPPINESS:
+			if (match_int(&args[0], swappiness))
+				return -EINVAL;
+			if (*swappiness < MIN_SWAPPINESS || *swappiness > MAX_SWAPPINESS)
+				return -EINVAL;
+			break;
 		case MEMORY_RECLAIM_TYPE:
 			match_strlcpy(type, &args[0], RECLAIM_TYPE_SIZE);
 			if (!strcmp(type, "anon"))
@@ -7836,11 +7847,13 @@ static ssize_t memory_reclaim(struct kernfs_open_file *of, char *buf,
 	struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
 	unsigned int nr_retries = MAX_RECLAIM_RETRIES;
 	unsigned long nr_to_reclaim, nr_reclaimed = 0;
+	int swappiness = -1;
 	unsigned int reclaim_options;
 	int err;
 
 	reclaim_options = MEMCG_RECLAIM_MAY_SWAP | MEMCG_RECLAIM_PROACTIVE;
-	err = reclaim_param_parse(buf, &nr_to_reclaim, &reclaim_options);
+	err = reclaim_param_parse(buf, &nr_to_reclaim, &reclaim_options,
+					&swappiness);
 	if (err)
 		return err;
 
@@ -7865,7 +7878,8 @@ static ssize_t memory_reclaim(struct kernfs_open_file *of, char *buf,
 
 		reclaimed = try_to_free_mem_cgroup_pages(memcg,
 					min(nr_to_reclaim - nr_reclaimed, SWAP_CLUSTER_MAX),
-					GFP_KERNEL, reclaim_options);
+					GFP_KERNEL, reclaim_options,
+					swappiness == -1 ? NULL : &swappiness);
 
 		if (!reclaimed && !nr_retries--)
 			return -EAGAIN;
