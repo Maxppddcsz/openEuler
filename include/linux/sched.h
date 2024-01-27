@@ -751,6 +751,12 @@ struct kmap_ctrl {
 #endif
 };
 
+/**
+ * struct task_struct_extended_resvd - KABI extension struct
+ */
+struct task_struct_extended_resvd {
+};
+
 struct task_struct {
 #ifdef CONFIG_THREAD_INFO_IN_TASK
 	/*
@@ -1563,6 +1569,9 @@ struct task_struct {
 #if defined(CONFIG_QOS_SCHED_SMART_GRID) && !defined(__GENKSYMS__)
 		struct sched_grid_qos *grid_qos;
 #endif
+
+	/* Use task_struct_extended after all KABI_RESERVE fields used */
+	KABI_AUX_PTR(task_struct_extended)
 
 	/*
 	 * New fields for task_struct should be added above here, so that

@@ -49,6 +49,12 @@ enum probe_type {
 };
 
 /**
+ * struct device_driver_extended_resvd - KABI extension struct
+ */
+struct device_driver_extended_resvd {
+};
+
+/**
  * struct device_driver - The basic device driver structure
  * @name:	Name of the device driver.
  * @bus:	The bus which the device of this driver belongs to.
@@ -119,6 +125,8 @@ struct device_driver {
 	void (*coredump) (struct device *dev);
 
 	struct driver_private *p;
+	/* Use device_driver_extended after all KABI_RESERVE fields used */
+	KABI_AUX_PTR(device_driver_extended)
 };
 
 
