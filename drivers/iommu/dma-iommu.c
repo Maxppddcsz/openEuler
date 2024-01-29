@@ -68,6 +68,8 @@ struct iommu_dma_cookie {
 	/* Domain for flush queue callback; NULL if flush queue not in use */
 	struct iommu_domain		*fq_domain;
 	struct mutex			mutex;
+
+	struct work_struct free_iova_work;
 };
 
 static DEFINE_STATIC_KEY_FALSE(iommu_deferred_attach_enabled);
@@ -155,20 +157,11 @@ static void fq_flush_iotlb(struct iommu_dma_cookie *cookie)
 static void fq_flush_timeout(struct timer_list *t)
 {
 	struct iommu_dma_cookie *cookie = from_timer(cookie, t, fq_timer);
-	int cpu;
 
 	atomic_set(&cookie->fq_timer_on, 0);
 	fq_flush_iotlb(cookie);
 
-	for_each_possible_cpu(cpu) {
-		unsigned long flags;
-		struct iova_fq *fq;
-
-		fq = per_cpu_ptr(cookie->fq, cpu);
-		spin_lock_irqsave(&fq->lock, flags);
-		fq_ring_free(cookie, fq);
-		spin_unlock_irqrestore(&fq->lock, flags);
-	}
+	schedule_work(&cookie->free_iova_work);
 }
 
 static void queue_iova(struct iommu_dma_cookie *cookie,
@@ -235,8 +228,27 @@ static void iommu_dma_free_fq(struct iommu_dma_cookie *cookie)
 			put_pages_list(&fq->entries[idx].freelist);
 	}
 
+	flush_work(&cookie->free_iova_work);
 	free_percpu(cookie->fq);
 }
+
+static void free_iova_work_func(struct work_struct *work)
+{
+	struct iommu_dma_cookie *cookie;
+	int cpu;
+
+	cookie	= container_of(work, struct iommu_dma_cookie, free_iova_work);
+	for_each_possible_cpu(cpu) {
+		unsigned long flags;
+		struct iova_fq *fq;
+
+		fq = per_cpu_ptr(cookie->fq, cpu);
+		spin_lock_irqsave(&fq->lock, flags);
+		fq_ring_free(cookie, fq);
+		spin_unlock_irqrestore(&fq->lock, flags);
+	}
+}
+
 
 /* sysfs updates are serialised by the mutex of the group owning @domain */
 int iommu_dma_init_fq(struct iommu_domain *domain)
@@ -271,6 +283,7 @@ int iommu_dma_init_fq(struct iommu_domain *domain)
 
 	cookie->fq = queue;
 
+	INIT_WORK(&cookie->free_iova_work, free_iova_work_func);
 	timer_setup(&cookie->fq_timer, fq_flush_timeout, 0);
 	atomic_set(&cookie->fq_timer_on, 0);
 	/*
