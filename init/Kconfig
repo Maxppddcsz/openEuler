@@ -1284,6 +1284,16 @@ config CGROUP_MISC
 	  For more information, please check misc cgroup section in
 	  /Documentation/admin-guide/cgroup-v2.rst.
 
+config CGROUP_MISC_FD
+	bool "Misc for controllling fd"
+	depends on CGROUP_MISC
+	default n
+	help
+	  Privides a way to control fd.
+
+	  Misc as scalar resources controller, it is a good idea controlling
+	  fd with it.
+
 config CGROUP_DEBUG
 	bool "Debug controller"
 	default n
