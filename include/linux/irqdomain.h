@@ -36,6 +36,7 @@
 #include <linux/of.h>
 #include <linux/mutex.h>
 #include <linux/radix-tree.h>
+#include <linux/kabi.h>
 
 struct device_node;
 struct fwnode_handle;
@@ -175,6 +176,8 @@ struct irq_domain {
 	unsigned int			revmap_size;
 	struct radix_tree_root		revmap_tree;
 	struct irq_data __rcu		*revmap[];
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 /* Irq domain flags */
