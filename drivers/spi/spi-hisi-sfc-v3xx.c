@@ -378,6 +378,12 @@ static irqreturn_t hisi_sfc_v3xx_isr(int irq, void *data)
 {
 	struct hisi_sfc_v3xx_host *host = data;
 
+	u32 reg;
+
+	reg = readl(host->regbase + HISI_SFC_V3XX_INT_STAT);
+	if (!reg) 
+		return IRQ_NONE;
+
 	hisi_sfc_v3xx_disable_int(host);
 
 	complete(host->completion);
