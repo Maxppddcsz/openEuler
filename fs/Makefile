@@ -49,6 +49,7 @@ obj-$(CONFIG_DIRTY_PAGES)	+= dirty_pages.o
 obj-$(CONFIG_FHANDLE)		+= fhandle.o
 obj-$(CONFIG_CGROUP_FILES)	+= filescontrol.o
 obj-$(CONFIG_CGROUP_FILES)	+= files-cg.o
+obj-$(CONFIG_CGROUP_FILES)	+= misc-fd.o
 obj-y				+= iomap/
 
 obj-y				+= quota/
