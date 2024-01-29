@@ -23,7 +23,6 @@
 extern int files_cgroup_alloc_fd(struct files_struct *files, u64 n);
 extern void files_cgroup_unalloc_fd(struct files_struct *files, u64 n);
 
-extern struct files_struct init_files;
 extern void files_cgroup_assign(struct files_struct *files);
 extern void files_cgroup_remove(struct files_struct *files);
 

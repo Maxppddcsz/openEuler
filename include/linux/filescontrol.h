@@ -15,6 +15,7 @@ u64 file_cg_count_fds(struct files_struct *files);
 #ifdef CONFIG_CGROUP_FILES
 extern int files_cg_alloc_fd(struct files_struct *files, u64 n);
 extern void files_cg_unalloc_fd(struct files_struct *files, u64 n);
+extern struct files_struct init_files;
 
 extern void files_cg_assign(struct files_struct *files);
 extern void files_cg_remove(struct files_struct *files);
