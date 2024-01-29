@@ -29,6 +29,7 @@
 #include <linux/rcupdate_trace.h>
 #include <linux/static_call.h>
 #include <linux/memcontrol.h>
+#include <linux/kabi.h>
 
 struct bpf_verifier_env;
 struct bpf_verifier_log;
@@ -974,6 +975,16 @@ struct bpf_prog_offload {
 enum bpf_cgroup_storage_type {
 	BPF_CGROUP_STORAGE_SHARED,
 	BPF_CGROUP_STORAGE_PERCPU,
+#ifdef CONFIG_KABI_RESERVE
+	BPF_CGROUP_STORAGE_KABI_RESERVE_1,
+	BPF_CGROUP_STORAGE_KABI_RESERVE_2,
+	BPF_CGROUP_STORAGE_KABI_RESERVE_3,
+	BPF_CGROUP_STORAGE_KABI_RESERVE_4,
+	BPF_CGROUP_STORAGE_KABI_RESERVE_5,
+	BPF_CGROUP_STORAGE_KABI_RESERVE_6,
+	BPF_CGROUP_STORAGE_KABI_RESERVE_7,
+	BPF_CGROUP_STORAGE_KABI_RESERVE_8,
+#endif
 	__BPF_CGROUP_STORAGE_MAX
 };
 
