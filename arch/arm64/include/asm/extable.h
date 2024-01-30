@@ -2,6 +2,7 @@
 #ifndef __ASM_EXTABLE_H
 #define __ASM_EXTABLE_H
 
+#include <linux/kabi.h>
 /*
  * The exception table consists of pairs of relative offsets: the first
  * is the relative offset to an instruction that is allowed to fault,
@@ -19,6 +20,8 @@ struct exception_table_entry
 {
 	int insn, fixup;
 	short type, data;
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 #define ARCH_HAS_RELATIVE_EXTABLE
