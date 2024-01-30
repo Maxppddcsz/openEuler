@@ -18,6 +18,10 @@ enum misc_res_type {
 	/* AMD SEV-ES ASIDs resource */
 	MISC_CG_RES_SEV_ES,
 #endif
+#ifdef CONFIG_CGROUP_FILES
+	/* fd for file control */
+	MISC_CG_RES_FD,
+#endif
 	MISC_CG_RES_TYPES
 };
 
