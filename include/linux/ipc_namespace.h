@@ -12,6 +12,7 @@
 #include <linux/rhashtable-types.h>
 #include <linux/sysctl.h>
 #include <linux/percpu_counter.h>
+#include <linux/kabi.h>
 
 struct user_namespace;
 
