@@ -43,7 +43,11 @@
 #include <linux/cred.h>
 #include <linux/mnt_idmapping.h>
 #include <linux/slab.h>
+<<<<<<< HEAD
 #include <linux/tracepoint-defs.h>
+=======
+#include <linux/kabi.h>
+>>>>>>> 5c42f4c4934e (ima: kabi: KABI reservation for IMA)
 
 #include <asm/byteorder.h>
 #include <uapi/linux/fs.h>
@@ -1038,6 +1042,7 @@ struct file {
 	errseq_t		f_wb_err;
 	errseq_t		f_sb_err; /* for syncfs */
 	fmode_t			f_ctl_mode;
+	KABI_RESERVE(1);
 } __randomize_layout
   __attribute__((aligned(4)));	/* lest something weird decides that 2 is OK */
 
