@@ -19,6 +19,7 @@
 #include <linux/kthread.h>
 #include <linux/blk-mq.h>
 #include <linux/llist.h>
+#include <linux/kabi.h>
 
 struct blkcg_gq;
 struct blkg_policy_data;
@@ -49,6 +50,7 @@ struct blkg_iostat_set {
 	int				lqueued;	/* queued in llist */
 	struct blkg_iostat		cur;
 	struct blkg_iostat		last;
+	KABI_RESERVE(1)
 };
 
 /* association between a blk cgroup and a request queue */
@@ -116,7 +118,12 @@ struct blkcg {
 #endif
 #ifdef CONFIG_CGROUP_V1_WRITEBACK
 	struct list_head		memcg_list;
+#else
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 #endif
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 };
 
 static inline struct blkcg *css_to_blkcg(struct cgroup_subsys_state *css)
@@ -186,6 +193,10 @@ struct blkcg_policy {
 	blkcg_pol_free_pd_fn		*pd_free_fn;
 	blkcg_pol_reset_pd_stats_fn	*pd_reset_stats_fn;
 	blkcg_pol_stat_pd_fn		*pd_stat_fn;
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 };
 
 extern struct blkcg blkcg_root;
