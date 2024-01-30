@@ -7,6 +7,7 @@
 #include <linux/list.h>
 #include <linux/percpu-refcount.h>
 #include <linux/workqueue.h>
+#include <linux/kabi.h>
 
 struct bpf_prog_array;
 
@@ -44,6 +45,16 @@ enum cgroup_bpf_attach_type {
 	CGROUP_INET_SOCK_RELEASE,
 	CGROUP_LSM_START,
 	CGROUP_LSM_END = CGROUP_LSM_START + CGROUP_LSM_NUM - 1,
+#ifdef CONFIG_KABI_RESERVE
+	CGROUP_ATTACH_TYPE_KABI_RESERVE_1,
+	CGROUP_ATTACH_TYPE_KABI_RESERVE_2,
+	CGROUP_ATTACH_TYPE_KABI_RESERVE_3,
+	CGROUP_ATTACH_TYPE_KABI_RESERVE_4,
+	CGROUP_ATTACH_TYPE_KABI_RESERVE_5,
+	CGROUP_ATTACH_TYPE_KABI_RESERVE_6,
+	CGROUP_ATTACH_TYPE_KABI_RESERVE_7,
+	CGROUP_ATTACH_TYPE_KABI_RESERVE_8,
+#endif
 	MAX_CGROUP_BPF_ATTACH_TYPE
 };
 
@@ -70,6 +81,15 @@ struct cgroup_bpf {
 
 	/* cgroup_bpf is released using a work queue */
 	struct work_struct release_work;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
+	KABI_RESERVE(5)
+	KABI_RESERVE(6)
+	KABI_RESERVE(7)
+	KABI_RESERVE(8)
 };
 
 #else /* CONFIG_CGROUP_BPF */
