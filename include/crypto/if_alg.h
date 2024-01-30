@@ -14,6 +14,7 @@
 #include <linux/scatterlist.h>
 #include <linux/types.h>
 #include <linux/atomic.h>
+#include <linux/kabi.h>
 #include <net/sock.h>
 
 #include <crypto/aead.h>
@@ -32,6 +33,7 @@ struct alg_sock {
 
 	const struct af_alg_type *type;
 	void *private;
+	KABI_RESERVE(0);
 };
 
 struct af_alg_control {
@@ -154,6 +156,7 @@ struct af_alg_ctx {
 	bool init;
 
 	unsigned int len;
+	KABI_RESERVE(0);
 };
 
 int af_alg_register_type(const struct af_alg_type *type);
