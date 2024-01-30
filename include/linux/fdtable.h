@@ -65,7 +65,12 @@ struct files_struct {
 	unsigned long open_fds_init[1];
 	unsigned long full_fds_bits_init[1];
 	struct file __rcu * fd_array[NR_OPEN_DEFAULT];
+#ifdef CONFIG_CGROUP_FILES
 	struct files_cgroup *files_cgroup;
+#endif
+#if (defined CONFIG_CGROUP_MISC && defined CONFIG_CGROUP_FILES)
+	struct misc_cg *misc_cg;
+#endif
 };
 
 struct file_operations;
