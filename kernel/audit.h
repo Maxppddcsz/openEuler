@@ -11,6 +11,7 @@
 
 #include <linux/fs.h>
 #include <linux/audit.h>
+#include <linux/security.h>
 #include <linux/skbuff.h>
 #include <uapi/linux/mqueue.h>
 #include <linux/tty.h>
@@ -83,6 +84,7 @@ struct audit_names {
 	kgid_t			gid;
 	dev_t			rdev;
 	u32			osid;
+	struct lsmblob	oblob;	//reserve for lsm stacking kabi
 	struct audit_cap_data	fcap;
 	unsigned int		fcap_ver;
 	unsigned char		type;		/* record type */
@@ -98,6 +100,13 @@ struct audit_proctitle {
 	int	len;	/* length of the cmdline field. */
 	char	*value;	/* the cmdline field */
 };
+/*
+ * reserve for lsm stacking kabi
+ */
+struct audit_stamp {
+	struct timespec64	ctime;
+	unsigned int		serial;
+};
 
 /* The per-task audit context. */
 struct audit_context {
@@ -108,6 +117,7 @@ struct audit_context {
 		AUDIT_CTX_URING,	/* in use by io_uring */
 	} context;
 	enum audit_state    state, current_state;
+	struct audit_stamp	stamp;	//reserve for lsm stacking kabi
 	unsigned int	    serial;     /* serial number for record */
 	int		    major;      /* syscall number */
 	int		    uring_op;   /* uring operation */
@@ -145,6 +155,7 @@ struct audit_context {
 	kuid_t		    target_uid;
 	unsigned int	    target_sessionid;
 	u32		    target_sid;
+	struct lsmblob	target_blob;	//reserve for lsm stacking kabi
 	char		    target_comm[TASK_COMM_LEN];
 
 	struct audit_tree_refs *trees, *first_trees;

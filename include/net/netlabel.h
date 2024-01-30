@@ -98,6 +98,7 @@ struct calipso_doi;
 /* NetLabel audit information */
 struct netlbl_audit {
 	u32 secid;
+	struct lsmblob blob;	//reserve for lsm stacking kabi
 	kuid_t loginuid;
 	unsigned int sessionid;
 };

@@ -120,6 +120,7 @@ enum audit_nfcfgop {
 	AUDIT_NFT_OP_SETELEM_RESET,
 	AUDIT_NFT_OP_RULE_RESET,
 	AUDIT_NFT_OP_INVALID,
+	KABI_RESERVE0,
 };
 
 extern int __init audit_register_class(int class, unsigned *list);

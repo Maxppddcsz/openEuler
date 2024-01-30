@@ -93,6 +93,7 @@ union proc_op {
 		struct pid_namespace *ns, struct pid *pid,
 		struct task_struct *task);
 	const char *lsm;
+	int lsmid;	//reserve for lsm stacking kabi
 };
 
 struct proc_inode {
