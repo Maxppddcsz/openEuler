@@ -16,7 +16,7 @@
  */
 
 #include <linux/page_counter.h>
-#include <linux/filescontrol.h>
+#include <linux/legacy-filescontrol.h>
 #include <linux/cgroup.h>
 #include <linux/export.h>
 #include <linux/printk.h>

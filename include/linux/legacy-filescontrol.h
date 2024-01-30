@@ -15,8 +15,8 @@
  * GNU General Public License for more details.
  */
 
-#ifndef _LINUX_FILESCONTROL_H
-#define _LINUX_FILESCONTROL_H
+#ifndef _LINUX_LEGACY_FILESCONTROL_H
+#define _LINUX_LEGACY_FILESCONTROL_H
 
 #include <linux/fdtable.h>
 
@@ -41,4 +41,4 @@ static inline int files_cgroup_dup_fds(struct files_struct *newf) { return 0; };
 static inline void files_cgroup_put_fd(struct files_struct *files, unsigned int fd) {};
 #endif /* CONFIG_CGROUP_FILES */
 
-#endif /* _LINUX_FILESCONTROL_H */
+#endif /* _LINUX_LEGACY_FILESCONTROL_H */
