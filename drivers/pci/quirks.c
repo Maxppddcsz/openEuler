@@ -5050,6 +5050,8 @@ static const struct pci_dev_acs_enabled {
 	{ PCI_VENDOR_ID_INTEL, PCI_ANY_ID, pci_quirk_intel_spt_pch_acs },
 	{ 0x19a2, 0x710, pci_quirk_mf_endpoint_acs }, /* Emulex BE3-R */
 	{ 0x10df, 0x720, pci_quirk_mf_endpoint_acs }, /* Emulex Skyhawk-R */
+	{ 0x1077, 0x2532, pci_quirk_mf_endpoint_acs}, /* QLogic QL2562 */
+	{ 0x1077, 0x2261, pci_quirk_mf_endpoint_acs}, /* QLogic QL2692 */
 	/* Cavium ThunderX */
 	{ PCI_VENDOR_ID_CAVIUM, PCI_ANY_ID, pci_quirk_cavium_acs },
 	/* Cavium multi-function devices */
@@ -5831,6 +5833,31 @@ static void quirk_switchtec_ntb_dma_alias(struct pci_dev *pdev)
 	pci_iounmap(pdev, mmio);
 	pci_disable_device(pdev);
 }
+
+static void pci_quirk_hisi_fixup_class(struct pci_dev *dev)
+{
+	dev->class = PCI_CLASS_NETWORK_ETHERNET << 8;
+	pci_info(dev, "force hisi class type to network\n");
+}
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_HUAWEI, PCIE_DEVICE_ID_HISI_5896,
+			pci_quirk_hisi_fixup_class);
+
+static void pci_quirk_hisi_fixup_bar(struct pci_dev *dev)
+{
+	int i, start = 3;
+
+	for (i = start; i < PCI_NUM_RESOURCES; i++) {
+		dev->resource[i].start = 0;
+		dev->resource[i].end = 0;
+		dev->resource[i].flags = 0;
+	}
+
+	pci_info(dev, "force disable hisilicon np bar\n");
+}
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_HUAWEI, PCIE_DEVICE_ID_HISI_5896,
+			pci_quirk_hisi_fixup_bar);
+
+
 #define SWITCHTEC_QUIRK(vid) \
 	DECLARE_PCI_FIXUP_CLASS_FINAL(PCI_VENDOR_ID_MICROSEMI, vid, \
 		PCI_CLASS_BRIDGE_OTHER, 8, quirk_switchtec_ntb_dma_alias)
