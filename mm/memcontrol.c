@@ -67,6 +67,7 @@
 #include <linux/sched/isolation.h>
 #include <linux/parser.h>
 #include <linux/dynamic_pool.h>
+#include <linux/zswap.h>
 
 #ifdef CONFIG_MEMCG_SWAP_QOS
 #include <linux/blkdev.h>
@@ -6542,6 +6543,8 @@ static void mem_cgroup_css_offline(struct cgroup_subsys_state *css)
 
 	page_counter_set_min(&memcg->memory, 0);
 	page_counter_set_low(&memcg->memory, 0);
+
+	zswap_memcg_offline_cleanup(memcg);
 
 	memcg_offline_kmem(memcg);
 	reparent_shrinker_deferred(memcg);
