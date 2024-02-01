@@ -15,6 +15,7 @@
 /* [Feb-Apr 2000, AV] Rewrite to the new namespace architecture.
  */
 
+#include <linux/kabi.h>
 #include <linux/init.h>
 #include <linux/export.h>
 #include <linux/kernel.h>
@@ -587,6 +588,8 @@ struct nameidata {
 	int		dfd;
 	vfsuid_t	dir_vfsuid;
 	umode_t		dir_mode;
+
+	KABI_RESERVE(1)
 } __randomize_layout;
 
 #define ND_ROOT_PRESET 1
