@@ -39,6 +39,7 @@
 #include <linux/livepatch_sched.h>
 #include <asm/kmap_size.h>
 #include <linux/thread_bits.h>
+#include <linux/kabi.h>
 
 /* task_struct member predeclarations (sorted alphabetically): */
 struct audit_context;
@@ -595,6 +596,10 @@ struct sched_entity {
 	 */
 	struct sched_avg		avg;
 #endif
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 };
 
 struct sched_rt_entity {
@@ -613,6 +618,8 @@ struct sched_rt_entity {
 	/* rq "owned" by this entity/group: */
 	struct rt_rq			*my_q;
 #endif
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 } __randomize_layout;
 
 struct sched_dl_entity {
@@ -749,6 +756,11 @@ struct kmap_ctrl {
 	int				idx;
 	pte_t				pteval[KM_MAX_IDX];
 #endif
+};
+
+struct task_struct_resvd {
+	/* pointer back to the main task_struct */
+	struct task_struct	*task;
 };
 
 struct task_struct {
@@ -1569,6 +1581,24 @@ struct task_struct {
 	 * they are included in the randomized portion of task_struct.
 	 */
 	randomized_struct_fields_end
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
+	KABI_RESERVE(5)
+	KABI_RESERVE(6)
+	KABI_RESERVE(7)
+	KABI_RESERVE(8)
+	KABI_RESERVE(9)
+	KABI_RESERVE(10)
+	KABI_RESERVE(11)
+	KABI_RESERVE(12)
+	KABI_RESERVE(13)
+	KABI_RESERVE(14)
+	KABI_RESERVE(15)
+	KABI_RESERVE(16)
+	KABI_AUX_PTR(task_struct)
 
 	/* CPU-specific state of this task: */
 	struct thread_struct		thread;
