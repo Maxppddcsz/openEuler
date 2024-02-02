@@ -12,6 +12,7 @@
 
 #include <linux/types.h>
 #include <linux/stddef.h>
+#include <linux/kabi.h>
 
 /**
  * enum cc_attr - Confidential computing attributes
@@ -90,6 +91,11 @@ enum cc_attr {
 	 * Examples include TDX Guest.
 	 */
 	CC_ATTR_HOTPLUG_DISABLED,
+
+	CC_ATTR_KABI_RES1,
+	CC_ATTR_KABI_RES2,
+	CC_ATTR_KABI_RES3,
+	CC_ATTR_KABI_RES4,
 };
 
 #ifdef CONFIG_ARCH_HAS_CC_PLATFORM
