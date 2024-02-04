@@ -12,6 +12,7 @@
 #include <linux/uuid.h>
 #include <linux/spinlock.h>
 #include <linux/bio.h>
+#include <linux/kabi.h>
 
 struct badrange_entry {
 	u64 start;
@@ -136,6 +137,8 @@ struct nd_region_desc {
 	int memregion;
 	struct device_node *of_node;
 	int (*flush)(struct nd_region *nd_region, struct bio *bio);
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 struct device;
@@ -193,6 +196,8 @@ struct nvdimm_security_ops {
 	int (*query_overwrite)(struct nvdimm *nvdimm);
 	int (*disable_master)(struct nvdimm *nvdimm,
 			      const struct nvdimm_key_data *key_data);
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 enum nvdimm_fwa_state {
