@@ -9,6 +9,7 @@
 #define	_FC_MS_H_
 
 #include <linux/types.h>
+#include <linux/kabi.h>
 
 /*
  * Fibre Channel Services - Management Service (MS)
@@ -158,6 +159,10 @@ struct fc_fdmi_port_name {
 struct fc_fdmi_attr_entry {
 	__be16		type;
 	__be16		len;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
 	__u8		value[];
 } __attribute__((__packed__));
 
@@ -166,6 +171,10 @@ struct fc_fdmi_attr_entry {
  */
 struct fs_fdmi_attrs {
 	__be32				numattrs;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
 	struct fc_fdmi_attr_entry	attr[];
 } __attribute__((__packed__));
 
