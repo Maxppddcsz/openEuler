@@ -838,7 +838,7 @@ config HISILICON_ERRATUM_162102203
 
 config HISILICON_ERRATUM_162100602
 	bool "Hisilicon erratum 162100602"
-	depends on ARM_SMMU_V3
+	depends on ARM_SMMU_V3 && ARCH_HISI
 	default y
 	help
 	 On Hisilicon LINXICORE9100 cores, SMMU pagetable prefetch features may
