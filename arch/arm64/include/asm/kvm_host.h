@@ -589,6 +589,14 @@ struct kvm_vcpu_arch {
 		gpa_t base;
 	} steal;
 
+#ifdef CONFIG_PARAVIRT_SCHED
+	/* Guest PV sched state */
+	struct {
+		bool pv_unhalted;
+		gpa_t base;
+	} pvsched;
+#endif
+
 	/* Per-vcpu CCSIDR override or NULL */
 	u32 *ccsidr;
 };
@@ -905,6 +913,21 @@ struct kvm_vcpu_stat {
 	u64 mmio_exit_kernel;
 	u64 signal_exits;
 	u64 exits;
+	u64 fp_asimd_exit_stat;
+	u64 irq_exit_stat;
+	u64 sys64_exit_stat;
+	u64 mabt_exit_stat;
+	u64 fail_entry_exit_stat;
+	u64 internal_error_exit_stat;
+	u64 unknown_ec_exit_stat;
+	u64 cp15_32_exit_stat;
+	u64 cp15_64_exit_stat;
+	u64 cp14_mr_exit_stat;
+	u64 cp14_ls_exit_stat;
+	u64 cp14_64_exit_stat;
+	u64 smc_exit_stat;
+	u64 sve_exit_stat;
+	u64 debug_exit_stat;
 };
 
 unsigned long kvm_arm_num_regs(struct kvm_vcpu *vcpu);
@@ -1037,6 +1060,22 @@ static inline bool kvm_arm_is_pvtime_enabled(struct kvm_vcpu_arch *vcpu_arch)
 {
 	return (vcpu_arch->steal.base != INVALID_GPA);
 }
+
+#ifdef CONFIG_PARAVIRT_SCHED
+long kvm_hypercall_pvsched_features(struct kvm_vcpu *vcpu);
+void kvm_update_pvsched_preempted(struct kvm_vcpu *vcpu, u32 preempted);
+long kvm_pvsched_kick_vcpu(struct kvm_vcpu *vcpu);
+
+static inline void kvm_arm_pvsched_vcpu_init(struct kvm_vcpu_arch *vcpu_arch)
+{
+	vcpu_arch->pvsched.base = INVALID_GPA;
+}
+
+static inline bool kvm_arm_is_pvsched_enabled(struct kvm_vcpu_arch *vcpu_arch)
+{
+	return (vcpu_arch->pvsched.base != INVALID_GPA);
+}
+#endif
 
 void kvm_set_sei_esr(struct kvm_vcpu *vcpu, u64 syndrome);
 
