@@ -4375,6 +4375,9 @@ apply_wqattrs_prepare(struct workqueue_struct *wq,
 
 	/* save the user configured attrs and sanitize it. */
 	copy_workqueue_attrs(new_attrs, attrs);
+	if (wq->flags & __WQ_DYNAMIC)
+		new_attrs->ordered = false;
+
 	cpumask_and(new_attrs->cpumask, new_attrs->cpumask, cpu_possible_mask);
 	cpumask_copy(new_attrs->__pod_cpumask, new_attrs->cpumask);
 	ctx->attrs = new_attrs;
@@ -4591,10 +4594,12 @@ static int alloc_and_link_pwqs(struct workqueue_struct *wq)
 	cpus_read_lock();
 	if (wq->flags & __WQ_ORDERED) {
 		ret = apply_workqueue_attrs(wq, ordered_wq_attrs[highpri]);
-		/* there should only be single pwq for ordering guarantee */
-		WARN(!ret && (wq->pwqs.next != &wq->dfl_pwq->pwqs_node ||
-			      wq->pwqs.prev != &wq->dfl_pwq->pwqs_node),
-		     "ordering guarantee broken for workqueue %s\n", wq->name);
+		if (!(wq->flags & __WQ_DYNAMIC)) {
+                       /* there should only be single pwq for ordering guarantee */
+                       WARN(!ret && (wq->pwqs.next != &wq->dfl_pwq->pwqs_node ||
+                                       wq->pwqs.prev != &wq->dfl_pwq->pwqs_node),
+                                       "ordering guarantee broken for workqueue %s\n", wq->name);
+               }
 	} else {
 		ret = apply_workqueue_attrs(wq, unbound_std_wq_attrs[highpri]);
 	}
@@ -5798,7 +5803,7 @@ static int workqueue_apply_unbound_cpumask(const cpumask_var_t unbound_cpumask)
 			continue;
 
 		/* creating multiple pwqs breaks ordering guarantee */
-		if (!list_empty(&wq->pwqs)) {
+		if (!list_empty(&wq->pwqs) && !(wq->flags & __WQ_DYNAMIC)) {
 			if (wq->flags & __WQ_ORDERED_EXPLICIT)
 				continue;
 			wq->flags &= ~__WQ_ORDERED;
