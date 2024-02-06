@@ -53,6 +53,9 @@ struct dax_holder_operations {
 	 */
 	int (*notify_failure)(struct dax_device *dax_dev, u64 offset,
 			u64 len, int mf_flags);
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 #if IS_ENABLED(CONFIG_DAX)
