@@ -55,6 +55,75 @@ static int inotify_merge(struct list_head *list,
 	return event_compare(last_event, event);
 }
 
+int inotify_handle_inode_event_extend(struct fsnotify_mark *inode_mark, u32 mask,
+			       struct inode *inode, struct inode *dir,
+			       const struct qstr *name, u32 cookie)
+{
+	struct inotify_inode_mark *i_mark;
+	struct inotify_event_info *event = NULL;
+	struct fsnotify_event *fsn_event;
+	struct fsnotify_group *group = inode_mark->group;
+	int ret;
+	int len = 0;
+	int alloc_len = sizeof(struct inotify_event_info);
+	struct mem_cgroup *old_memcg;
+	struct inotify_event_info_extend *event_extend = NULL;
+	struct inotify_event_process_info *info;
+	int pad_name_len = 0;
+
+	if (name) {
+		len = name->len;
+		if (len) {
+			pad_name_len = roundup(len + 1, sizeof(struct inotify_event));
+			alloc_len += pad_name_len;
+		} else {
+			alloc_len += len + 1;
+		}
+	}
+
+	i_mark = container_of(inode_mark, struct inotify_inode_mark,
+			      fsn_mark);
+
+	alloc_len += sizeof(struct inotify_event_process_info);
+	old_memcg = set_active_memcg(group->memcg);
+	event_extend = kmalloc(alloc_len, GFP_KERNEL_ACCOUNT | __GFP_RETRY_MAYFAIL);
+	set_active_memcg(old_memcg);
+
+	if (unlikely(!event_extend)) {
+		fsnotify_queue_overflow(group);
+		return -ENOMEM;
+	}
+
+	if (mask & (IN_MOVE_SELF | IN_DELETE_SELF))
+		mask &= ~IN_ISDIR;
+
+	event = &event_extend->event;
+	fsn_event = &event->fse;
+	fsnotify_init_event(fsn_event, 0);
+	event->mask = mask;
+	event->wd = i_mark->wd;
+	event->sync_cookie = cookie;
+	event->name_len = len;
+	if (len)
+		strcpy(event->name, name->name);
+
+	info = (struct inotify_event_process_info *)((void *)event_extend +
+		sizeof(struct inotify_event_info) + pad_name_len);
+	info->pid = current->pid;
+	memcpy(info->comm, current->comm, TASK_COMM_LEN);
+	info->parent_pid = current->parent->pid;
+	memcpy(info->parent_comm, current->parent->comm, TASK_COMM_LEN);
+
+	ret = fsnotify_add_event(group, fsn_event, inotify_merge);
+	if (ret)
+		fsnotify_destroy_event(group, fsn_event);
+
+	if (inode_mark->mask & IN_ONESHOT)
+		fsnotify_destroy_mark(inode_mark, group);
+
+	return 0;
+}
+
 int inotify_handle_inode_event(struct fsnotify_mark *inode_mark, u32 mask,
 			       struct inode *inode, struct inode *dir,
 			       const struct qstr *name, u32 cookie)
@@ -67,6 +136,10 @@ int inotify_handle_inode_event(struct fsnotify_mark *inode_mark, u32 mask,
 	int len = 0, wd;
 	int alloc_len = sizeof(struct inotify_event_info);
 	struct mem_cgroup *old_memcg;
+
+	if (g_fm_group == group)
+		return inotify_handle_inode_event_extend(inode_mark, mask, inode, dir, name,
+					cookie);
 
 	if (name) {
 		len = name->len;

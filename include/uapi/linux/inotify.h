@@ -81,4 +81,6 @@ struct inotify_event {
  */
 #define INOTIFY_IOC_SETNEXTWD	_IOW('I', 0, __s32)
 
+#define INOTIFY_IOC_SET_SYSMONITOR_FM _IO(0xAB, 0xAB)
+
 #endif /* _UAPI_LINUX_INOTIFY_H */
