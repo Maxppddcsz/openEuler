@@ -512,6 +512,9 @@ struct transaction_chp_stats_s {
 	__u32			cs_forced_to_close;
 	__u32			cs_written;
 	__u32			cs_dropped;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 /* The transaction_t type is the guts of the journaling mechanism.  It
@@ -706,6 +709,11 @@ struct transaction_s
 	 * structures associated with the transaction
 	 */
 	struct list_head	t_private_list;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 };
 
 struct transaction_run_stats_s {
