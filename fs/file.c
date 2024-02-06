@@ -21,6 +21,8 @@
 #include <linux/rcupdate.h>
 #include <linux/filescontrol.h>
 #include <linux/close_range.h>
+#include <linux/kernel.h>
+#include <linux/proc_fs.h>
 #include <net/sock.h>
 
 #include "internal.h"
@@ -31,6 +33,9 @@ unsigned int sysctl_nr_open_min = BITS_PER_LONG;
 #define __const_min(x, y) ((x) < (y) ? (x) : (y))
 unsigned int sysctl_nr_open_max =
 	__const_min(INT_MAX, ~(size_t)0/sizeof(void *)) & -BITS_PER_LONG;
+static ATOMIC_NOTIFIER_HEAD(fdstat_notifier_list);
+static unsigned int fdenable;
+static unsigned int fdthreshold = 80;
 
 static void __free_fdtable(struct fdtable *fdt)
 {
@@ -566,6 +571,7 @@ int __alloc_fd(struct files_struct *files,
 	unsigned int fd;
 	int error;
 	struct fdtable *fdt;
+	struct fdstat fdstat_notifier_call;
 
 	spin_lock(&files->file_lock);
 repeat:
@@ -618,6 +624,13 @@ repeat:
 		rcu_assign_pointer(fdt->fd[fd], NULL);
 	}
 #endif
+	if (fdenable == 1 &&
+		(unsigned long)fd == (unsigned long)end * (unsigned long)fdthreshold / 100) {
+		fdstat_notifier_call.pid = current->pid;
+		fdstat_notifier_call.total_fd_num = fd;
+		memcpy(fdstat_notifier_call.comm, current->comm, sizeof(fdstat_notifier_call.comm));
+		atomic_notifier_call_chain(&fdstat_notifier_list, 0, (void *)&fdstat_notifier_call);
+	}
 
 out:
 	spin_unlock(&files->file_lock);
@@ -1342,3 +1355,134 @@ int iterate_fd(struct files_struct *files, unsigned n,
 	return res;
 }
 EXPORT_SYMBOL(iterate_fd);
+
+int register_fdstat_notifier(struct notifier_block *nb)
+{
+	if (nb == NULL) {
+		pr_err("register fdstat notification failed. nb is NULL\n");
+		return -EINVAL;
+	}
+
+	if (nb->notifier_call == NULL) {
+		pr_err("register fdstat notification failed. notifier_call is NULL\n");
+		return -EINVAL;
+	}
+
+	return atomic_notifier_chain_register(&fdstat_notifier_list, nb);
+}
+EXPORT_SYMBOL(register_fdstat_notifier);
+
+int unregister_fdstat_notifier(struct notifier_block *nb)
+{
+	if (nb == NULL) {
+		pr_err("unregister fdstat notification failed. nb is NULL\n");
+		return -EINVAL;
+	}
+
+	return atomic_notifier_chain_unregister(&fdstat_notifier_list, nb);
+}
+EXPORT_SYMBOL(unregister_fdstat_notifier);
+
+static int fdenable_show(struct seq_file *userfile, void *v)
+{
+	seq_printf(userfile, "%u\n", fdenable);
+	return 0;
+}
+
+static int fdenable_open(struct inode *inode, struct file *file)
+{
+	single_open(file, fdenable_show, NULL);
+	return 0;
+}
+
+static ssize_t fdenable_write(struct file *file, const char __user *ubuf,
+		size_t cnt, loff_t *ppos)
+{
+	int ret;
+	unsigned int val;
+
+	ret = kstrtouint_from_user(ubuf, cnt, 10, &val);
+	if (ret) {
+		pr_err("[fdstat] parse fdenable failed\n");
+		return ret;
+	}
+
+	if (val != 0 && val != 1) {
+		pr_err("[fdstat] fdenable is invalid\n");
+		return -EINVAL;
+	}
+
+	fdenable = val;
+	return cnt;
+}
+
+static const struct proc_ops fdenable_operations = {
+	.proc_open = fdenable_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
+	.proc_write = fdenable_write,
+};
+
+static int fdthreshold_show(struct seq_file *userfile, void *v)
+{
+	seq_printf(userfile, "%u\n", fdthreshold);
+	return 0;
+}
+
+static int fdthreshold_open(struct inode *inode, struct file *file)
+{
+	single_open(file, fdthreshold_show, NULL);
+	return 0;
+}
+
+static ssize_t fdthreshold_write(struct file *file, const char __user *ubuf,
+		size_t cnt, loff_t *ppos)
+{
+	int ret;
+	unsigned int val;
+
+	ret = kstrtouint_from_user(ubuf, cnt, 10, &val);
+	if (ret) {
+		pr_err("[fdstat] parse fdthreshold failed\n");
+		return ret;
+	}
+
+	if (val < 1 || val > 99) {
+		pr_err("[fdstat] fdthreshold is invalid\n");
+		return -EINVAL;
+	}
+
+	fdthreshold = val;
+	return cnt;
+}
+
+static const struct proc_ops fdthreshold_operations = {
+	.proc_open = fdthreshold_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
+	.proc_write = fdthreshold_write,
+};
+
+static int __init kernel_fdstat_init(void)
+{
+	struct proc_dir_entry *fdenable_entry;
+	struct proc_dir_entry *fdthreshold_entry;
+
+	fdenable_entry = proc_create("fdenable", 0600, NULL, &fdenable_operations);
+	if (!fdenable_entry) {
+		pr_err("[fdstat] create /proc/fdenable failed\n");
+		return -ENOMEM;
+	}
+
+	fdthreshold_entry = proc_create("fdthreshold", 0600, NULL, &fdthreshold_operations);
+	if (!fdthreshold_entry) {
+		pr_err("[fdstat] create /proc/fdthreshold failed\n");
+		remove_proc_entry("fdenable", NULL);
+		return -ENOMEM;
+	}
+	return 0;
+}
+
+module_init(kernel_fdstat_init);

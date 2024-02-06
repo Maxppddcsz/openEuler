@@ -10,6 +10,14 @@
 #include <linux/types.h>
 #include <linux/posix_types.h>
 #include <linux/errno.h>
+#include <linux/sched.h>
+#include <linux/notifier.h>
+
+struct fdstat {
+	pid_t pid;
+	unsigned int total_fd_num;
+	char comm[TASK_COMM_LEN];
+};
 
 struct file;
 
@@ -112,6 +120,8 @@ static inline int receive_fd_replace(int fd, struct file *file, unsigned int o_f
 
 extern void flush_delayed_fput(void);
 extern void __fput_sync(struct file *);
+extern int register_fdstat_notifier(struct notifier_block *nb);
+extern int unregister_fdstat_notifier(struct notifier_block *nb);
 
 extern unsigned int sysctl_nr_open_min, sysctl_nr_open_max;
 

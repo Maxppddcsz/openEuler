@@ -32,6 +32,8 @@
 
 #include "internal.h"
 
+static unsigned int files_panic_enable;
+
 /* sysctl tunables... */
 struct files_stat_struct files_stat = {
 	.max_files = NR_FILE
@@ -135,6 +137,10 @@ struct file *alloc_empty_file(int flags, const struct cred *cred)
 {
 	static long old_max;
 	struct file *f;
+
+	if (files_panic_enable && get_nr_files() >= get_max_files())
+		panic("file-nr[%ld] is greater than or equal to file-max[%ld]\n",
+			get_nr_files(), get_max_files());
 
 	/*
 	 * Privileged users can go above max_files
@@ -400,3 +406,17 @@ void __init files_maxfiles_init(void)
 
 	files_stat.max_files = max_t(unsigned long, n, NR_FILE);
 }
+
+static int __init files_panic_enable_setup(char *str)
+{
+	unsigned long val;
+
+	if (kstrtoul(str, 0, &val)) {
+		pr_err("parse cmdline files_panic_enable failed.");
+		return 0;
+	}
+	files_panic_enable = !!val;
+
+	return 1;
+}
+__setup("files_panic_enable=", files_panic_enable_setup);
