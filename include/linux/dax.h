@@ -2,6 +2,7 @@
 #ifndef _LINUX_DAX_H
 #define _LINUX_DAX_H
 
+#include <linux/kabi.h>
 #include <linux/fs.h>
 #include <linux/mm.h>
 #include <linux/radix-tree.h>
@@ -41,6 +42,11 @@ struct dax_operations {
 	 */
 	size_t (*recovery_write)(struct dax_device *dax_dev, pgoff_t pgoff,
 			void *addr, size_t bytes, struct iov_iter *iter);
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 };
 
 struct dax_holder_operations {
@@ -53,6 +59,10 @@ struct dax_holder_operations {
 	 */
 	int (*notify_failure)(struct dax_device *dax_dev, u64 offset,
 			u64 len, int mf_flags);
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
 };
 
 #if IS_ENABLED(CONFIG_DAX)
