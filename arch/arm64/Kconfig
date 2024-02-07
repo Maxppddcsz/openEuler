@@ -416,6 +416,9 @@ config UNWIND_TABLES
 config ARCH_HAS_CPU_RELAX
 	def_bool y
 
+config ARCH_VCPU_STAT
+	def_bool y
+
 source "arch/arm64/Kconfig.platforms"
 
 source "kernel/livepatch/Kconfig"
