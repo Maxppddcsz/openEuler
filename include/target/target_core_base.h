@@ -554,6 +554,12 @@ struct se_cmd {
 	 * initialized on. Drivers can override.
 	 */
 	int			cpuid;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
+	KABI_RESERVE(5)
 };
 
 struct se_ua {
@@ -869,6 +875,9 @@ struct se_device {
 	int			queue_cnt;
 	struct se_device_queue	*queues;
 	struct mutex		lun_reset_mutex;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 struct target_opcode_descriptor {
