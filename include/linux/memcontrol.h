@@ -287,6 +287,12 @@ struct mem_cgroup {
 
 #if defined(CONFIG_MEMCG_KMEM) && defined(CONFIG_ZSWAP)
 	unsigned long zswap_max;
+
+	/*
+	 * Prevent pages from this memcg from being written back from zswap to
+	 * swap, and from being swapped out on zswap store failures.
+	 */
+	bool zswap_writeback;
 #endif
 
 	unsigned long soft_limit;
@@ -933,6 +939,11 @@ static inline bool mem_cgroup_tryget(struct mem_cgroup *memcg)
 	return !memcg || css_tryget(&memcg->css);
 }
 
+static inline bool mem_cgroup_tryget_online(struct mem_cgroup *memcg)
+{
+	return !memcg || css_tryget_online(&memcg->css);
+}
+
 static inline void mem_cgroup_put(struct mem_cgroup *memcg)
 {
 	if (memcg)
@@ -1328,6 +1339,11 @@ static inline struct mem_cgroup *page_memcg_check(struct page *page)
 	return NULL;
 }
 
+static inline struct mem_cgroup *get_mem_cgroup_from_objcg(struct obj_cgroup *objcg)
+{
+	return NULL;
+}
+
 static inline bool folio_memcg_kmem(struct folio *folio)
 {
 	return false;
@@ -1460,6 +1476,11 @@ static inline void obj_cgroup_put(struct obj_cgroup *objcg)
 }
 
 static inline bool mem_cgroup_tryget(struct mem_cgroup *memcg)
+{
+	return true;
+}
+
+static inline bool mem_cgroup_tryget_online(struct mem_cgroup *memcg)
 {
 	return true;
 }
@@ -2059,6 +2080,7 @@ static inline void count_objcg_event(struct obj_cgroup *objcg,
 bool obj_cgroup_may_zswap(struct obj_cgroup *objcg);
 void obj_cgroup_charge_zswap(struct obj_cgroup *objcg, size_t size);
 void obj_cgroup_uncharge_zswap(struct obj_cgroup *objcg, size_t size);
+bool mem_cgroup_zswap_writeback_enabled(struct mem_cgroup *memcg);
 #else
 static inline bool obj_cgroup_may_zswap(struct obj_cgroup *objcg)
 {
@@ -2071,6 +2093,11 @@ static inline void obj_cgroup_charge_zswap(struct obj_cgroup *objcg,
 static inline void obj_cgroup_uncharge_zswap(struct obj_cgroup *objcg,
 					     size_t size)
 {
+}
+static inline bool mem_cgroup_zswap_writeback_enabled(struct mem_cgroup *memcg)
+{
+	/* if zswap is disabled, do not block pages going to the swapping device */
+	return true;
 }
 #endif
 
