@@ -14,6 +14,7 @@
 #include <linux/err.h>
 #include <linux/of.h>
 #include <linux/iova_bitmap.h>
+#include <linux/kabi.h>
 #include <uapi/linux/iommu.h>
 
 #define IOMMU_READ	(1 << 0)
@@ -116,6 +117,10 @@ struct iommu_domain {
 		};
 	};
 	struct mutex switch_log_lock;
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 };
 
 static inline bool iommu_is_dma_domain(struct iommu_domain *domain)
@@ -339,6 +344,10 @@ struct iommu_ops {
 	const struct iommu_domain_ops *default_domain_ops;
 	unsigned long pgsize_bitmap;
 	struct module *owner;
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 };
 
 /**
@@ -424,6 +433,10 @@ struct iommu_domain_ops {
 			       unsigned long *bitmap, unsigned long base_iova,
 			       unsigned long bitmap_pgshift);
 	void (*free)(struct iommu_domain *domain);
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 };
 
 /**
@@ -440,6 +453,8 @@ struct iommu_device {
 	struct fwnode_handle *fwnode;
 	struct device *dev;
 	u32 max_pasids;
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 /**
@@ -497,6 +512,8 @@ struct dev_iommu {
 	u32				attach_deferred:1;
 	u32				pci_32bit_workaround:1;
 	u32				require_direct:1;
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 int iommu_device_register(struct iommu_device *iommu,
