@@ -2467,6 +2467,9 @@ config ARCH_HIBERNATION_HEADER
 config ARCH_SUSPEND_POSSIBLE
 	def_bool y
 
+config ARCH_VCPU_STAT
+	def_bool y
+
 endmenu # "Power management options"
 
 menu "CPU Power Management"

@@ -375,6 +375,9 @@ config ARCH_HIBERNATION_POSSIBLE
 config ARCH_SUSPEND_POSSIBLE
 	def_bool y
 
+config ARCH_VCPU_STAT
+	def_bool y
+
 config AUDIT_ARCH
 	def_bool y if X86_64
 
