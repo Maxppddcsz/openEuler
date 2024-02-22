@@ -14,3 +14,8 @@ __visible bool __native_vcpu_is_preempted(int cpu)
 }
 
 DEFINE_STATIC_CALL(pv_vcpu_preempted, __native_vcpu_is_preempted);
+
+bool pv_is_native_spin_unlock(void)
+{
+	return false;
+}
