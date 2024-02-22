@@ -396,12 +396,12 @@ static void handle_signal(struct ksignal *ksig, struct pt_regs *regs)
 
 void arch_do_signal_or_restart(struct pt_regs *regs)
 {
-    unsigned long continue_addr = 0, restart_addr = 0;
-    int retval = 0;
+	unsigned long continue_addr = 0, restart_addr = 0;
+	int retval = 0;
 	struct ksignal ksig;
-    bool syscall = (regs->cause == EXC_SYSCALL);
+	bool syscall = (regs->cause == EXC_SYSCALL);
 
-    /* If we were from a system call, check for system call restarting */
+	/* If we were from a system call, check for system call restarting */
 	if (syscall) {
 		continue_addr = regs->epc;
 		restart_addr = continue_addr - 4;
@@ -414,13 +414,13 @@ void arch_do_signal_or_restart(struct pt_regs *regs)
 		 * Prepare for system call restart. We do this here so that a
 		 * debugger will see the already changed PC.
 		 */
-        switch (retval) {        
+		switch (retval) {
 		case -ERESTARTNOHAND:
 		case -ERESTARTSYS:
 		case -ERESTARTNOINTR:
 		case -ERESTART_RESTARTBLOCK:
-            regs->a0 = regs->orig_a0;
-            regs->epc = restart_addr;
+			regs->a0 = regs->orig_a0;
+			regs->epc = restart_addr;
 			break;
 		}
 	}
@@ -454,7 +454,7 @@ void arch_do_signal_or_restart(struct pt_regs *regs)
 	 * has chosen to restart at a different PC, ignore the restart.
 	 */
 	if (syscall && regs->epc == restart_addr && retval == -ERESTART_RESTARTBLOCK)
-        regs->a7 = __NR_restart_syscall;
+		regs->a7 = __NR_restart_syscall;
 
 	/*
 	 * If there is no signal to deliver, we just put the saved
