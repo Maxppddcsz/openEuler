@@ -143,12 +143,14 @@ static int register_haltpoll_driver(void)
 	int ret;
 	struct cpuidle_driver *drv = &haltpoll_driver;
 
+#ifdef CONFIG_X86
 	/* Do not load haltpoll if idle= is passed */
 	if (boot_option_idle_override != IDLE_NO_OVERRIDE)
 		return -ENODEV;
 
 	if (!force && (!kvm_para_available() || !haltpoll_want()))
 		return -ENODEV;
+#endif
 
 	cpuidle_poll_state_init(drv);
 
