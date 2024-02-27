@@ -16808,6 +16808,13 @@ S:	Maintained
 F:	include/linux/personality.h
 F:	include/uapi/linux/personality.h
 
+PGO KERNEL
+M:	Zhou Xiong <xiongzhou4@huawei.com>
+M:	Zhiheng Xie <xiezhiheng@huawei.com>
+S:	Maintained
+F:	kernel/gcov/gcc_4_7.c
+F:	kernel/gcov/gcc_base.c
+
 PHOENIX RC FLIGHT CONTROLLER ADAPTER
 M:	Marcus Folkesson <marcus.folkesson@gmail.com>
 L:	linux-input@vger.kernel.org
