@@ -130,7 +130,7 @@ static int haltpoll_cpu_offline(unsigned int cpu)
 
 static bool haltpoll_want(void)
 {
-	return kvm_para_has_hint(KVM_HINTS_REALTIME) || force;
+	return kvm_para_has_hint(KVM_HINTS_REALTIME);
 }
 
 static void haltpoll_uninit(void)
