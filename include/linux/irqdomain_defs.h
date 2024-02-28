@@ -2,6 +2,8 @@
 #ifndef _LINUX_IRQDOMAIN_DEFS_H
 #define _LINUX_IRQDOMAIN_DEFS_H
 
+#include <linux/kabi.h>
+
 /*
  * Should several domains have the same device node, but serve
  * different purposes (for example one domain is for PCI/MSI, and the
@@ -26,6 +28,12 @@ enum irq_domain_bus_token {
 	DOMAIN_BUS_DMAR,
 	DOMAIN_BUS_AMDVI,
 	DOMAIN_BUS_PCI_DEVICE_IMS,
+	DOMAIN_BUS_KABI_RESERVE_1,
+	DOMAIN_BUS_KABI_RESERVE_2,
+	DOMAIN_BUS_KABI_RESERVE_3,
+	DOMAIN_BUS_KABI_RESERVE_4,
+	DOMAIN_BUS_KABI_RESERVE_5,
+	DOMAIN_BUS_KABI_RESERVE_6,
 };
 
 #endif /* _LINUX_IRQDOMAIN_DEFS_H */
