@@ -2519,7 +2519,7 @@ static int update_cpumask(struct cpuset *cs, struct cpuset *trialcs,
 		update_partition_sd_lb(cs, old_prs);
 out_free:
 	free_cpumasks(NULL, &tmp);
-	return 0;
+	return retval;
 }
 
 /**
@@ -2570,7 +2570,7 @@ static int update_exclusive_cpumask(struct cpuset *cs, struct cpuset *trialcs,
 
 	retval = validate_change(cs, trialcs);
 	if (retval)
-		return retval;
+		goto out_free;
 
 	if (is_partition_valid(cs)) {
 		if (cpumask_empty(trialcs->effective_xcpus)) {
@@ -2620,8 +2620,9 @@ static int update_exclusive_cpumask(struct cpuset *cs, struct cpuset *trialcs,
 	if (cs->partition_root_state)
 		update_partition_sd_lb(cs, old_prs);
 
+out_free:
 	free_cpumasks(NULL, &tmp);
-	return 0;
+	return retval;
 }
 
 /*
