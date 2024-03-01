@@ -218,6 +218,23 @@ config SCSI_LOGGING
 	  there should be no noticeable performance impact as long as you have
 	  logging turned off.
 
+config SCSI_KWORKER
+	tristate "kworker NUMA affinity "
+	default n
+	help
+	  kworker: Fix the problem of ipsan performance degradation on ARM
+          architecture.
+
+	  When the current downstream FS tests IPSAN, it is found that the
+	  performance on ARM is much worse than that on X86, and the test data
+	  of IPSAN fluctuates greatly. After analysis, the reason is that when
+	  iscsi issues IO, the task is sent to kworker for processing by
+	  iscsi_xmitworker.
+
+	  The workqueue created by iscsi can automatically identify the CPU of
+	  the soft interrupt currently processed by iscsi, and automatically
+	  schedule the workqueue to the corresponding NUMA node.
+
 config SCSI_SCAN_ASYNC
 	bool "Asynchronous SCSI scanning"
 	depends on SCSI
