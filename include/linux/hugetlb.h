@@ -653,6 +653,15 @@ static inline void set_huge_swap_pte_at(struct mm_struct *mm, unsigned long addr
 {
 }
 
+#ifndef CONFIG_ASCEND_FEATURES
+static inline int hugetlb_insert_hugepage_pte_by_pa(struct mm_struct *mm,
+				unsigned long vir_addr,
+				pgprot_t prot, unsigned long phy_addr)
+{
+	return -EPERM;
+}
+#endif
+
 #endif	/* CONFIG_HUGETLB_PAGE */
 
 static inline spinlock_t *huge_pte_lock(struct hstate *h,
@@ -664,15 +673,6 @@ static inline spinlock_t *huge_pte_lock(struct hstate *h,
 	spin_lock(ptl);
 	return ptl;
 }
-
-#ifndef CONFIG_ASCEND_FEATURES
-static inline int hugetlb_insert__hugepage_pte_by_pa(struct mm_struct *mm,
-				unsigned long vir_addr,
-				pgprot_t prot, unsigned long phy_addr)
-{
-	return -EPERM;
-}
-#endif
 
 #ifdef CONFIG_ASCEND_SHARE_POOL
 pte_t make_huge_pte(struct vm_area_struct *vma, struct page *page, int writable);
