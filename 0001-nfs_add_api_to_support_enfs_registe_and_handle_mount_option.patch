@@ -1,0 +1,794 @@
+diff --git a/fs/nfs/client.c b/fs/nfs/client.c
+index 7d02dc522..b1194a3fb 100644
+--- a/fs/nfs/client.c
++++ b/fs/nfs/client.c
+@@ -48,7 +48,7 @@
+ #include "callback.h"
+ #include "delegation.h"
+ #include "iostat.h"
+-#include "internal.h"
++#include "enfs_adapter.h"
+ #include "fscache.h"
+ #include "pnfs.h"
+ #include "nfs.h"
+@@ -255,6 +255,7 @@ void nfs_free_client(struct nfs_client *clp)
+ 	put_nfs_version(clp->cl_nfs_mod);
+ 	kfree(clp->cl_hostname);
+ 	kfree(clp->cl_acceptor);
++	nfs_free_multi_path_client(clp);
+ 	kfree(clp);
+ }
+ EXPORT_SYMBOL_GPL(nfs_free_client);
+@@ -324,11 +325,26 @@ static struct nfs_client *nfs_match_client(const struct nfs_client_initdata *dat
+ 			continue;
+ 		/* Match the full socket address */
+ 		if (!rpc_cmp_addr_port(sap, clap))
++#if IS_ENABLED(CONFIG_ENFS)
++		{
++			if (data->enfs_option != NULL)
++				continue;
++			else {
++				if (IS_ERR(clp->cl_rpcclient) ||
++				!rpc_clnt_xprt_switch_has_addr(
++					clp->cl_rpcclient, sap))
++					continue;
++			}
++		}
++#else
+ 			/* Match all xprt_switch full socket addresses */
+ 			if (IS_ERR(clp->cl_rpcclient) ||
+                             !rpc_clnt_xprt_switch_has_addr(clp->cl_rpcclient,
+ 							   sap))
+ 				continue;
++#endif
++		if (!nfs_multipath_client_match(clp, data))
++			continue;
+ 
+ 		refcount_inc(&clp->cl_count);
+ 		return clp;
+@@ -512,6 +528,9 @@ int nfs_create_rpc_client(struct nfs_client *clp,
+ 		.program	= &nfs_program,
+ 		.version	= clp->rpc_ops->version,
+ 		.authflavor	= flavor,
++#if IS_ENABLED(CONFIG_ENFS)
++		.multipath_option = cl_init->enfs_option,
++#endif
+ 	};
+ 
+ 	if (test_bit(NFS_CS_DISCRTRY, &clp->cl_flags))
+@@ -634,6 +653,13 @@ struct nfs_client *nfs_init_client(struct nfs_client *clp,
+ 	/* the client is already initialised */
+ 	if (clp->cl_cons_state == NFS_CS_READY)
+ 		return clp;
++	error = nfs_create_multi_path_client(clp, cl_init);
++	if (error < 0) {
++		dprintk("%s: create failed.%d!\n", __func__, error);
++		nfs_put_client(clp);
++		clp = ERR_PTR(error);
++		return clp;
++	}
+ 
+ 	/*
+ 	 * Create a client RPC handle for doing FSSTAT with UNIX auth only
+@@ -666,6 +692,9 @@ static int nfs_init_server(struct nfs_server *server,
+ 		.net = data->net,
+ 		.timeparms = &timeparms,
+ 		.init_flags = (1UL << NFS_CS_REUSEPORT),
++#if IS_ENABLED(CONFIG_ENFS)
++		.enfs_option = data->enfs_option,
++#endif
+ 	};
+ 	struct nfs_client *clp;
+ 	int error;
+diff --git a/fs/nfs/enfs_adapter.c b/fs/nfs/enfs_adapter.c
+new file mode 100644
+index 000000000..e0f3841c1
+--- /dev/null
++++ b/fs/nfs/enfs_adapter.c
+@@ -0,0 +1,276 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Client-side ENFS adapter.
++ *
++ * Copyright (c) 2023. Huawei Technologies Co., Ltd. All rights reserved.
++ */
++#include <linux/types.h>
++#include <linux/sunrpc/clnt.h>
++#include <linux/nfs.h>
++#include <linux/nfs4.h>
++#include <linux/nfs3.h>
++#include <linux/nfs_fs.h>
++#include <linux/nfs_fs_sb.h>
++#include <linux/sunrpc/sched.h>
++#include <linux/nfs_iostat.h>
++#include "enfs_adapter.h"
++#include "iostat.h"
++
++struct enfs_adapter_ops __rcu *enfs_adapter;
++
++int enfs_adapter_register(struct enfs_adapter_ops *ops)
++{
++	struct enfs_adapter_ops *old;
++
++	old = cmpxchg((struct enfs_adapter_ops **)&enfs_adapter, NULL, ops);
++	if (old == NULL || old == ops)
++		return 0;
++	pr_err("regist %s ops %p failed. old %p\n", __func__, ops, old);
++	return -EPERM;
++}
++EXPORT_SYMBOL_GPL(enfs_adapter_register);
++
++int enfs_adapter_unregister(struct enfs_adapter_ops *ops)
++{
++	struct enfs_adapter_ops *old;
++
++	old = cmpxchg((struct enfs_adapter_ops **)&enfs_adapter, ops, NULL);
++	if (old == ops || old == NULL)
++		return 0;
++	pr_err("unregist %s ops %p failed. old %p\n", __func__, ops, old);
++	return -EPERM;
++}
++EXPORT_SYMBOL_GPL(enfs_adapter_unregister);
++
++struct enfs_adapter_ops *nfs_multipath_router_get(void)
++{
++	struct enfs_adapter_ops *ops;
++
++	rcu_read_lock();
++	ops = rcu_dereference(enfs_adapter);
++	if (ops == NULL) {
++		rcu_read_unlock();
++		return NULL;
++	}
++	if (!try_module_get(ops->owner))
++		ops = NULL;
++	rcu_read_unlock();
++	return ops;
++}
++
++void nfs_multipath_router_put(struct enfs_adapter_ops *ops)
++{
++	if (ops)
++		module_put(ops->owner);
++}
++
++bool is_valid_option(enum nfs_multi_path_options option)
++{
++	if (option < REMOTEADDR || option >= INVALID_OPTION) {
++		pr_warn("%s: ENFS invalid option %d\n", __func__, option);
++		return false;
++	}
++
++	return true;
++}
++
++int enfs_parse_mount_options(enum nfs_multi_path_options option, char *str,
++			struct nfs_parsed_mount_data *mnt)
++{
++	int rc;
++	struct enfs_adapter_ops *ops;
++
++	ops = nfs_multipath_router_get();
++	if ((ops == NULL) || (ops->parse_mount_options == NULL) ||
++		!is_valid_option(option)) {
++		nfs_multipath_router_put(ops);
++		dfprintk(MOUNT,
++			"NFS: parsing nfs mount option enfs not load[%s]\n"
++		,  __func__);
++		return -EOPNOTSUPP;
++	}
++    // nfs_multipath_parse_options
++	dfprintk(MOUNT, "NFS:   parsing nfs mount option '%s' type: %d[%s]\n"
++			, str, option, __func__);
++	rc = ops->parse_mount_options(option, str, &mnt->enfs_option, mnt->net);
++	nfs_multipath_router_put(ops);
++	return rc;
++}
++
++void enfs_free_mount_options(struct nfs_parsed_mount_data *data)
++{
++	struct enfs_adapter_ops *ops;
++
++	if (data->enfs_option == NULL)
++		return;
++
++	ops = nfs_multipath_router_get();
++	if ((ops == NULL) || (ops->free_mount_options == NULL)) {
++		nfs_multipath_router_put(ops);
++		return;
++	}
++	ops->free_mount_options((void *)&data->enfs_option);
++	nfs_multipath_router_put(ops);
++}
++
++int nfs_create_multi_path_client(struct nfs_client *client,
++			const struct nfs_client_initdata *cl_init)
++{
++	int ret = 0;
++	struct enfs_adapter_ops *ops;
++
++	if (cl_init->enfs_option == NULL)
++		return 0;
++
++	ops = nfs_multipath_router_get();
++	if (ops != NULL && ops->client_info_init != NULL)
++		ret = ops->client_info_init(
++			(void *)&client->cl_multipath_data, cl_init);
++	nfs_multipath_router_put(ops);
++
++	return ret;
++}
++EXPORT_SYMBOL_GPL(nfs_create_multi_path_client);
++
++void nfs_free_multi_path_client(struct nfs_client *clp)
++{
++	struct enfs_adapter_ops *ops;
++
++	if (clp->cl_multipath_data == NULL)
++		return;
++
++	ops = nfs_multipath_router_get();
++	if (ops != NULL && ops->client_info_free != NULL)
++		ops->client_info_free(clp->cl_multipath_data);
++	nfs_multipath_router_put(ops);
++}
++
++int nfs_multipath_client_match(struct nfs_client *clp,
++			const struct nfs_client_initdata *sap)
++{
++	bool ret = true;
++	struct enfs_adapter_ops *ops;
++
++	pr_info("%s src %p dst %p\n.", __func__,
++	clp->cl_multipath_data, sap->enfs_option);
++
++	if (clp->cl_multipath_data == NULL && sap->enfs_option == NULL)
++		return true;
++
++	if ((clp->cl_multipath_data == NULL && sap->enfs_option) ||
++		(clp->cl_multipath_data && sap->enfs_option == NULL)) {
++		pr_err("not match client src %p dst %p\n.",
++				clp->cl_multipath_data, sap->enfs_option);
++		return false;
++	}
++
++	ops = nfs_multipath_router_get();
++	if (ops != NULL && ops->client_info_match != NULL)
++		ret = ops->client_info_match(clp->cl_multipath_data,
++					sap->enfs_option);
++	nfs_multipath_router_put(ops);
++
++	return ret;
++}
++
++int nfs4_multipath_client_match(struct nfs_client *src, struct nfs_client *dst)
++{
++	int ret = true;
++	struct enfs_adapter_ops *ops;
++
++	if (src->cl_multipath_data == NULL && dst->cl_multipath_data == NULL)
++		return true;
++
++	if (src->cl_multipath_data == NULL || dst->cl_multipath_data == NULL)
++		return false;
++
++	ops = nfs_multipath_router_get();
++	if (ops != NULL && ops->nfs4_client_info_match != NULL)
++		ret = ops->nfs4_client_info_match(src->cl_multipath_data,
++					src->cl_multipath_data);
++	nfs_multipath_router_put(ops);
++
++	return ret;
++}
++EXPORT_SYMBOL_GPL(nfs4_multipath_client_match);
++
++void nfs_multipath_show_client_info(struct seq_file *mount_option,
++			struct nfs_server *server)
++{
++	struct enfs_adapter_ops *ops;
++
++	if (mount_option == NULL || server == NULL ||
++		server->client == NULL ||
++		server->nfs_client->cl_multipath_data == NULL)
++		return;
++
++	ops = nfs_multipath_router_get();
++	if (ops != NULL && ops->client_info_show != NULL)
++		ops->client_info_show(mount_option, server);
++	nfs_multipath_router_put(ops);
++}
++
++int nfs_remount_iplist(struct nfs_client *nfs_client, void *data)
++{
++	int ret = 0;
++	struct enfs_adapter_ops *ops;
++	struct nfs_parsed_mount_data *parsed_data =
++		(struct nfs_parsed_mount_data *)data;
++
++	if (!parsed_data->enfs_option)
++		return 0;
++
++	if (nfs_client == NULL || nfs_client->cl_rpcclient == NULL)
++		return 0;
++
++	ops = nfs_multipath_router_get();
++	if (ops != NULL && ops->remount_ip_list != NULL)
++		ret = ops->remount_ip_list(nfs_client,
++			parsed_data->enfs_option);
++	nfs_multipath_router_put(ops);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(nfs_remount_iplist);
++
++/*
++ * Error-check and convert a string of mount options from
++ * user space into a data structure. The whole mount string
++ * is processed; bad options are skipped as they are encountered.
++ * If there were no errors, return 1; otherwise return zero(0)
++ */
++int enfs_check_mount_parse_info(char *p, int token,
++		struct nfs_parsed_mount_data *mnt, const substring_t *args)
++{
++	char *string;
++	int rc;
++
++	string = match_strdup(args);
++	if (string == NULL) {
++		pr_info("NFS: not enough memory to parse option\n");
++		return 0;
++	}
++	rc = enfs_parse_mount_options(get_nfs_multi_path_opt(token),
++					string, mnt);
++
++	kfree(string);
++	switch (rc) {
++	case  0:
++		return 1;
++	case -ENOMEM:
++		pr_info("NFS: not enough memory to parse option\n");
++		return 0;
++	case -ENOSPC:
++		pr_info("NFS: param is more than supported limit: %d\n", rc);
++		return 0;
++	case -EINVAL:
++		pr_info("NFS: bad IP address specified: %s\n", p);
++		return 0;
++	case -ENOTSUPP:
++		pr_info("NFS: bad IP address specified: %s\n", p);
++		return 0;
++	case -EOPNOTSUPP:
++		pr_info("NFS: bad IP address specified: %s\n", p);
++		return 0;
++	}
++	return 1;
++}
+diff --git a/fs/nfs/enfs_adapter.h b/fs/nfs/enfs_adapter.h
+new file mode 100644
+index 000000000..98b4e3292
+--- /dev/null
++++ b/fs/nfs/enfs_adapter.h
+@@ -0,0 +1,116 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ *  Client-side ENFS adapt header.
++ *
++ *  Copyright (c) 2023. Huawei Technologies Co., Ltd. All rights reserved.
++ */
++#ifndef _NFS_MULTIPATH_H_
++#define _NFS_MULTIPATH_H_
++
++#include <linux/parser.h>
++#include "internal.h"
++
++#if IS_ENABLED(CONFIG_ENFS)
++enum nfs_multi_path_options {
++	REMOTEADDR,
++	LOCALADDR,
++	REMOTEDNSNAME,
++	REMOUNTREMOTEADDR,
++	REMOUNTLOCALADDR,
++	INVALID_OPTION
++};
++
++
++struct enfs_adapter_ops {
++	const char *name;
++	struct module *owner;
++	int (*parse_mount_options)(enum nfs_multi_path_options option,
++		char *str, void **enfs_option, struct net *net_ns);
++
++	void (*free_mount_options)(void **data);
++
++	int (*client_info_init)(void **data,
++				const struct nfs_client_initdata *cl_init);
++	void (*client_info_free)(void *data);
++	int (*client_info_match)(void *src, void *dst);
++	int (*nfs4_client_info_match)(void *src, void *dst);
++	void (*client_info_show)(struct seq_file *mount_option, void *data);
++	int (*remount_ip_list)(struct nfs_client *nfs_client,
++						void *enfs_option);
++};
++
++int enfs_parse_mount_options(enum nfs_multi_path_options option, char *str,
++			struct nfs_parsed_mount_data *mnt);
++void enfs_free_mount_options(struct nfs_parsed_mount_data *data);
++int nfs_create_multi_path_client(struct nfs_client *client,
++			const struct nfs_client_initdata *cl_init);
++void nfs_free_multi_path_client(struct nfs_client *clp);
++int nfs_multipath_client_match(struct nfs_client *clp,
++			const struct nfs_client_initdata *sap);
++int nfs4_multipath_client_match(struct nfs_client *src, struct nfs_client *dst);
++void nfs_multipath_show_client_info(struct seq_file *mount_option,
++			struct nfs_server *server);
++int enfs_adapter_register(struct enfs_adapter_ops *ops);
++int enfs_adapter_unregister(struct enfs_adapter_ops *ops);
++int nfs_remount_iplist(struct nfs_client *nfs_client, void *data);
++int nfs4_create_multi_path(struct nfs_server *server,
++	struct nfs_parsed_mount_data *data,
++	const struct rpc_timeout *timeparms);
++int enfs_check_mount_parse_info(char *p, int token,
++		struct nfs_parsed_mount_data *mnt, const substring_t *args);
++
++#else
++static inline
++void nfs_free_multi_path_client(struct nfs_client *clp)
++{
++
++}
++
++static inline
++int nfs_multipath_client_match(struct nfs_client *clp,
++			const struct nfs_client_initdata *sap)
++{
++	return 1;
++}
++
++static inline
++int nfs_create_multi_path_client(struct nfs_client *client,
++			const struct nfs_client_initdata *cl_init)
++{
++	return 0;
++}
++
++static inline
++void nfs_multipath_show_client_info(struct seq_file *mount_option,
++			struct nfs_server *server)
++{
++
++}
++
++static inline
++int nfs4_multipath_client_match(struct nfs_client *src,
++			struct nfs_client *dst)
++{
++	return 1;
++}
++
++static inline
++void enfs_free_mount_options(struct nfs_parsed_mount_data *data)
++{
++
++}
++
++static inline
++int enfs_check_mount_parse_info(char *p, int token,
++		struct nfs_parsed_mount_data *mnt, const substring_t *args)
++{
++	return 1;
++}
++
++static inline
++int nfs_remount_iplist(struct nfs_client *nfs_client, void *data)
++{
++	return 0;
++}
++#endif // CONFIG_ENFS
++#endif // _NFS_MULTIPATH_H_
+diff --git a/fs/nfs/internal.h b/fs/nfs/internal.h
+index 0ce5a9064..84ac82dbb 100644
+--- a/fs/nfs/internal.h
++++ b/fs/nfs/internal.h
+@@ -93,6 +93,9 @@ struct nfs_client_initdata {
+ 	u32 minorversion;
+ 	struct net *net;
+ 	const struct rpc_timeout *timeparms;
++#if IS_ENABLED(CONFIG_ENFS)
++	void *enfs_option; /* struct multipath_mount_options * */
++#endif
+ };
+ 
+ /*
+@@ -135,6 +138,9 @@ struct nfs_parsed_mount_data {
+ 
+ 	struct security_mnt_opts lsm_opts;
+ 	struct net		*net;
++#if IS_ENABLED(CONFIG_ENFS)
++	void *enfs_option; /* struct multipath_mount_options * */
++#endif
+ };
+ 
+ /* mount_clnt.c */
+@@ -430,6 +436,10 @@ extern void nfs_sb_deactive(struct super_block *sb);
+ extern int nfs_client_for_each_server(struct nfs_client *clp,
+ 				      int (*fn)(struct nfs_server *, void *),
+ 				      void *data);
++#if IS_ENABLED(CONFIG_ENFS)
++extern enum nfs_multi_path_options get_nfs_multi_path_opt(int token);
++#endif
++
+ /* io.c */
+ extern void nfs_start_io_read(struct inode *inode);
+ extern void nfs_end_io_read(struct inode *inode);
+diff --git a/fs/nfs/nfs4client.c b/fs/nfs/nfs4client.c
+index 1350ea673..f97646b98 100644
+--- a/fs/nfs/nfs4client.c
++++ b/fs/nfs/nfs4client.c
+@@ -10,7 +10,7 @@
+ #include <linux/sunrpc/xprt.h>
+ #include <linux/sunrpc/bc_xprt.h>
+ #include <linux/sunrpc/rpc_pipe_fs.h>
+-#include "internal.h"
++#include "enfs_adapter.h"
+ #include "callback.h"
+ #include "delegation.h"
+ #include "nfs4session.h"
+@@ -225,6 +225,14 @@ struct nfs_client *nfs4_alloc_client(const struct nfs_client_initdata *cl_init)
+ 	__set_bit(NFS_CS_DISCRTRY, &clp->cl_flags);
+ 	__set_bit(NFS_CS_NO_RETRANS_TIMEOUT, &clp->cl_flags);
+ 
++	err = nfs_create_multi_path_client(clp, cl_init);
++	if (err < 0) {
++		dprintk("%s: create failed.%d\n", __func__, err);
++		nfs_put_client(clp);
++		clp = ERR_PTR(err);
++		return clp;
++	}
++
+ 	/*
+ 	 * Set up the connection to the server before we add add to the
+ 	 * global list.
+@@ -529,6 +537,9 @@ static int nfs4_match_client(struct nfs_client  *pos,  struct nfs_client *new,
+ 	if (!nfs4_match_client_owner_id(pos, new))
+ 		return 1;
+ 
++	if (!nfs4_multipath_client_match(pos, new))
++		return 1;
++
+ 	return 0;
+ }
+ 
+@@ -860,7 +871,7 @@ static int nfs4_set_client(struct nfs_server *server,
+ 		const size_t addrlen,
+ 		const char *ip_addr,
+ 		int proto, const struct rpc_timeout *timeparms,
+-		u32 minorversion, struct net *net)
++		u32 minorversion, struct net *net, void *enfs_option)
+ {
+ 	struct nfs_client_initdata cl_init = {
+ 		.hostname = hostname,
+@@ -872,6 +883,9 @@ static int nfs4_set_client(struct nfs_server *server,
+ 		.minorversion = minorversion,
+ 		.net = net,
+ 		.timeparms = timeparms,
++#if IS_ENABLED(CONFIG_ENFS)
++		.enfs_option = enfs_option,
++#endif
+ 	};
+ 	struct nfs_client *clp;
+ 
+@@ -1050,6 +1064,7 @@ static int nfs4_init_server(struct nfs_server *server,
+ {
+ 	struct rpc_timeout timeparms;
+ 	int error;
++	void *enfs_option = NULL;
+ 
+ 	nfs_init_timeout_values(&timeparms, data->nfs_server.protocol,
+ 			data->timeo, data->retrans);
+@@ -1067,6 +1082,10 @@ static int nfs4_init_server(struct nfs_server *server,
+ 	else
+ 		data->selected_flavor = RPC_AUTH_UNIX;
+ 
++#if IS_ENABLED(CONFIG_ENFS)
++	enfs_option = data->enfs_option;
++#endif
++
+ 	/* Get a client record */
+ 	error = nfs4_set_client(server,
+ 			data->nfs_server.hostname,
+@@ -1076,7 +1095,7 @@ static int nfs4_init_server(struct nfs_server *server,
+ 			data->nfs_server.protocol,
+ 			&timeparms,
+ 			data->minorversion,
+-			data->net);
++			data->net, enfs_option);
+ 	if (error < 0)
+ 		return error;
+ 
+@@ -1161,7 +1180,7 @@ struct nfs_server *nfs4_create_referral_server(struct nfs_clone_mount *data,
+ 				XPRT_TRANSPORT_RDMA,
+ 				parent_server->client->cl_timeout,
+ 				parent_client->cl_mvops->minor_version,
+-				parent_client->cl_net);
++				parent_client->cl_net, NULL);
+ 	if (!error)
+ 		goto init_server;
+ #endif	/* IS_ENABLED(CONFIG_SUNRPC_XPRT_RDMA) */
+@@ -1174,7 +1193,7 @@ struct nfs_server *nfs4_create_referral_server(struct nfs_clone_mount *data,
+ 				XPRT_TRANSPORT_TCP,
+ 				parent_server->client->cl_timeout,
+ 				parent_client->cl_mvops->minor_version,
+-				parent_client->cl_net);
++				parent_client->cl_net, NULL);
+ 	if (error < 0)
+ 		goto error;
+ 
+@@ -1269,7 +1288,7 @@ int nfs4_update_server(struct nfs_server *server, const char *hostname,
+ 	set_bit(NFS_MIG_TSM_POSSIBLE, &server->mig_status);
+ 	error = nfs4_set_client(server, hostname, sap, salen, buf,
+ 				clp->cl_proto, clnt->cl_timeout,
+-				clp->cl_minorversion, net);
++				clp->cl_minorversion, net, NULL);
+ 	clear_bit(NFS_MIG_TSM_POSSIBLE, &server->mig_status);
+ 	if (error != 0) {
+ 		nfs_server_insert_lists(server);
+diff --git a/fs/nfs/super.c b/fs/nfs/super.c
+index a05e1eb2c..168da9700 100644
+--- a/fs/nfs/super.c
++++ b/fs/nfs/super.c
+@@ -51,7 +51,6 @@
+ #include <linux/netdevice.h>
+ #include <linux/nfs_xdr.h>
+ #include <linux/magic.h>
+-#include <linux/parser.h>
+ #include <linux/nsproxy.h>
+ #include <linux/rcupdate.h>
+ 
+@@ -61,7 +60,7 @@
+ #include "callback.h"
+ #include "delegation.h"
+ #include "iostat.h"
+-#include "internal.h"
++#include "enfs_adapter.h"
+ #include "fscache.h"
+ #include "nfs4session.h"
+ #include "pnfs.h"
+@@ -113,6 +112,12 @@ enum {
+ 
+ 	/* Special mount options */
+ 	Opt_userspace, Opt_deprecated, Opt_sloppy,
++#if IS_ENABLED(CONFIG_ENFS)
++	Opt_remote_iplist,
++	Opt_local_iplist,
++	Opt_remote_dnslist,
++	Opt_enfs_info,
++#endif
+ 
+ 	Opt_err
+ };
+@@ -183,6 +188,13 @@ static const match_table_t nfs_mount_option_tokens = {
+ 	{ Opt_fscache_uniq, "fsc=%s" },
+ 	{ Opt_local_lock, "local_lock=%s" },
+ 
++#if IS_ENABLED(CONFIG_ENFS)
++	{ Opt_remote_iplist, "remoteaddrs=%s" },
++	{ Opt_local_iplist, "localaddrs=%s" },
++	{ Opt_remote_dnslist, "remotednsname=%s" },
++	{ Opt_enfs_info, "enfs_info=%s" },
++#endif
++
+ 	/* The following needs to be listed after all other options */
+ 	{ Opt_nfsvers, "v%s" },
+ 
+@@ -365,6 +377,21 @@ static struct shrinker acl_shrinker = {
+ 	.seeks		= DEFAULT_SEEKS,
+ };
+ 
++#if IS_ENABLED(CONFIG_ENFS)
++enum nfs_multi_path_options get_nfs_multi_path_opt(int token)
++{
++	switch (token) {
++	case Opt_remote_iplist:
++		return REMOUNTREMOTEADDR;
++	case Opt_local_iplist:
++		return REMOUNTLOCALADDR;
++	case Opt_remote_dnslist:
++		return REMOTEDNSNAME;
++	}
++	return INVALID_OPTION;
++}
++#endif
++
+ /*
+  * Register the NFS filesystems
+  */
+@@ -758,6 +785,9 @@ int nfs_show_options(struct seq_file *m, struct dentry *root)
+ 	seq_printf(m, ",addr=%s",
+ 			rpc_peeraddr2str(nfss->nfs_client->cl_rpcclient,
+ 							RPC_DISPLAY_ADDR));
++
++	nfs_multipath_show_client_info(m, nfss);
++
+ 	rcu_read_unlock();
+ 
+ 	return 0;
+@@ -853,6 +883,8 @@ int nfs_show_stats(struct seq_file *m, struct dentry *root)
+ 	seq_puts(m, root->d_sb->s_flags & SB_NODIRATIME ? ",nodiratime" : "");
+ 	nfs_show_mount_options(m, nfss, 1);
+ 
++	nfs_multipath_show_client_info(m, nfss);
++
+ 	seq_printf(m, "\n\tage:\t%lu", (jiffies - nfss->mount_time) / HZ);
+ 
+ 	show_implementation_id(m, nfss);
+@@ -977,6 +1009,7 @@ static void nfs_free_parsed_mount_data(struct nfs_parsed_mount_data *data)
+ 		kfree(data->nfs_server.export_path);
+ 		kfree(data->nfs_server.hostname);
+ 		kfree(data->fscache_uniq);
++		enfs_free_mount_options(data);
+ 		security_free_mnt_opts(&data->lsm_opts);
+ 		kfree(data);
+ 	}
+@@ -1641,7 +1674,6 @@ static int nfs_parse_mount_options(char *raw,
+ 				return 0;
+ 			};
+ 			break;
+-
+ 		/*
+ 		 * Special options
+ 		 */
+@@ -1654,7 +1686,18 @@ static int nfs_parse_mount_options(char *raw,
+ 			dfprintk(MOUNT, "NFS:   ignoring mount option "
+ 					"'%s'\n", p);
+ 			break;
+-
++#if IS_ENABLED(CONFIG_ENFS)
++		case Opt_remote_iplist:
++		case Opt_local_iplist:
++		case Opt_remote_dnslist:
++			rc = enfs_check_mount_parse_info(p,
++					token, mnt, args);
++			if (rc != 1)
++				return rc;
++			break;
++		case Opt_enfs_info:
++			break;
++#endif
+ 		default:
+ 			invalid_option = 1;
+ 			dfprintk(MOUNT, "NFS:   unrecognized mount option "
+@@ -2335,6 +2378,10 @@ nfs_remount(struct super_block *sb, int *flags, char *raw_data)
+ 	if (!nfs_parse_mount_options((char *)options, data))
+ 		goto out;
+ 
++	error = nfs_remount_iplist(nfss->nfs_client, data);
++	if (error)
++		goto out;
++
+ 	/*
+ 	 * noac is a special case. It implies -o sync, but that's not
+ 	 * necessarily reflected in the mtab options. do_remount_sb
+@@ -2347,6 +2394,8 @@ nfs_remount(struct super_block *sb, int *flags, char *raw_data)
+ 	/* compare new mount options with old ones */
+ 	error = nfs_compare_remount_data(nfss, data);
+ out:
++	/* release remount option member */
++	enfs_free_mount_options(data);
+ 	nfs_free_parsed_mount_data(data);
+ 	return error;
+ }
+diff --git a/include/linux/nfs_fs_sb.h b/include/linux/nfs_fs_sb.h
+index 7023ae64e..2c19678af 100644
+--- a/include/linux/nfs_fs_sb.h
++++ b/include/linux/nfs_fs_sb.h
+@@ -123,6 +123,11 @@ struct nfs_client {
+ 
+ 	struct net		*cl_net;
+ 	struct list_head	pending_cb_stateids;
++
++#if IS_ENABLED(CONFIG_ENFS)
++	/* multi path private structure (struct multipath_client_info *) */
++	void *cl_multipath_data;
++#endif
+ };
+ 
+ /*
