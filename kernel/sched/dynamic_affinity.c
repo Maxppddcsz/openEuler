@@ -18,7 +18,6 @@
  */
 #include "dynamic_affinity.h"
 
-static inline struct cpumask *task_prefer_cpus(struct task_struct *p);
 static inline int dynamic_affinity_mode(struct task_struct *p);
 static unsigned long capacity_of(int cpu);
 static inline unsigned long cfs_rq_load_avg(struct cfs_rq *cfs_rq);
@@ -42,13 +41,40 @@ static inline bool dynamic_affinity_used(void)
  */
 int sysctl_sched_util_low_pct = 85;
 
-static inline bool prefer_cpus_valid(struct task_struct *p)
+static inline struct cpumask *task_prefer_cpus(struct task_struct *p, int mode)
 {
-	struct cpumask *prefer_cpus = task_prefer_cpus(p);
+#ifdef CONFIG_QOS_SCHED_SMART_GRID
+	struct affinity_domain *ad = &task_group(p)->auto_affinity->ad;
 
-	return !cpumask_empty(prefer_cpus) &&
-	       !cpumask_equal(prefer_cpus, &p->cpus_allowed) &&
-	       cpumask_subset(prefer_cpus, &p->cpus_allowed);
+	if (mode == 1)
+		return ad->domains[ad->curr_level];
+#endif
+
+	return p->prefer_cpus;
+}
+
+static inline int dynamic_affinity_mode(struct task_struct *p)
+{
+	struct cpumask *prefer_cpus;
+	int mode = 0;
+
+#ifdef CONFIG_QOS_SCHED_SMART_GRID
+	if (smart_grid_used()) {
+		mode = task_group(p)->auto_affinity->mode == 0 ? -1 : 1;
+		if (mode == -1)
+			return -1;
+	}
+#endif
+
+	prefer_cpus = task_prefer_cpus(p, mode);
+	if (cpumask_empty(prefer_cpus) ||
+	       !cpumask_subset(prefer_cpus, &p->cpus_allowed))
+		return -1;
+
+	if (mode == 0 && cpumask_equal(prefer_cpus, &p->cpus_allowed))
+		return -1;
+
+	return mode;
 }
 
 /*
@@ -79,7 +105,7 @@ void set_task_select_cpus(struct task_struct *p, int *idlest_cpu, int sd_flag)
 		rcu_read_unlock();
 		return;
 	} else if (mode == 1) {
-		p->select_cpus = task_prefer_cpus(p);
+		p->select_cpus = task_prefer_cpus(p, mode);
 		if (idlest_cpu)
 			*idlest_cpu = cpumask_first(p->select_cpus);
 		sched_qos_affinity_set(p);
@@ -188,31 +214,6 @@ static void smart_grid_usage_inc(void)
 static void smart_grid_usage_dec(void)
 {
 	static_key_slow_dec(&__smart_grid_used);
-}
-
-static inline struct cpumask *task_prefer_cpus(struct task_struct *p)
-{
-	struct affinity_domain *ad;
-
-	if (!smart_grid_used())
-		return p->prefer_cpus;
-
-	if (task_group(p)->auto_affinity->mode == 0)
-		return &p->cpus_allowed;
-
-	ad = &task_group(p)->auto_affinity->ad;
-	return ad->domains[ad->curr_level];
-}
-
-static inline int dynamic_affinity_mode(struct task_struct *p)
-{
-	if (!prefer_cpus_valid(p))
-		return -1;
-
-	if (smart_grid_used())
-		return task_group(p)->auto_affinity->mode == 0 ? -1 : 1;
-
-	return 0;
 }
 
 static void affinity_domain_up(struct task_group *tg)
@@ -770,20 +771,5 @@ int proc_cpu_affinity_domain_nodemask(struct ctl_table *table, int write,
 
 	mutex_unlock(&smart_grid_used_mutex);
 	return err;
-}
-#else
-static inline bool prefer_cpus_valid(struct task_struct *p);
-
-static inline struct cpumask *task_prefer_cpus(struct task_struct *p)
-{
-	return p->prefer_cpus;
-}
-
-static inline int dynamic_affinity_mode(struct task_struct *p)
-{
-	if (!prefer_cpus_valid(p))
-		return -1;
-
-	return 0;
 }
 #endif
