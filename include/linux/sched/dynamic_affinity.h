@@ -18,6 +18,11 @@ extern int set_prefer_cpus_ptr(struct task_struct *p,
 			       const struct cpumask *new_mask);
 
 #ifdef CONFIG_QOS_SCHED_SMART_GRID
+extern unsigned long *smart_grid_preferred_nodemask_bits;
+extern int proc_cpu_affinity_domain_nodemask(struct ctl_table *table, int write,
+					     void __user *buffer, size_t *lenp,
+					     loff_t *ppos);
+
 extern struct static_key __smart_grid_used;
 static inline bool smart_grid_used(void)
 {
