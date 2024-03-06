@@ -23,6 +23,9 @@
 #include <linux/rcupdate.h>
 #include <linux/resource.h>
 #include <linux/latencytop.h>
+#ifdef CONFIG_QOS_SCHED_DYNAMIC_AFFINITY
+#include <linux/sched/dynamic_affinity.h>
+#endif
 #include <linux/sched/prio.h>
 #include <linux/signal_types.h>
 #include <linux/mm_types_task.h>
@@ -443,15 +446,6 @@ struct sched_statistics {
 	u64				nr_wakeups_idle;
 #endif
 };
-
-#ifdef CONFIG_QOS_SCHED_DYNAMIC_AFFINITY
-struct dyn_affinity_stats {
-#ifdef CONFIG_SCHEDSTATS
-	u64				nr_wakeups_preferred_cpus;
-	u64				nr_wakeups_force_preferred_cpus;
-#endif
-};
-#endif
 
 struct sched_entity {
 	/* For load-balancing: */
@@ -1998,28 +1992,6 @@ int sched_qos_cpu_overload(void);
 static inline int sched_qos_cpu_overload(void)
 {
 	return 0;
-}
-#endif
-
-#ifdef CONFIG_QOS_SCHED_DYNAMIC_AFFINITY
-int dynamic_affinity_enabled(void);
-int set_prefer_cpus_ptr(struct task_struct *p,
-			const struct cpumask *new_mask);
-int sched_prefer_cpus_fork(struct task_struct *p, struct task_struct *orig);
-void sched_prefer_cpus_free(struct task_struct *p);
-void dynamic_affinity_enable(void);
-#endif
-
-#ifdef CONFIG_QOS_SCHED_SMART_GRID
-extern struct static_key __smart_grid_used;
-static inline bool smart_grid_used(void)
-{
-	return static_key_false(&__smart_grid_used);
-}
-#else
-static inline bool smart_grid_used(void)
-{
-	return false;
 }
 #endif
 

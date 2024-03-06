@@ -5842,7 +5842,9 @@ int sched_cpu_activate(unsigned int cpu)
 		static_branch_inc_cpuslocked(&sched_smt_present);
 #endif
 	set_cpu_active(cpu, true);
+#ifdef CONFIG_QOS_SCHED_SMART_GRID
 	tg_update_affinity_domains(cpu, 1);
+#endif
 
 	if (sched_smp_initialized) {
 		sched_domains_numa_masks_set(cpu);
@@ -5905,7 +5907,9 @@ int sched_cpu_deactivate(unsigned int cpu)
 		return ret;
 	}
 	sched_domains_numa_masks_clear(cpu);
+#ifdef CONFIG_QOS_SCHED_SMART_GRID
 	tg_update_affinity_domains(cpu, 0);
+#endif
 	return 0;
 }
 
@@ -5977,7 +5981,9 @@ void __init sched_init_smp(void)
 
 	sched_smp_initialized = true;
 
+#ifdef CONFIG_QOS_SCHED_SMART_GRID
 	init_auto_affinity(&root_task_group);
+#endif
 }
 
 static int __init migration_init(void)
@@ -6977,134 +6983,6 @@ static u64 cpu_rt_period_read_uint(struct cgroup_subsys_state *css,
 }
 #endif /* CONFIG_RT_GROUP_SCHED */
 
-#ifdef CONFIG_QOS_SCHED_SMART_GRID
-int tg_set_dynamic_affinity_mode(struct task_group *tg, u64 mode)
-{
-	struct auto_affinity *auto_affi = tg->auto_affinity;
-
-	if (unlikely(!auto_affi))
-		return -EPERM;
-
-	/* auto mode*/
-	if (mode == 1) {
-		start_auto_affinity(auto_affi);
-	} else if (mode == 0) {
-		stop_auto_affinity(auto_affi);
-	} else {
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-static u64 cpu_affinity_mode_read_u64(struct cgroup_subsys_state *css,
-					      struct cftype *cft)
-{
-	struct task_group *tg = css_tg(css);
-
-	if (unlikely(!tg->auto_affinity))
-		return -EPERM;
-
-	return tg->auto_affinity->mode;
-}
-
-static int cpu_affinity_mode_write_u64(struct cgroup_subsys_state *css,
-				   struct cftype *cftype, u64 mode)
-{
-	return tg_set_dynamic_affinity_mode(css_tg(css), mode);
-}
-
-int tg_set_affinity_period(struct task_group *tg, u64 period_ms)
-{
-	if (unlikely(!tg->auto_affinity))
-		return -EPERM;
-
-	if (!period_ms || period_ms > U64_MAX / NSEC_PER_MSEC)
-		return -EINVAL;
-
-	raw_spin_lock_irq(&tg->auto_affinity->lock);
-	tg->auto_affinity->period = ms_to_ktime(period_ms);
-	raw_spin_unlock_irq(&tg->auto_affinity->lock);
-	return 0;
-}
-
-u64 tg_get_affinity_period(struct task_group *tg)
-{
-	if (unlikely(!tg->auto_affinity))
-		return -EPERM;
-
-	return ktime_to_ms(tg->auto_affinity->period);
-}
-
-static int cpu_affinity_period_write_uint(struct cgroup_subsys_state *css,
-					  struct cftype *cftype, u64 period)
-{
-	return tg_set_affinity_period(css_tg(css), period);
-}
-
-static u64 cpu_affinity_period_read_uint(struct cgroup_subsys_state *css,
-					 struct cftype *cft)
-{
-	return tg_get_affinity_period(css_tg(css));
-}
-
-static int cpu_affinity_domain_mask_write_u64(struct cgroup_subsys_state *css,
-					      struct cftype *cftype,
-					      u64 mask)
-{
-	struct task_group *tg = css_tg(css);
-	struct affinity_domain *ad;
-	u16 full;
-
-	if (unlikely(!tg->auto_affinity))
-		return -EPERM;
-
-	ad = &tg->auto_affinity->ad;
-	full = (1 << ad->dcount) - 1;
-	if (mask > full)
-		return -EINVAL;
-
-	raw_spin_lock_irq(&tg->auto_affinity->lock);
-	ad->domain_mask = mask;
-	raw_spin_unlock_irq(&tg->auto_affinity->lock);
-	return 0;
-}
-
-static u64 cpu_affinity_domain_mask_read_u64(struct cgroup_subsys_state *css,
-					     struct cftype *cft)
-{
-	struct task_group *tg = css_tg(css);
-
-	if (unlikely(!tg->auto_affinity))
-		return -EPERM;
-
-	return tg->auto_affinity->ad.domain_mask;
-}
-
-static int cpu_affinity_stat_show(struct seq_file *sf, void *v)
-{
-	struct task_group *tg = css_tg(seq_css(sf));
-	struct auto_affinity *auto_affi = tg->auto_affinity;
-	struct affinity_domain *ad;
-	int i;
-
-	if (unlikely(!auto_affi))
-		return -EPERM;
-
-	ad = &auto_affi->ad;
-	seq_printf(sf, "period_active %d\n", auto_affi->period_active);
-	seq_printf(sf, "dcount %d\n", ad->dcount);
-	seq_printf(sf, "domain_mask 0x%x\n", ad->domain_mask);
-	seq_printf(sf, "curr_level %d\n", ad->curr_level);
-	for (i = 0; i < ad->dcount; i++)
-		seq_printf(sf, "sd_level %d, cpu list %*pbl, stay_cnt %llu\n",
-			i, cpumask_pr_args(ad->domains[i]),
-			schedstat_val(ad->stay_cnt[i]));
-
-	return 0;
-}
-#endif /* CONFIG_QOS_SCHED_SMART_GRID */
-
 #ifdef CONFIG_QOS_SCHED
 static int tg_change_scheduler(struct task_group *tg, void *data)
 {
@@ -7352,33 +7230,6 @@ static int __maybe_unused cpu_period_quota_parse(char *buf,
 }
 
 #ifdef CONFIG_QOS_SCHED_DYNAMIC_AFFINITY
-int sched_prefer_cpus_fork(struct task_struct *p, struct task_struct *orig)
-{
-	p->prefer_cpus = kmalloc(sizeof(cpumask_t), GFP_KERNEL);
-	if (!p->prefer_cpus)
-		return -ENOMEM;
-
-	if (orig->prefer_cpus)
-		cpumask_copy(p->prefer_cpus, orig->prefer_cpus);
-	else
-		cpumask_clear(p->prefer_cpus);
-
-	p->se.dyn_affi_stats = kzalloc(sizeof(struct dyn_affinity_stats),
-				       GFP_KERNEL);
-	if (!p->se.dyn_affi_stats) {
-		kfree(p->prefer_cpus);
-		p->prefer_cpus = NULL;
-		return -ENOMEM;
-	}
-	return 0;
-}
-
-void sched_prefer_cpus_free(struct task_struct *p)
-{
-	kfree(p->prefer_cpus);
-	kfree(p->se.dyn_affi_stats);
-}
-
 static void do_set_prefer_cpus(struct task_struct *p,
 				const struct cpumask *new_mask)
 {
