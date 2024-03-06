@@ -262,8 +262,8 @@ static enum hrtimer_restart sched_auto_affi_period_timer(struct hrtimer *timer)
 	struct cpumask *span = ad->domains[ad->curr_level];
 	unsigned long util_avg_sum = 0;
 	unsigned long tg_capacity = 0;
+	int cpu, util_low_pct;
 	unsigned long flags;
-	int cpu;
 
 	for_each_cpu(cpu, span) {
 		util_avg_sum += cpu_util(cpu);
@@ -277,10 +277,11 @@ static enum hrtimer_restart sched_auto_affi_period_timer(struct hrtimer *timer)
 		return HRTIMER_NORESTART;
 	}
 
-	if (util_avg_sum * 100 >= tg_capacity * sysctl_sched_util_low_pct) {
+	util_low_pct = auto_affi->util_low_pct >= 0 ? auto_affi->util_low_pct :
+			sysctl_sched_util_low_pct;
+	if (util_avg_sum * 100 >= tg_capacity * util_low_pct) {
 		affinity_domain_up(tg);
-	} else if (util_avg_sum * 100 < tg_capacity *
-		   sysctl_sched_util_low_pct / 2) {
+	} else if (util_avg_sum * 100 < tg_capacity * util_low_pct / 2) {
 		affinity_domain_down(tg);
 	}
 
@@ -546,6 +547,7 @@ int init_auto_affinity(struct task_group *tg)
 	raw_spin_lock_init(&auto_affi->lock);
 	auto_affi->mode = 0;
 	auto_affi->period_active = 0;
+	auto_affi->util_low_pct = -1;
 	auto_affi->period = ms_to_ktime(AUTO_AFFINITY_DEFAULT_PERIOD_MS);
 	hrtimer_init(&auto_affi->period_timer, CLOCK_MONOTONIC,
 		HRTIMER_MODE_ABS_PINNED);
@@ -686,6 +688,34 @@ u64 cpu_affinity_domain_mask_read_u64(struct cgroup_subsys_state *css,
 		return -EPERM;
 
 	return tg->auto_affinity->ad.domain_mask;
+}
+
+int cpu_affinity_util_low_pct_write(struct cgroup_subsys_state *css,
+				    struct cftype *cftype, s64 util_pct)
+{
+	struct task_group *tg = css_tg(css);
+
+	if (unlikely(!tg->auto_affinity))
+		return -EPERM;
+
+	if ((util_pct < 0 && util_pct != -1) || util_pct > 100)
+		return -EINVAL;
+
+	raw_spin_lock_irq(&tg->auto_affinity->lock);
+	tg->auto_affinity->util_low_pct = util_pct;
+	raw_spin_unlock_irq(&tg->auto_affinity->lock);
+	return 0;
+}
+
+s64 cpu_affinity_util_low_pct_read(struct cgroup_subsys_state *css,
+				   struct cftype *cft)
+{
+	struct task_group *tg = css_tg(css);
+
+	if (unlikely(!tg->auto_affinity))
+		return -EPERM;
+
+	return tg->auto_affinity->util_low_pct;
 }
 
 int cpu_affinity_stat_show(struct seq_file *sf, void *v)

@@ -22,6 +22,7 @@ struct auto_affinity {
 	ktime_t			period;
 	struct hrtimer		period_timer;
 	int			period_active;
+	int			util_low_pct;
 	struct affinity_domain	ad;
 	struct task_group	*tg;
 };
@@ -43,6 +44,10 @@ extern int cpu_affinity_domain_mask_write_u64(struct cgroup_subsys_state *css,
 					      struct cftype *cftype, u64 mask);
 extern u64 cpu_affinity_domain_mask_read_u64(struct cgroup_subsys_state *css,
 					     struct cftype *cft);
+int cpu_affinity_util_low_pct_write(struct cgroup_subsys_state *css,
+				    struct cftype *cftype, s64 util_pct);
+s64 cpu_affinity_util_low_pct_read(struct cgroup_subsys_state *css,
+				   struct cftype *cft);
 extern int cpu_affinity_stat_show(struct seq_file *sf, void *v);
 #endif
 #endif

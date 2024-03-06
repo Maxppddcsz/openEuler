@@ -7108,6 +7108,11 @@ static struct cftype cpu_legacy_files[] = {
 		.name = "affinity_stat",
 		.seq_show = cpu_affinity_stat_show,
 	},
+	{
+		.name = "affinity_util_low_pct",
+		.read_s64 = cpu_affinity_util_low_pct_read,
+		.write_s64 = cpu_affinity_util_low_pct_write,
+	},
 #endif
 	{ }	/* Terminate */
 };
