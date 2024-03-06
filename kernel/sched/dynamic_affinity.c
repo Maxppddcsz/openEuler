@@ -233,24 +233,32 @@ static void affinity_domain_up(struct task_group *tg)
 	}
 }
 
-static void affinity_domain_down(struct task_group *tg)
+static inline int down_level_to(struct affinity_domain *ad)
 {
-	struct affinity_domain *ad = &tg->auto_affinity->ad;
-	u16 level = ad->curr_level;
+	int level = ad->curr_level;
 
-	if (ad->curr_level <= 0)
-		return;
+	if (level <= 0)
+		return -1;
 
 	while (level > 0) {
 		if (!cpumask_weight(ad->domains[level - 1]))
-			return;
+			return -1;
 
-		if (IS_DOMAIN_SET(level - 1, ad->domain_mask)) {
-			ad->curr_level = level - 1;
-			return;
-		}
+		if (IS_DOMAIN_SET(level - 1, ad->domain_mask))
+			return level - 1;
+
 		level--;
 	}
+
+	return -1;
+}
+
+static void affinity_domain_down(struct task_group *tg)
+{
+	int down_level = down_level_to(&tg->auto_affinity->ad);
+
+	if (down_level >= 0)
+		tg->auto_affinity->ad.curr_level = down_level;
 }
 
 static enum hrtimer_restart sched_auto_affi_period_timer(struct hrtimer *timer)
@@ -260,10 +268,11 @@ static enum hrtimer_restart sched_auto_affi_period_timer(struct hrtimer *timer)
 	struct task_group *tg = auto_affi->tg;
 	struct affinity_domain *ad = &auto_affi->ad;
 	struct cpumask *span = ad->domains[ad->curr_level];
+	int cpu, util_low_pct, down_level;
 	unsigned long util_avg_sum = 0;
 	unsigned long tg_capacity = 0;
-	int cpu, util_low_pct;
 	unsigned long flags;
+	int ratio = 2;
 
 	for_each_cpu(cpu, span) {
 		util_avg_sum += cpu_util(cpu);
@@ -277,13 +286,17 @@ static enum hrtimer_restart sched_auto_affi_period_timer(struct hrtimer *timer)
 		return HRTIMER_NORESTART;
 	}
 
+	down_level = down_level_to(ad);
+	if (down_level >= 0)
+		ratio = cpumask_weight(ad->domains[ad->curr_level]) /
+			cpumask_weight(ad->domains[down_level]) + 1;
+
 	util_low_pct = auto_affi->util_low_pct >= 0 ? auto_affi->util_low_pct :
 			sysctl_sched_util_low_pct;
-	if (util_avg_sum * 100 >= tg_capacity * util_low_pct) {
+	if (util_avg_sum * 100 >= tg_capacity * util_low_pct)
 		affinity_domain_up(tg);
-	} else if (util_avg_sum * 100 < tg_capacity * util_low_pct / 2) {
+	else if (util_avg_sum * 100 * ratio < tg_capacity * util_low_pct)
 		affinity_domain_down(tg);
-	}
 
 	schedstat_inc(ad->stay_cnt[ad->curr_level]);
 	hrtimer_forward_now(timer, auto_affi->period);
