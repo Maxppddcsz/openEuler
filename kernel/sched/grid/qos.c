@@ -84,7 +84,8 @@ int sched_grid_preferred_interleave_nid(struct mempolicy *policy)
 		preferred_nmask =
 			&me->grid_qos->affinity.mem_preferred_node_mask;
 
-	if (!preferred_nmask || !policy)
+	if (!preferred_nmask || !policy || nodes_empty(*preferred_nmask) ||
+	    nodes_equal(*preferred_nmask, node_online_map))
 		return NUMA_NO_NODE;
 
 	if (nodes_equal(policy->v.nodes, *preferred_nmask))
@@ -115,7 +116,8 @@ int sched_grid_preferred_nid(int preferred_nid, nodemask_t *nodemask)
 		preferred_nmask =
 			&current->grid_qos->affinity.mem_preferred_node_mask;
 
-	if (!preferred_nmask)
+	if (!preferred_nmask || nodes_empty(*preferred_nmask) ||
+	    nodes_equal(*preferred_nmask, node_online_map))
 		return preferred_nid;
 
 	/*
