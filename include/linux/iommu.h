@@ -116,6 +116,16 @@ struct iommu_page_response {
 	u32	code;
 };
 
+struct iopf_attach_cookie {
+	struct iommu_domain *domain;
+	struct device *dev;
+	unsigned int pasid;
+	refcount_t users;
+
+	void *private;
+	void (*release)(struct iopf_attach_cookie *cookie);
+};
+
 struct iopf_fault {
 	struct iommu_fault fault;
 	/* node for pending lists */
@@ -128,9 +138,11 @@ struct iopf_group {
 	/* list node for iommu_fault_param::faults */
 	struct list_head pending_node;
 	struct work_struct work;
-	struct iommu_domain *domain;
 	/* The device's fault data parameter. */
 	struct iommu_fault_param *fault_param;
+	struct iopf_attach_cookie *cookie;
+	/* Used by handler provider to hook the group on its own lists. */
+	struct list_head node;
 };
 
 /**
@@ -519,6 +531,7 @@ static inline int __iommu_copy_struct_from_user_array(
  *                     Upon failure, ERR_PTR must be returned.
  * @domain_alloc_paging: Allocate an iommu_domain that can be used for
  *                       UNMANAGED, DMA, and DMA_FQ domain types.
+ * @domain_alloc_sva: Allocate an iommu_domain for Shared Virtual Addressing.
  * @probe_device: Add device to iommu driver handling
  * @release_device: Remove device from iommu driver handling
  * @probe_finalize: Do final setup work after the device is added to an IOMMU
@@ -559,6 +572,8 @@ struct iommu_ops {
 		struct device *dev, u32 flags, struct iommu_domain *parent,
 		const struct iommu_user_data *user_data);
 	struct iommu_domain *(*domain_alloc_paging)(struct device *dev);
+	struct iommu_domain *(*domain_alloc_sva)(struct device *dev,
+						 struct mm_struct *mm);
 
 	struct iommu_device *(*probe_device)(struct device *dev);
 	void (*release_device)(struct device *dev);
@@ -624,13 +639,14 @@ struct iommu_ops {
  * @enforce_cache_coherency: Prevent any kind of DMA from bypassing IOMMU_CACHE,
  *                           including no-snoop TLPs on PCIe or other platform
  *                           specific mechanisms.
- * @enable_nesting: Enable nesting
  * @set_pgtable_quirks: Set io page table quirks (IO_PGTABLE_QUIRK_*)
  * @support_dirty_log: Check whether domain supports dirty log tracking
  * @switch_dirty_log: Perform actions to start|stop dirty log tracking
  * @sync_dirty_log: Sync dirty log from IOMMU into a dirty bitmap
  * @clear_dirty_log: Clear dirty log of IOMMU by a mask bitmap
  * @free: Release the domain after use.
+ * @get_msi_mapping_domain: Return the related iommu_domain that should hold the
+ *                          MSI cookie and accept mapping(s).
  */
 struct iommu_domain_ops {
 	int (*attach_dev)(struct iommu_domain *domain, struct device *dev);
@@ -656,7 +672,6 @@ struct iommu_domain_ops {
 				    dma_addr_t iova);
 
 	bool (*enforce_cache_coherency)(struct iommu_domain *domain);
-	int (*enable_nesting)(struct iommu_domain *domain);
 	int (*set_pgtable_quirks)(struct iommu_domain *domain,
 				  unsigned long quirks);
 
@@ -676,6 +691,8 @@ struct iommu_domain_ops {
 			       unsigned long *bitmap, unsigned long base_iova,
 			       unsigned long bitmap_pgshift);
 	void (*free)(struct iommu_domain *domain);
+	struct iommu_domain *
+		(*get_msi_mapping_domain)(struct iommu_domain *domain);
 };
 
 /**
@@ -716,6 +733,7 @@ struct iommu_fault_param {
 	struct device *dev;
 	struct iopf_queue *queue;
 	struct list_head queue_list;
+	struct xarray pasid_cookie;
 
 	struct list_head partial;
 	struct list_head faults;
@@ -839,7 +857,6 @@ extern void iommu_group_put(struct iommu_group *group);
 extern int iommu_group_id(struct iommu_group *group);
 extern struct iommu_domain *iommu_group_default_domain(struct iommu_group *);
 
-int iommu_enable_nesting(struct iommu_domain *domain);
 int iommu_set_pgtable_quirks(struct iommu_domain *domain,
 		unsigned long quirks);
 
@@ -1616,6 +1633,12 @@ void iopf_free_group(struct iopf_group *group);
 void iommu_report_device_fault(struct device *dev, struct iopf_fault *evt);
 void iopf_group_response(struct iopf_group *group,
 			 enum iommu_page_response_code status);
+int iopf_domain_attach(struct iommu_domain *domain, struct device *dev,
+		       ioasid_t pasid, struct iopf_attach_cookie *cookie);
+void iopf_domain_detach(struct iommu_domain *domain, struct device *dev,
+			ioasid_t pasid);
+int iopf_domain_replace(struct iommu_domain *domain, struct device *dev,
+			ioasid_t pasid, struct iopf_attach_cookie *cookie);
 #else
 static inline int
 iopf_queue_add_device(struct iopf_queue *queue, struct device *dev)
@@ -1659,6 +1682,25 @@ iommu_report_device_fault(struct device *dev, struct iopf_fault *evt)
 static inline void iopf_group_response(struct iopf_group *group,
 				       enum iommu_page_response_code status)
 {
+}
+
+static inline int iopf_domain_attach(struct iommu_domain *domain,
+				     struct device *dev, ioasid_t pasid,
+				     struct iopf_attach_cookie *cookie)
+{
+	return -ENODEV;
+}
+
+static inline void iopf_domain_detach(struct iommu_domain *domain,
+				      struct device *dev, ioasid_t pasid)
+{
+}
+
+static inline int iopf_domain_replace(struct iommu_domain *domain,
+				      struct device *dev, ioasid_t pasid,
+				      struct iopf_attach_cookie *cookie)
+{
+	return -ENODEV;
 }
 #endif /* CONFIG_IOMMU_IOPF */
 #endif /* __LINUX_IOMMU_H */
