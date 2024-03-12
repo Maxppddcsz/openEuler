@@ -1367,7 +1367,7 @@ config CLEAR_FREELIST_PAGE
 
 config MEMORY_RELIABLE
 	bool "Support for memory reliable"
-	depends on ARM64
+	depends on ARM64 || X86_64
 	default n
 	help
 	  Memory reliable is based on mirror memory. It has the following
