@@ -9654,6 +9654,13 @@ S:	Maintained
 F:	Documentation/networking/device_drivers/ethernet/huawei/hinic.rst
 F:	drivers/net/ethernet/huawei/hinic/
 
+HUAWEI ETHERNET DRIVER
+M:	Wulike(Collin) <wulike1@huawei.com>
+L:	netdev@vger.kernel.org
+S:	Supported
+F:	Documentation/networking/hinic3.rst
+F:	drivers/net/ethernet/huawei/hinic3/
+
 HUGETLB SUBSYSTEM
 M:	Mike Kravetz <mike.kravetz@oracle.com>
 M:	Muchun Song <muchun.song@linux.dev>
@@ -10983,6 +10990,7 @@ F:	drivers/iommu/
 F:	include/linux/iommu.h
 F:	include/linux/iova.h
 F:	include/linux/of_iommu.h
+F:	include/uapi/linux/iommu.h
 
 IOMMUFD
 M:	Jason Gunthorpe <jgg@nvidia.com>
@@ -11520,18 +11528,6 @@ F:	arch/arm64/kvm/
 F:	include/kvm/arm_*
 F:	tools/testing/selftests/kvm/*/aarch64/
 F:	tools/testing/selftests/kvm/aarch64/
-
-KERNEL VIRTUAL MACHINE FOR LOONGARCH (KVM/LoongArch)
-M:	Tianrui Zhao <zhaotianrui@loongson.cn>
-M:	Bibo Mao <maobibo@loongson.cn>
-M:	Huacai Chen <chenhuacai@kernel.org>
-L:	kvm@vger.kernel.org
-L:	loongarch@lists.linux.dev
-S:	Maintained
-T:	git git://git.kernel.org/pub/scm/virt/kvm/kvm.git
-F:	arch/loongarch/include/asm/kvm*
-F:	arch/loongarch/include/uapi/asm/kvm*
-F:	arch/loongarch/kvm/
 
 KERNEL VIRTUAL MACHINE FOR MIPS (KVM/mips)
 M:	Huacai Chen <chenhuacai@kernel.org>
@@ -14461,11 +14457,6 @@ F:	drivers/regulator/mp5416.c
 F:	drivers/regulator/mpq7920.c
 F:	drivers/regulator/mpq7920.h
 F:	include/linux/mfd/mp2629.h
-
-Mont-TSSE(TM) DRIVER
-M:	Zhongfei Cai<carrie.cai@montage-tech.com>
-S:	Maintained
-F:	drivers/crypto/montage
 
 MOST(R) TECHNOLOGY DRIVER
 M:	Parthiban Veerasooran <parthiban.veerasooran@microchip.com>
