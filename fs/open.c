@@ -33,6 +33,9 @@
 #include <linux/dnotify.h>
 #include <linux/compat.h>
 
+#ifdef CONFIG_SECDETECTOR
+#include <linux/secdetector.h>
+#endif
 #include "internal.h"
 
 int do_truncate(struct dentry *dentry, loff_t length, unsigned int time_attrs,
@@ -573,6 +576,20 @@ int chmod_common(const struct path *path, umode_t mode)
 	error = mnt_want_write(path->mnt);
 	if (error)
 		return error;
+#ifdef CONFIG_SECDETECTOR
+	if (secdetector_enable && trace_secdetector_chkfsevent_enabled()) {
+		int sec_ret = 0;
+		struct secdetector_file sf = {
+			.dentry = path->dentry,
+			.path = path,
+			.mode = mode,
+		};
+		trace_secdetector_chkfsevent(&sf, SECDETECTOR_FILE_CHMOD_PRE,
+					     &sec_ret);
+		if (sec_ret)
+			return sec_ret;
+	}
+#endif
 retry_deleg:
 	inode_lock(inode);
 	error = security_path_chmod(path, mode);
@@ -589,6 +606,14 @@ out_unlock:
 			goto retry_deleg;
 	}
 	mnt_drop_write(path->mnt);
+#ifdef CONFIG_SECDETECTOR
+	if (error == 0 && secdetector_enable &&
+	    trace_secdetector_chkfsevent_enabled()) {
+		struct secdetector_file sf = { .dentry = path->dentry };
+
+		trace_secdetector_chkfsevent(&sf, SECDETECTOR_FILE_CHMOD, NULL);
+	}
+#endif
 	return error;
 }
 
@@ -650,7 +675,21 @@ int chown_common(const struct path *path, uid_t user, gid_t group)
 
 	uid = make_kuid(current_user_ns(), user);
 	gid = make_kgid(current_user_ns(), group);
-
+#ifdef CONFIG_SECDETECTOR
+	if (secdetector_enable && trace_secdetector_chkfsevent_enabled()) {
+		int sec_ret = 0;
+		struct secdetector_file sf = {
+			.dentry = path->dentry,
+			.path = path,
+			.uid = uid,
+			.gid = gid,
+		};
+		trace_secdetector_chkfsevent(&sf, SECDETECTOR_FILE_CHOWN_PRE,
+					     &sec_ret);
+		if (sec_ret)
+			return sec_ret;
+	}
+#endif
 retry_deleg:
 	newattrs.ia_valid =  ATTR_CTIME;
 	if (user != (uid_t) -1) {
@@ -678,6 +717,14 @@ retry_deleg:
 		if (!error)
 			goto retry_deleg;
 	}
+#ifdef CONFIG_SECDETECTOR
+	if (error == 0 && secdetector_enable &&
+	    trace_secdetector_chkfsevent_enabled()) {
+		struct secdetector_file sf = { .dentry = path->dentry };
+
+		trace_secdetector_chkfsevent(&sf, SECDETECTOR_FILE_CHOWN, NULL);
+	}
+#endif
 	return error;
 }
 
@@ -1146,7 +1193,7 @@ struct file *filp_open(const char *filename, int flags, umode_t mode)
 {
 	struct filename *name = getname_kernel(filename);
 	struct file *file = ERR_CAST(name);
-	
+
 	if (!IS_ERR(name)) {
 		file = file_open_name(name, flags, mode);
 		putname(name);

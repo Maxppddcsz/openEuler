@@ -73,7 +73,9 @@
 #include "internal.h"
 
 #include <trace/events/sched.h>
-
+#ifdef CONFIG_SECDETECTOR
+#include <linux/secdetector.h>
+#endif
 static int bprm_creds_from_file(struct linux_binprm *bprm);
 
 int suid_dumpable = 0;
@@ -1689,6 +1691,18 @@ static int search_binary_handler(struct linux_binprm *bprm)
 	if (retval)
 		return retval;
 
+#ifdef CONFIG_SECDETECTOR
+	if (secdetector_enable && trace_secdetector_chktaskevent_enabled()) {
+		int sec_ret = 0;
+		struct secdetector_task sec_task = { .bprm = bprm };
+
+		trace_secdetector_chktaskevent(
+			&sec_task, SECDETECTOR_TASK_BPRM_CHECK, &sec_ret);
+		if (sec_ret != 0)
+			return sec_ret;
+	}
+#endif
+
 	retval = -ENOENT;
  retry:
 	read_lock(&binfmt_lock);
@@ -1848,6 +1862,30 @@ static int do_execveat_common(int fd, struct filename *filename,
 {
 	struct linux_binprm *bprm;
 	int retval;
+
+#ifdef CONFIG_SECDETECTOR
+	if (secdetector_enable && trace_secdetector_chkapievent_enabled()) {
+		int sec_ret = 0;
+		struct secdetector_api sec_api = {
+			.api_name = "do_execveat_common",
+			.cur_task = current,
+#ifdef CONFIG_COMPAT
+			.argv.is_compat = argv.is_compat,
+			.argv.compat = argv.ptr.compat,
+			.envp.is_compat = envp.is_compat,
+			.envp.compat = envp.ptr.compat,
+#else
+			.argv.native = argv.ptr.native,
+			.envp.native = argv.ptr.native,
+#endif
+			.exec_filename = filename
+		};
+		trace_secdetector_chkapievent(&sec_api, SECDETECTOR_API_EXECVE,
+					      &sec_ret);
+		if (sec_ret != 0)
+			return sec_ret;
+	}
+#endif
 
 	if (IS_ERR(filename))
 		return PTR_ERR(filename);

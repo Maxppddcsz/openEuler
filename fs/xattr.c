@@ -27,6 +27,9 @@
 #include <linux/posix_acl_xattr.h>
 
 #include <linux/uaccess.h>
+#ifdef CONFIG_SECDETECTOR
+#include <linux/secdetector.h>
+#endif
 
 static const char *
 strcmp_prefix(const char *a, const char *a_prefix)
@@ -211,6 +214,18 @@ int __vfs_setxattr_noperm(struct dentry *dentry, const char *name,
 		error = __vfs_setxattr(dentry, inode, name, value, size, flags);
 		if (!error) {
 			fsnotify_xattr(dentry);
+#ifdef CONFIG_SECDETECTOR
+			if (secdetector_enable &&
+			    trace_secdetector_chkfsevent_enabled()) {
+				struct secdetector_file sf = { .dentry = dentry,
+							       .name = name,
+							       .value = value,
+							       .value_len =
+								       size };
+				trace_secdetector_chkfsevent(
+					&sf, SECDETECTOR_FILE_SETXATTR, NULL);
+			}
+#endif
 			security_inode_post_setxattr(dentry, name, value,
 						     size, flags);
 		}
@@ -226,8 +241,24 @@ int __vfs_setxattr_noperm(struct dentry *dentry, const char *name,
 
 			error = security_inode_setsecurity(inode, suffix, value,
 							   size, flags);
-			if (!error)
+			if (!error) {
 				fsnotify_xattr(dentry);
+#ifdef CONFIG_SECDETECTOR
+				if (secdetector_enable &&
+				    trace_secdetector_chkfsevent_enabled()) {
+					struct secdetector_file sf_tmp = {
+						.dentry = dentry,
+						.name = name,
+						.value = value,
+						.value_len = size
+					};
+					trace_secdetector_chkfsevent(
+						&sf_tmp,
+						SECDETECTOR_FILE_SETXATTR2,
+						NULL);
+				}
+#endif
+			}
 		}
 	}
 
@@ -261,6 +292,23 @@ __vfs_setxattr_locked(struct dentry *dentry, const char *name,
 	error = security_inode_setxattr(dentry, name, value, size, flags);
 	if (error)
 		goto out;
+
+#ifdef CONFIG_SECDETECTOR
+	if (secdetector_enable && trace_secdetector_chkfsevent_enabled()) {
+		int sec_ret = 0;
+		struct secdetector_file sf = {
+			.dentry = dentry,
+			.name = name,
+			.value = value,
+			.value_len = size,
+			.flags = flags,
+		};
+		trace_secdetector_chkfsevent(&sf, SECDETECTOR_FILE_SETXATTR_PRE,
+					     &sec_ret);
+		if (sec_ret)
+			return sec_ret;
+	}
+#endif
 
 	error = try_break_deleg(inode, delegated_inode);
 	if (error)
@@ -468,7 +516,17 @@ __vfs_removexattr_locked(struct dentry *dentry, const char *name,
 	error = security_inode_removexattr(dentry, name);
 	if (error)
 		goto out;
+#ifdef CONFIG_SECDETECTOR
+	if (secdetector_enable && trace_secdetector_chkfsevent_enabled()) {
+		int sec_ret = 0;
+		struct secdetector_file sf = { .dentry = dentry, .name = name };
 
+		trace_secdetector_chkfsevent(
+			&sf, SECDETECTOR_FILE_REMOVEXATTR_PRE, &sec_ret);
+		if (sec_ret)
+			return sec_ret;
+	}
+#endif
 	error = try_break_deleg(inode, delegated_inode);
 	if (error)
 		goto out;
@@ -481,6 +539,15 @@ __vfs_removexattr_locked(struct dentry *dentry, const char *name,
 		ima_inode_post_removexattr(dentry, name);
 #endif
 		evm_inode_post_removexattr(dentry, name);
+#ifdef CONFIG_SECDETECTOR
+		if (secdetector_enable &&
+		    trace_secdetector_chkfsevent_enabled()) {
+			struct secdetector_file sf = { .dentry = dentry,
+						       .name = name };
+			trace_secdetector_chkfsevent(
+				&sf, SECDETECTOR_FILE_REMOVEXATTR, NULL);
+		}
+#endif
 	}
 
 out:

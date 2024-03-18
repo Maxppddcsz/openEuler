@@ -112,6 +112,10 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/task.h>
 
+#ifdef CONFIG_SECDETECTOR
+#include <linux/sched/signal.h>
+#endif
+
 /*
  * Minimum number of threads to boot the kernel
  */
@@ -730,6 +734,16 @@ static inline void free_signal_struct(struct signal_struct *sig)
 	 */
 	if (sig->oom_mm)
 		mmdrop_async(sig->oom_mm);
+#ifdef CONFIG_SECDETECTOR
+	kfree(sig->secdetector_process->epexe1);
+	sig->secdetector_process->epexe1 = NULL;
+
+	kfree(sig->secdetector_process->epexe2);
+	sig->secdetector_process->epexe2 = NULL;
+
+	kfree(sig->secdetector_process);
+	sig->secdetector_process = NULL;
+#endif
 	kmem_cache_free(signal_cachep, sig);
 }
 
@@ -1655,6 +1669,30 @@ static void posix_cpu_timers_init_group(struct signal_struct *sig)
 	posix_cputimers_group_init(pct, cpu_limit);
 }
 
+#ifdef CONFIG_SECDETECTOR
+static void copy_pexe(struct signal_struct *sig)
+{
+	char *kbuf;
+	char *exe_path;
+	struct file *f;
+
+	kbuf = kzalloc(sizeof(char) * PATH_MAX, GFP_KERNEL);
+	if (!kbuf)
+		return;
+	f = get_task_exe_file(current);
+	if (!f)
+		goto out_free;
+
+	exe_path = d_path(&f->f_path, kbuf, PATH_MAX);
+	if (!IS_ERR(exe_path))
+		sig->secdetector_process->epexe1 = kstrdup(exe_path, GFP_KERNEL);
+
+	fput(f);
+out_free:
+	kfree(kbuf);
+}
+#endif
+
 static int copy_signal(unsigned long clone_flags, struct task_struct *tsk)
 {
 	struct signal_struct *sig;
@@ -1667,6 +1705,28 @@ static int copy_signal(unsigned long clone_flags, struct task_struct *tsk)
 	if (!sig)
 		return -ENOMEM;
 
+#ifdef CONFIG_SECDETECTOR
+	sig->secdetector_process = kzalloc(sizeof(struct secdetector_process_struct), GFP_KERNEL);
+	if (!sig->secdetector_process)
+		return -ENOMEM;
+
+	sig->secdetector_process->eppid1 = task_tgid_vnr(current);
+	if (!current->signal->secdetector_process)
+		sig->secdetector_process->eppid2 = 1;
+	else
+		sig->secdetector_process->eppid2 =
+			current->signal->secdetector_process->eppid1;
+
+	if (sig->secdetector_process->eppid2 == 0)
+		sig->secdetector_process->eppid2 = 1; // the root always is 1
+
+	copy_pexe(sig);
+	if (current->signal->secdetector_process
+		&& current->signal->secdetector_process->epexe1)
+		sig->secdetector_process->epexe2 =
+			kstrdup(current->signal->secdetector_process->epexe1,
+				GFP_KERNEL);
+#endif
 	sig->nr_threads = 1;
 	atomic_set(&sig->live, 1);
 	refcount_set(&sig->sigcnt, 1);

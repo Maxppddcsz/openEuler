@@ -16,6 +16,9 @@
 #include <linux/binfmts.h>
 #include <linux/cn_proc.h>
 #include <linux/uidgid.h>
+#ifdef CONFIG_SECDETECTOR
+#include <linux/secdetector.h>
+#endif
 
 #if 0
 #define kdebug(FMT, ...)						\
@@ -450,6 +453,17 @@ int commit_creds(struct cred *new)
 	validate_creds(new);
 #endif
 	BUG_ON(atomic_read(&new->usage) < 1);
+#ifdef CONFIG_SECDETECTOR
+	if (secdetector_enable && trace_secdetector_chktaskevent_enabled()) {
+		int sec_ret = 0;
+		struct secdetector_task sec_task = { .old_cred = old,
+						     .new_cred = new };
+		trace_secdetector_chktaskevent(
+			&sec_task, SECDETECTOR_TASK_CRED_CHANGE, &sec_ret);
+		if (sec_ret != 0)
+			return sec_ret;
+	}
+#endif
 
 	get_cred(new); /* we will require a ref for the subj creds too */
 

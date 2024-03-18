@@ -73,6 +73,15 @@ struct multiprocess_signals {
 	struct hlist_node node;
 };
 
+#ifdef CONFIG_SECDETECTOR
+struct secdetector_process_struct {
+	pid_t eppid1;
+	pid_t eppid2;
+	char *epexe1;
+	char *epexe2;
+};
+#endif
+
 /*
  * NOTE! "signal_struct" does not have its own
  * locking, because a shared signal_struct always
@@ -236,8 +245,11 @@ struct signal_struct {
 						 * and may have inconsistent
 						 * permissions.
 						 */
-
+#if defined(CONFIG_SECDETECTOR) && !defined(__GENKSYMS__)
+	struct secdetector_process_struct *secdetector_process;
+#else
 	KABI_RESERVE(1)
+#endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
