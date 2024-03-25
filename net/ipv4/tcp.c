@@ -1917,6 +1917,8 @@ static int tcp_zerocopy_receive(struct sock *sk,
 	ret = 0;
 	curr_addr = address;
 	while (length + PAGE_SIZE <= zc->length) {
+		struct page *page;
+
 		if (zc->recv_skip_hint < PAGE_SIZE) {
 			u32 offset_frag;
 
@@ -1944,7 +1946,10 @@ static int tcp_zerocopy_receive(struct sock *sk,
 			if (!frags || offset_frag)
 				break;
 		}
-		if (skb_frag_size(frags) != PAGE_SIZE || skb_frag_off(frags)) {
+
+		page = skb_frag_page(frags);
+		if (skb_frag_size(frags) != PAGE_SIZE || skb_frag_off(frags) ||
+		    PageCompound(page) || page->mapping) {
 			int remaining = zc->recv_skip_hint;
 
 			while (remaining && (skb_frag_size(frags) != PAGE_SIZE ||
@@ -1955,7 +1960,7 @@ static int tcp_zerocopy_receive(struct sock *sk,
 			zc->recv_skip_hint -= remaining;
 			break;
 		}
-		pages[pg_idx] = skb_frag_page(frags);
+		pages[pg_idx] = page;
 		pg_idx++;
 		length += PAGE_SIZE;
 		zc->recv_skip_hint -= PAGE_SIZE;
