@@ -540,9 +540,12 @@ int vcc_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 	    !test_bit(ATM_VF_READY, &vcc->flags))
 		return 0;
 
+	lock_sock(sk);
 	skb = skb_recv_datagram(sk, flags, &error);
-	if (!skb)
+	if (!skb) {
+		release_sock(sk);
 		return error;
+	}
 
 	copied = skb->len;
 	if (copied > size) {
@@ -551,8 +554,10 @@ int vcc_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 	}
 
 	error = skb_copy_datagram_msg(skb, 0, msg, copied);
-	if (error)
+	if (error) {
+		release_sock(sk);
 		return error;
+	}
 	sock_recv_cmsgs(msg, sk, skb);
 
 	if (!(flags & MSG_PEEK)) {
@@ -562,6 +567,7 @@ int vcc_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 	}
 
 	skb_free_datagram(sk, skb);
+	release_sock(sk);
 	return copied;
 }
 
