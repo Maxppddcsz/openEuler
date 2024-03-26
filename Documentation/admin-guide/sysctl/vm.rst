@@ -80,6 +80,7 @@ Currently, these files are in /proc/sys/vm:
 - cache_reclaim_weight
 - cache_reclaim_enable
 - cache_limit_mbytes
+- readahead_early_break
 
 
 admin_reserve_kbytes
@@ -1089,3 +1090,9 @@ cache_limit_mbytes
 
 This is used to set the upper limit of page cache in megabytes.
 Page cache will be reclaimed periodically if page cache is over limit.
+
+readahead_early_break
+=====================
+
+This is used to break readahead when reached memcg limit or there are too
+many folio that are recently evicted.

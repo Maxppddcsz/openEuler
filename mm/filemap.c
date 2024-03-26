@@ -3175,7 +3175,7 @@ void filemap_map_pages(struct vm_fault *vmf,
 		 * Don't decrease mmap_miss in this scenario to make sure
 		 * we can stop read-ahead.
 		 */
-		if (mmap_miss > 0 && !PageWorkingset(page))
+		if (mmap_miss > 0 && !(vm_readahead_early_break && PageWorkingset(page)))
 			mmap_miss--;
 
 		vmf->address += (xas.xa_index - last_pgoff) << PAGE_SHIFT;
