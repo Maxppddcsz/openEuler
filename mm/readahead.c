@@ -27,6 +27,9 @@
 #include "internal.h"
 
 #define READAHEAD_FIRST_SIZE	(2 * 1024 * 1024)
+
+int vm_readahead_early_break;
+
 /*
  * Initialise a struct file's readahead state.  Assumes that the caller has
  * memset *ra to zero.
@@ -220,11 +223,18 @@ void page_cache_ra_unbounded(struct readahead_control *ractl,
 		if (mapping->a_ops->readpages) {
 			page->index = index + i;
 			list_add(&page->lru, &page_pool);
-		} else if (add_to_page_cache_lru(page, mapping, index + i,
-					gfp_mask) < 0) {
-			put_page(page);
-			read_pages(ractl, &page_pool, true);
-			continue;
+		} else {
+			int ret;
+
+			ret = add_to_page_cache_lru(page, mapping, index + i,
+					gfp_mask);
+			if (ret < 0) {
+				put_page(page);
+				read_pages(ractl, &page_pool, true);
+				if (vm_readahead_early_break && (ret == -ENOMEM))
+					break;
+				continue;
+			}
 		}
 		if (i == nr_to_read - lookahead_size)
 			SetPageReadahead(page);

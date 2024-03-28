@@ -817,6 +817,8 @@ struct readahead_control {
 
 #define VM_READAHEAD_PAGES	(SZ_128K / PAGE_SIZE)
 
+extern int vm_readahead_early_break;
+
 void page_cache_ra_unbounded(struct readahead_control *,
 		unsigned long nr_to_read, unsigned long lookahead_count);
 void page_cache_sync_ra(struct readahead_control *, struct file_ra_state *,
