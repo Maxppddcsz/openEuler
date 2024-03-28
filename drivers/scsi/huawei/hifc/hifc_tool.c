@@ -226,8 +226,9 @@ static int get_card_func_info(char *dev_name, struct msg_module *nt_msg)
 	}
 
 	err = sscanf(dev_name, HIFC_CHIP_NAME "%d", &id);
-	if (err < 0) {
+	if (err < 1) {
 		pr_err("Failed to get hifc id\n");
+		err = -EFAULT;
 		return err;
 	}
 
