@@ -360,8 +360,11 @@ static int vf_qm_check_match(struct hisi_acc_vf_core_device *hisi_acc_vdev,
 	u32 que_iso_state;
 	int ret;
 
-	if (migf->total_length < QM_MATCH_SIZE || hisi_acc_vdev->match_done)
+	if (hisi_acc_vdev->match_done)
 		return 0;
+
+	if (migf->total_length < QM_MATCH_SIZE)
+		return -EINVAL;
 
 	if (vf_data->acc_magic != ACC_DEV_MAGIC) {
 		dev_err(dev, "failed to match ACC_DEV_MAGIC\n");
@@ -537,6 +540,7 @@ static int vf_qm_state_save(struct hisi_acc_vf_core_device *hisi_acc_vdev,
 	}
 
 	migf->total_length = sizeof(struct acc_vf_data);
+
 	return 0;
 }
 
@@ -637,15 +641,16 @@ static void hisi_acc_vf_disable_fds(struct hisi_acc_vf_core_device *hisi_acc_vde
 static void
 hisi_acc_vf_state_mutex_unlock(struct hisi_acc_vf_core_device *hisi_acc_vdev)
 {
-again:
-	spin_lock(&hisi_acc_vdev->reset_lock);
-	if (hisi_acc_vdev->deferred_reset) {
+	while (true) {
+		spin_lock(&hisi_acc_vdev->reset_lock);
+		if (!hisi_acc_vdev->deferred_reset)
+			break;
+
 		hisi_acc_vdev->deferred_reset = false;
 		spin_unlock(&hisi_acc_vdev->reset_lock);
 		hisi_acc_vdev->vf_qm_state = QM_NOT_READY;
 		hisi_acc_vdev->mig_state = VFIO_DEVICE_STATE_RUNNING;
 		hisi_acc_vf_disable_fds(hisi_acc_vdev);
-		goto again;
 	}
 	mutex_unlock(&hisi_acc_vdev->state_mutex);
 	spin_unlock(&hisi_acc_vdev->reset_lock);
@@ -699,12 +704,8 @@ static ssize_t hisi_acc_vf_resume_write(struct file *filp, const char __user *bu
 	ssize_t done = 0;
 	int ret;
 
-	if (pos)
-		return -ESPIPE;
-	pos = &filp->f_pos;
-
-	if (*pos < 0 ||
-	    check_add_overflow((loff_t)len, *pos, &requested_length))
+	if (filp->f_pos < 0 ||
+	    check_add_overflow((loff_t)len, filp->f_pos, &requested_length))
 		return -EINVAL;
 
 	if (requested_length > sizeof(struct acc_vf_data))
@@ -721,7 +722,7 @@ static ssize_t hisi_acc_vf_resume_write(struct file *filp, const char __user *bu
 		done = -EFAULT;
 		goto out_unlock;
 	}
-	*pos += len;
+	filp->f_pos += len;
 	done = len;
 	migf->total_length += len;
 
@@ -817,14 +818,11 @@ static ssize_t hisi_acc_vf_save_read(struct file *filp, char __user *buf, size_t
 {
 	struct hisi_acc_vf_migration_file *migf = filp->private_data;
 	ssize_t done = 0;
+	size_t min_len;
 	int ret;
 
-	if (pos)
-		return -ESPIPE;
-	pos = &filp->f_pos;
-
 	mutex_lock(&migf->lock);
-	if (*pos > migf->total_length) {
+	if (filp->f_pos > migf->total_length) {
 		done = -EINVAL;
 		goto out_unlock;
 	}
@@ -834,17 +832,17 @@ static ssize_t hisi_acc_vf_save_read(struct file *filp, char __user *buf, size_t
 		goto out_unlock;
 	}
 
-	len = min_t(size_t, migf->total_length - *pos, len);
-	if (len) {
+	min_len = min_t(size_t, migf->total_length - filp->f_pos, len);
+	if (min_len) {
 		u8 *vf_data = (u8 *)&migf->vf_data;
 
-		ret = copy_to_user(buf, vf_data + *pos, len);
+		ret = copy_to_user(buf, &migf->vf_data, min_len);
 		if (ret) {
 			done = -EFAULT;
 			goto out_unlock;
 		}
-		*pos += len;
-		done = len;
+		filp->f_pos += min_len;
+		done = min_len;
 	}
 out_unlock:
 	mutex_unlock(&migf->lock);
