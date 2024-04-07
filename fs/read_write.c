@@ -1721,7 +1721,7 @@ int generic_file_rw_checks(struct file *file_in, struct file *file_out)
 	return 0;
 }
 
-#ifdef CONFIG_TRACEPOINTS
+#ifdef CONFIG_BPF_READAHEAD_OPTIMIZATION
 static void fs_file_read_ctx_init(struct fs_file_read_ctx *ctx,
 				  struct file *filp, loff_t pos)
 {
