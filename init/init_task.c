@@ -50,6 +50,12 @@ static struct sighand_struct init_sighand = {
 	.signalfd_wqh	= __WAIT_QUEUE_HEAD_INITIALIZER(init_sighand.signalfd_wqh),
 };
 
+#if !defined(__GENKSYMS__)
+static struct task_struct_resvd init_task_struct_resvd = {
+	.task = &init_task,
+};
+#endif
+
 /*
  * Set up the first task table, touch at your own risk!. Base=0,
  * limit=0x1fffff (=2MB)
@@ -187,6 +193,10 @@ struct task_struct init_task
 	.fork_pid_union = {
 		.fork_pid = 0,
 	},
+#endif
+
+#if !defined(__GENKSYMS__)
+	._resvd = &init_task_struct_resvd,
 #endif
 };
 EXPORT_SYMBOL(init_task);
