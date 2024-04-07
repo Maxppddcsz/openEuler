@@ -82,6 +82,12 @@
 DEFINE_MUTEX(cgroup_mutex);
 DEFINE_SPINLOCK(css_set_lock);
 
+#ifdef CONFIG_CGROUP_V1_BIND_BLKCG_MEMCG
+int sysctl_bind_memcg_blkcg_enable = 1;
+#else
+int sysctl_bind_memcg_blkcg_enable = 0;
+#endif
+
 #ifdef CONFIG_PROVE_RCU
 EXPORT_SYMBOL_GPL(cgroup_mutex);
 EXPORT_SYMBOL_GPL(css_set_lock);
@@ -2555,7 +2561,11 @@ static int cgroup_migrate_execute(struct cgroup_mgctx *mgctx)
 		do_each_subsys_mask(ss, ssid, mgctx->ss_mask) {
 			if (ss->attach) {
 				tset->ssid = ssid;
-				ss->attach(tset);
+				ss->attach(tset);	
+			}
+			if(sysctl_bind_memcg_blkcg_enable){
+				list_for_each_entry(cset, &tset->dst_csets, mg_node)
+					bind_memcg_blkcg_link(ss, cset);
 			}
 		} while_each_subsys_mask();
 	}
