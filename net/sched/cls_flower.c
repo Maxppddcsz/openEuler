@@ -2406,8 +2406,8 @@ static void fl_tmplt_destroy(void *tmplt_priv)
 	kfree(tmplt);
 }
 
-static void fl_tmplt_reoffload(struct tcf_chain *chain, bool add,
-			       flow_setup_cb_t *cb, void *cb_priv)
+void fl_tmplt_reoffload(struct tcf_chain *chain, bool add,
+			flow_setup_cb_t *cb, void *cb_priv)
 {
 	struct fl_flow_tmplt *tmplt = chain->tmplt_priv;
 	struct flow_cls_offload cls_flower = {};
@@ -2427,6 +2427,7 @@ static void fl_tmplt_reoffload(struct tcf_chain *chain, bool add,
 	cb(TC_SETUP_CLSFLOWER, &cls_flower, cb_priv);
 	kfree(cls_flower.rule);
 }
+EXPORT_SYMBOL(fl_tmplt_reoffload);
 
 static int fl_dump_key_val(struct sk_buff *skb,
 			   void *val, int val_type,
@@ -3233,7 +3234,6 @@ static struct tcf_proto_ops cls_fl_ops __read_mostly = {
 	.bind_class	= fl_bind_class,
 	.tmplt_create	= fl_tmplt_create,
 	.tmplt_destroy	= fl_tmplt_destroy,
-	.tmplt_reoffload = fl_tmplt_reoffload,
 	.tmplt_dump	= fl_tmplt_dump,
 	.owner		= THIS_MODULE,
 	.flags		= TCF_PROTO_OPS_DOIT_UNLOCKED,
