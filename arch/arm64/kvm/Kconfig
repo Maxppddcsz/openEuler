@@ -54,6 +54,14 @@ config CVM_HOST
 
 	  If unsure, say N.
 
+config CVM_GUEST
+	  bool "CVM guest enable"
+	  depends on KVM && SWIOTLB && ARM64
+	  help
+		Support CVM guest based on S-EL2
+
+		If unsure, say N.
+
 if KVM
 
 source "virt/kvm/Kconfig"
