@@ -131,7 +131,9 @@
 
 #include "internal.h"
 
+#ifdef CONFIG_BPF_READAHEAD_OPTIMIZATION
 #define READAHEAD_FIRST_SIZE	(2 * 1024 * 1024)
+#endif
 /*
  * Initialise a struct file's readahead state.  Assumes that the caller has
  * memset *ra to zero.
@@ -669,6 +671,7 @@ readit:
 	page_cache_ra_order(ractl, ra, order);
 }
 
+#ifdef CONFIG_BPF_READAHEAD_OPTIMIZATION
 /*
  * Try to read first @ra_size from head of the file.
  */
@@ -697,13 +700,18 @@ static bool page_cache_readahead_from_head(struct address_space *mapping,
 	}
 	return true;
 }
+#endif
 
 void page_cache_sync_ra(struct readahead_control *ractl,
 		unsigned long req_count)
 {
+#ifdef CONFIG_BPF_READAHEAD_OPTIMIZATION
 	bool do_forced_ra = ractl->file &&
 			    ((ractl->file->f_mode & FMODE_RANDOM) ||
 			     (ractl->file->f_ctl_mode & FMODE_CTL_RANDOM));
+#else
+	bool do_forced_ra = ractl->file && (ractl->file->f_mode & FMODE_RANDOM);
+#endif
 
 	/*
 	 * Even if readahead is disabled, issue this request as readahead
@@ -718,11 +726,13 @@ void page_cache_sync_ra(struct readahead_control *ractl,
 		do_forced_ra = true;
 	}
 
+#ifdef CONFIG_BPF_READAHEAD_OPTIMIZATION
 	/* try to read first READAHEAD_FIRST_SIZE into pagecache */
 	if (ractl->file && (ractl->file->f_ctl_mode & FMODE_CTL_WILLNEED) &&
 		page_cache_readahead_from_head(ractl->mapping, ractl->file,
 			readahead_index(ractl), req_count, READAHEAD_FIRST_SIZE))
 		return;
+#endif
 
 	/* be dumb */
 	if (do_forced_ra) {
