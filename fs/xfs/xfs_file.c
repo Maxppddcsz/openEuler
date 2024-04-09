@@ -31,7 +31,9 @@
 #include <linux/mman.h>
 #include <linux/fadvise.h>
 #include <linux/mount.h>
+#ifdef CONFIG_BPF_READAHEAD_OPTIMIZATION
 #include <trace/events/fs.h>
+#endif
 
 static const struct vm_operations_struct xfs_file_vm_ops;
 
@@ -308,8 +310,9 @@ xfs_file_buffered_read(
 	ssize_t			ret;
 
 	trace_xfs_file_buffered_read(iocb, to);
+#ifdef CONFIG_BPF_READAHEAD_OPTIMIZATION
 	fs_file_read_do_trace(iocb);
-
+#endif
 	ret = xfs_ilock_iocb(iocb, XFS_IOLOCK_SHARED);
 	if (ret)
 		return ret;
@@ -1266,7 +1269,9 @@ xfs_file_release(
 	struct inode	*inode,
 	struct file	*filp)
 {
+#ifdef CONFIG_BPF_READAHEAD_OPTIMIZATION
 	trace_fs_file_release(inode, filp);
+#endif
 	return xfs_release(XFS_I(inode));
 }
 
