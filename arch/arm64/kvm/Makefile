@@ -30,3 +30,4 @@ kvm-$(CONFIG_CVM_HOST)	+= cvm_exit.o
 
 kvm-$(CONFIG_KVM_ARM_PMU)  += pmu-emul.o
 obj-$(CONFIG_KVM_HISI_VIRT) += hisilicon/
+obj-$(CONFIG_CVM_GUEST)     += cvm_guest.o
