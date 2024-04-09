@@ -1373,12 +1373,11 @@ struct kvm_master_dev_info {
 #define KVM_SET_TSS_ADDR          _IO(KVMIO,   0x47)
 #define KVM_SET_IDENTITY_MAP_ADDR _IOW(KVMIO,  0x48, __u64)
 
-#ifdef CONFIG_CVM_HOST
 #define KVM_LOAD_USER_DATA _IOW(KVMIO, 0x49, struct kvm_user_data)
 
 #define KVM_CAP_ARM_TMM 300  /* FIXME: Large number to prevent conflicts */
 #define MAX_NUMA_NODE 8
-#define MAX_CPU_BIT_MAP 0
+#define MAX_CPU_BIT_MAP 4
 
 struct kvm_numa_node {
 	__u64 numa_id;
@@ -1400,7 +1399,6 @@ struct kvm_user_data {
 	__u64 ram_size;
 	struct kvm_numa_info numa_info;
 };
-#endif
 
 /* enable ucontrol for s390 */
 struct kvm_s390_ucas_mapping {
