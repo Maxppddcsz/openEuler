@@ -7,8 +7,9 @@
 #include <linux/types.h>
 #include <linux/netdevice.h>
 
-#include "hinic3_mgmt_interface.h"
-#include "mag_cmd.h"
+#include "nic_mpu_cmd_defs.h"
+#include "mag_mpu_cmd.h"
+#include "mag_mpu_cmd_defs.h"
 
 #define OS_VF_ID_TO_HW(os_vf_id) ((os_vf_id) + 1)
 #define HW_VF_ID_TO_OS(hw_vf_id) ((hw_vf_id) - 1)
@@ -70,7 +71,7 @@ struct hinic3_link_ksettings {
 	u32 valid_bitmap;
 	u8 speed;   /* enum nic_speed_level */
 	u8 autoneg; /* 0 - off; 1 - on */
-	u8 fec;	    /* 0 - RSFEC; 1 - BASEFEC; 2 - NOFEC */
+	u8 fec;		/* 0 - RSFEC; 1 - BASEFEC; 2 - NOFEC */
 };
 
 u64 hinic3_get_feature_cap(void *hwdev);
@@ -176,9 +177,9 @@ struct hinic3_rxq_hw {
 #define MODULE_TYPE_QSFP 0x0C
 #define MODULE_TYPE_QSFP_PLUS 0x0D
 
-#define TCAM_IP_TYPE_MASK     0x1
+#define TCAM_IP_TYPE_MASK	 0x1
 #define TCAM_TUNNEL_TYPE_MASK 0xF
-#define TCAM_FUNC_ID_MASK     0x7FFF
+#define TCAM_FUNC_ID_MASK	 0x7FFF
 
 int hinic3_add_tcam_rule(void *hwdev, struct nic_tcam_cfg_rule *tcam_rule);
 int hinic3_del_tcam_rule(void *hwdev, u32 index);
@@ -201,7 +202,7 @@ int hinic3_flush_tcam_rule(void *hwdev);
  * @retval non-zero: failure
  */
 int hinic3_update_mac(void *hwdev, const u8 *old_mac, u8 *new_mac, u16 vlan_id,
-		      u16 func_id);
+			  u16 func_id);
 
 /* *
  * @brief hinic3_get_default_mac - get default mac address
@@ -283,7 +284,7 @@ int hinic3_set_rx_vlan_offload(void *hwdev, u8 en);
  * @retval non-zero: failure
  */
 int hinic3_set_rx_lro_state(void *hwdev, u8 lro_en, u32 lro_timer,
-			    u32 lro_max_pkt_len);
+				u32 lro_max_pkt_len);
 
 /* *
  * @brief hinic3_set_vf_spoofchk - set vf spoofchk
@@ -522,10 +523,10 @@ int hinic3_dcb_set_pfc(void *hwdev, u8 pfc_en, u8 pfc_bitmap);
 int hinic3_dcb_get_pfc(void *hwdev, u8 *pfc_en_bitmap);
 
 int hinic3_dcb_set_ets(void *hwdev, u8 *cos_tc, u8 *cos_bw, u8 *cos_prio,
-		       u8 *tc_bw, u8 *tc_prio);
+			   u8 *tc_bw, u8 *tc_prio);
 
 int hinic3_dcb_set_cos_up_map(void *hwdev, u8 cos_valid_bitmap, u8 *cos_up,
-			      u8 max_cos_num);
+				  u8 max_cos_num);
 
 int hinic3_dcb_set_rq_iq_mapping(void *hwdev, u32 num_rqs, u8 *map,
 				 u32 max_map_num);
@@ -537,7 +538,7 @@ int hinic3_get_pause_info(void *hwdev, struct nic_pause_config *nic_pause);
 int hinic3_set_pause_info(void *hwdev, struct nic_pause_config nic_pause);
 
 int hinic3_set_link_settings(void *hwdev,
-			     struct hinic3_link_ksettings *settings);
+				 struct hinic3_link_ksettings *settings);
 
 int hinic3_set_vlan_fliter(void *hwdev, u32 vlan_filter_ctrl);
 

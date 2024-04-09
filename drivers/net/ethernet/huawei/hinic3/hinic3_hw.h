@@ -4,10 +4,10 @@
 #ifndef HINIC3_HW_H
 #define HINIC3_HW_H
 
-#include "hinic3_comm_cmd.h"
-#include "comm_msg_intf.h"
-#include "comm_cmdq_intf.h"
+#include "mpu_inband_cmd.h"
+#include "mpu_inband_cmd_defs.h"
 
+#ifndef HIUDK_SDK
 #include "hinic3_crm.h"
 
 #ifndef BIG_ENDIAN
@@ -46,11 +46,11 @@ enum hinic3_channel_id {
 };
 
 struct hinic3_cmd_buf {
-	void		*buf;
-	dma_addr_t	dma_addr;
-	u16		size;
+	void *buf;
+	dma_addr_t dma_addr;
+	u16 size;
 	/* Usage count, USERS DO NOT USE */
-	atomic_t	ref_cnt;
+	atomic_t ref_cnt;
 };
 
 enum hinic3_aeq_type {
@@ -87,19 +87,19 @@ enum hinic3_ceq_event {
 };
 
 enum hinic3_mbox_seg_errcode {
-	MBOX_ERRCODE_NO_ERRORS		= 0,
+	MBOX_ERRCODE_NO_ERRORS = 0,
 	/* VF send the mailbox data to the wrong destination functions */
-	MBOX_ERRCODE_VF_TO_WRONG_FUNC	= 0x100,
+	MBOX_ERRCODE_VF_TO_WRONG_FUNC = 0x100,
 	/* PPF send the mailbox data to the wrong destination functions */
-	MBOX_ERRCODE_PPF_TO_WRONG_FUNC	= 0x200,
+	MBOX_ERRCODE_PPF_TO_WRONG_FUNC = 0x200,
 	/* PF send the mailbox data to the wrong destination functions */
-	MBOX_ERRCODE_PF_TO_WRONG_FUNC	= 0x300,
+	MBOX_ERRCODE_PF_TO_WRONG_FUNC = 0x300,
 	/* The mailbox data size is set to all zero */
-	MBOX_ERRCODE_ZERO_DATA_SIZE	= 0x400,
+	MBOX_ERRCODE_ZERO_DATA_SIZE = 0x400,
 	/* The sender function attribute has not been learned by hardware */
-	MBOX_ERRCODE_UNKNOWN_SRC_FUNC	= 0x500,
+	MBOX_ERRCODE_UNKNOWN_SRC_FUNC = 0x500,
 	/* The receiver function attr has not been learned by hardware */
-	MBOX_ERRCODE_UNKNOWN_DES_FUNC	= 0x600,
+	MBOX_ERRCODE_UNKNOWN_DES_FUNC = 0x600,
 };
 
 struct hinic3_ceq_info {
@@ -126,6 +126,9 @@ typedef int (*hinic3_ppf_mbox_cb)(void *pri_handle, u16 pf_idx,
 typedef int (*hinic3_pf_recv_from_ppf_mbox_cb)(void *pri_handle,
 	u16 cmd, void *buf_in, u16 in_size, void *buf_out, u16 *out_size);
 
+#endif
+
+#ifndef HIUDK_ULD
 /**
  * @brief hinic3_aeq_register_hw_cb -  register aeq hardware callback
  * @param hwdev: device pointer to hwdev
@@ -514,7 +517,7 @@ int hinic3_api_csr_rd64(void *hwdev, u8 dest, u32 addr, u64 *val);
  * @retval zero: success
  * @retval non-zero: failure
  */
-int hinic3_dbg_get_hw_stats(const void *hwdev, u8 *hw_stats, const u16 *out_size);
+int hinic3_dbg_get_hw_stats(const void *hwdev, u8 *hw_stats, const u32 *out_size);
 
 /**
  * @brief hinic3_dbg_clear_hw_stats - clear hardware stats
@@ -627,6 +630,23 @@ int hinic3_mbox_to_vf(void *hwdev, u16 vf_id, u8 mod, u16 cmd, void *buf_in,
 		      u16 in_size, void *buf_out, u16 *out_size, u32 timeout,
 		      u16 channel);
 
+/**
+ * @brief hinic3_mbox_to_vf_no_ack - mbox message to vf no ack
+ * @param hwdev: device pointer to hwdev
+ * @param vf_id: vf index
+ * @param mod: mod type
+ * @param cmd: cmd
+ * @param buf_in: message buffer in
+ * @param in_size: in buffer size
+ * @param buf_out: message buffer out
+ * @param out_size: out buffer size
+ * @param channel: channel id
+ * @retval zero: success
+ * @retval non-zero: failure
+ */
+int hinic3_mbox_to_vf_no_ack(void *hwdev, u16 vf_id, u8 mod, u16 cmd, void *buf_in,
+			     u16 in_size, void *buf_out, u16 *out_size, u16 channel);
+
 int hinic3_clp_to_mgmt(void *hwdev, u8 mod, u16 cmd, const void *buf_in,
 		       u16 in_size, void *buf_out, u16 *out_size);
 /**
@@ -640,6 +660,20 @@ int hinic3_clp_to_mgmt(void *hwdev, u8 mod, u16 cmd, const void *buf_in,
  * @retval non-zero: failure
  */
 int hinic3_cmdq_async(void *hwdev, u8 mod, u8 cmd, struct hinic3_cmd_buf *buf_in, u16 channel);
+
+/**
+ * @brief hinic3_cmdq_async_cos - cmdq asynchronous message by cos
+ * @param hwdev: device pointer to hwdev
+ * @param mod: mod type
+ * @param cmd: cmd
+ * @param cos_id: cos id
+ * @param buf_in: message buffer in
+ * @param channel: channel id
+ * @retval zero: success
+ * @retval non-zero: failure
+ */
+int hinic3_cmdq_async_cos(void *hwdev, u8 mod, u8 cmd, u8 cos_id,
+			  struct hinic3_cmd_buf *buf_in, u16 channel);
 
 /**
  * @brief hinic3_cmdq_detail_resp - cmdq direct message response
@@ -788,7 +822,6 @@ void hinic3_link_event_stats(void *dev, u8 link);
  */
 int hinic3_get_hw_pf_infos(void *hwdev, struct hinic3_hw_pf_infos *infos,
 			   u16 channel);
-
 /**
  * @brief hinic3_func_reset - reset func
  * @param hwdev: device pointer to hwdev
@@ -819,10 +852,12 @@ int hinic3_get_ceq_page_phy_addr(void *hwdev, u16 q_id,
 				 u16 page_idx, u64 *page_phy_addr);
 int hinic3_set_ceq_irq_disable(void *hwdev, u16 q_id);
 int hinic3_get_ceq_info(void *hwdev, u16 q_id, struct hinic3_ceq_info *ceq_info);
-
+int hinic3_init_single_ceq_status(void *hwdev, u16 q_id);
 void hinic3_set_api_stop(void *hwdev);
 
 int hinic3_activate_firmware(void *hwdev, u8 cfg_index);
 int hinic3_switch_config(void *hwdev, u8 cfg_index);
+
+#endif
 
 #endif

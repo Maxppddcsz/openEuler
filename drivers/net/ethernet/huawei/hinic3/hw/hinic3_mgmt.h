@@ -10,7 +10,7 @@
 #include <linux/spinlock.h>
 #include <linux/workqueue.h>
 
-#include "comm_defs.h"
+#include "mpu_cmd_base_defs.h"
 #include "hinic3_hw.h"
 #include "hinic3_api_cmd.h"
 #include "hinic3_hwdev.h"
@@ -56,7 +56,7 @@ enum clp_reg_type {
 #define HINIC3_CLP_START_OR_READY_REG_MAX	0x1
 
 struct hinic3_recv_msg {
-	void			*msg;
+	void *msg;
 
 	u16			msg_len;
 	u16			rsvd1;
@@ -97,21 +97,21 @@ enum hinic3_mgmt_msg_cb_state {
 
 struct hinic3_clp_pf_to_mgmt {
 	struct semaphore	clp_msg_lock;
-	void			*clp_msg_buf;
+	void *clp_msg_buf;
 };
 
 struct hinic3_msg_pf_to_mgmt {
-	struct hinic3_hwdev		*hwdev;
+	struct hinic3_hwdev *hwdev;
 
 	/* Async cmd can not be scheduling */
 	spinlock_t			async_msg_lock;
 	struct semaphore		sync_msg_lock;
 
-	struct workqueue_struct		*workq;
+	struct workqueue_struct *workq;
 
-	void				*async_msg_buf;
-	void				*sync_msg_buf;
-	void				*mgmt_ack_buf;
+	void *async_msg_buf;
+	void *sync_msg_buf;
+	void *mgmt_ack_buf;
 
 	struct hinic3_recv_msg		recv_msg_from_mgmt;
 	struct hinic3_recv_msg		recv_resp_msg_from_mgmt;
@@ -119,13 +119,13 @@ struct hinic3_msg_pf_to_mgmt {
 	u16				async_msg_id;
 	u16				sync_msg_id;
 	u32				rsvd1;
-	struct hinic3_api_cmd_chain	*cmd_chain[HINIC3_API_CMD_MAX];
+	struct hinic3_api_cmd_chain *cmd_chain[HINIC3_API_CMD_MAX];
 
 	hinic3_mgmt_msg_cb		recv_mgmt_msg_cb[HINIC3_MOD_HW_MAX];
-	void				*recv_mgmt_msg_data[HINIC3_MOD_HW_MAX];
+	void *recv_mgmt_msg_data[HINIC3_MOD_HW_MAX];
 	unsigned long			mgmt_msg_cb_state[HINIC3_MOD_HW_MAX];
 
-	void				*async_msg_cb_data[HINIC3_MOD_HW_MAX];
+	void *async_msg_cb_data[HINIC3_MOD_HW_MAX];
 
 	/* lock when sending msg */
 	spinlock_t			sync_event_lock;
@@ -137,7 +137,7 @@ struct hinic3_mgmt_msg_handle_work {
 	struct work_struct	work;
 	struct hinic3_msg_pf_to_mgmt *pf_to_mgmt;
 
-	void			*msg;
+	void *msg;
 	u16			msg_len;
 	u16			rsvd1;
 
@@ -163,6 +163,9 @@ int hinic3_pf_to_mgmt_async(void *hwdev, u8 mod, u16 cmd, const void *buf_in,
 int hinic3_pf_msg_to_mgmt_sync(void *hwdev, u8 mod, u16 cmd, void *buf_in,
 			       u16 in_size, void *buf_out, u16 *out_size,
 			       u32 timeout);
+
+int hinic3_pf_to_mgmt_no_ack(void *hwdev, enum hinic3_mod_type mod, u8 cmd, void *buf_in,
+			     u16 in_size);
 
 int hinic3_api_cmd_read_ack(void *hwdev, u8 dest, const void *cmd, u16 size,
 			    void *ack, u16 ack_size);

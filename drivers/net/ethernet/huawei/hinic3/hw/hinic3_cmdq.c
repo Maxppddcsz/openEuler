@@ -16,6 +16,7 @@
 #include <linux/module.h>
 
 #include "ossl_knl.h"
+#include "npu_cmdq_base_defs.h"
 #include "hinic3_crm.h"
 #include "hinic3_hw.h"
 #include "hinic3_hwdev.h"
@@ -261,8 +262,10 @@ struct hinic3_cmd_buf *hinic3_alloc_cmd_buf(void *hwdev)
 	dev = ((struct hinic3_hwdev *)hwdev)->dev_hdl;
 
 	cmd_buf = kzalloc(sizeof(*cmd_buf), GFP_ATOMIC);
-	if (!cmd_buf)
+	if (!cmd_buf) {
+		sdk_err(dev, "Failed to allocate cmd buf\n");
 		return NULL;
+	}
 
 	cmd_buf->buf = dma_pool_alloc(cmdqs->cmd_buf_pool, GFP_ATOMIC,
 				      &cmd_buf->dma_addr);
@@ -345,8 +348,7 @@ static void cmdq_set_db(struct hinic3_cmdq *cmdq,
 static void cmdq_wqe_fill(void *dst, const void *src)
 {
 	memcpy((u8 *)dst + FIRST_DATA_TO_WRITE_LAST,
-	       (u8 *)src + FIRST_DATA_TO_WRITE_LAST,
-	       CMDQ_WQE_SIZE - FIRST_DATA_TO_WRITE_LAST);
+		(u8 *)src + FIRST_DATA_TO_WRITE_LAST, CMDQ_WQE_SIZE - FIRST_DATA_TO_WRITE_LAST);
 
 	wmb(); /* The first 8 bytes should be written last */
 
@@ -654,7 +656,7 @@ static int cmdq_sync_cmd_direct_resp(struct hinic3_cmdq *cmdq, u8 mod,
 	cmd_info->channel = channel;
 	cmdq_set_cmd_buf(cmd_info, cmdq->hwdev, buf_in, NULL);
 
-	memcpy(&saved_cmd_info, cmd_info, sizeof(*cmd_info));
+	memcpy(&saved_cmd_info, cmd_info, sizeof(struct hinic3_cmdq_cmd_info));
 
 	cmdq_set_lcmd_wqe(&wqe, SYNC_CMD_DIRECT_RESP, buf_in, NULL,
 			  wrapped, mod, cmd, curr_prod_idx);
@@ -742,7 +744,7 @@ static int cmdq_sync_cmd_detail_resp(struct hinic3_cmdq *cmdq, u8 mod, u8 cmd,
 	cmd_info->channel = channel;
 	cmdq_set_cmd_buf(cmd_info, cmdq->hwdev, buf_in, buf_out);
 
-	memcpy(&saved_cmd_info, cmd_info, sizeof(*cmd_info));
+	memcpy(&saved_cmd_info, cmd_info, sizeof(struct hinic3_cmdq_cmd_info));
 
 	cmdq_set_lcmd_wqe(&wqe, SYNC_CMD_SGE_RESP, buf_in, buf_out,
 			  wrapped, mod, cmd, curr_prod_idx);
@@ -824,8 +826,7 @@ static int cmdq_async_cmd(struct hinic3_cmdq *cmdq, u8 mod, u8 cmd,
 	 */
 	cmd_info->buf_in = buf_in;
 
-	/* LB mode 1 compatible, cmdq 0 also for async, which is sync_no_wait */
-	cmdq_set_db(cmdq, HINIC3_CMDQ_SYNC, next_prod_idx);
+	cmdq_set_db(cmdq, cmdq->cmdq_type, next_prod_idx);
 
 	cmdq_msg_unlock(cmdq);
 
@@ -993,6 +994,37 @@ int hinic3_cmdq_async(void *hwdev, u8 mod, u8 cmd, struct hinic3_cmd_buf *buf_in
 			      cmd, buf_in, channel);
 }
 
+int hinic3_cmdq_async_cos(void *hwdev, u8 mod, u8 cmd,
+			  u8 cos_id, struct hinic3_cmd_buf *buf_in,
+			  u16 channel)
+{
+	struct hinic3_cmdqs *cmdqs = NULL;
+	int err;
+
+	err = cmdq_params_valid(hwdev, buf_in);
+	if (err)
+		return err;
+
+	cmdqs = ((struct hinic3_hwdev *)hwdev)->cmdqs;
+
+	if (!get_card_present_state((struct hinic3_hwdev *)hwdev))
+		return -EPERM;
+
+	err = wait_cmdqs_enable(cmdqs);
+	if (err) {
+		sdk_err(cmdqs->hwdev->dev_hdl, "Cmdq is disable\n");
+		return err;
+	}
+
+	if (cos_id >= cmdqs->cmdq_num) {
+		sdk_err(cmdqs->hwdev->dev_hdl, "Cmdq id is invalid\n");
+		return -EINVAL;
+	}
+
+	return cmdq_async_cmd(&cmdqs->cmdq[cos_id], mod,
+				cmd, buf_in, channel);
+}
+
 static void clear_wqe_complete_bit(struct hinic3_cmdq *cmdq,
 				   struct hinic3_cmdq_wqe *wqe, u16 ci)
 {
@@ -1098,14 +1130,14 @@ void hinic3_cmdq_ceq_handler(void *handle, u32 ceqe_data)
 			sdk_warn(hwdev->dev_hdl, "Cmdq timeout, q_id: %u, ci: %u\n",
 				 cmdq_type, ci);
 			hinic3_dump_cmdq_wqe_head(hwdev, wqe);
-			fallthrough;
+			fallthrough;		/*lint -fallthrough */
 		case HINIC3_CMD_TYPE_FAKE_TIMEOUT:
 			cmdq_clear_cmd_buf(cmd_info, hwdev);
 			clear_wqe_complete_bit(cmdq, wqe, ci);
 			break;
 		case HINIC3_CMD_TYPE_SET_ARM:
 			/* arm_bit was set until here */
-			if (cmdq_arm_ceq_handler(cmdq, wqe, ci))
+			if (cmdq_arm_ceq_handler(cmdq, wqe, ci) != 0)
 				return;
 			break;
 		default:
@@ -1174,6 +1206,7 @@ static int init_cmdq(struct hinic3_cmdq *cmdq, struct hinic3_hwdev *hwdev,
 	cmdq->cmd_infos = kcalloc(cmdq->wq.q_depth, sizeof(*cmdq->cmd_infos),
 				  GFP_KERNEL);
 	if (!cmdq->cmd_infos) {
+		sdk_err(hwdev->dev_hdl, "Failed to allocate cmdq infos\n");
 		err = -ENOMEM;
 		goto cmd_infos_err;
 	}
@@ -1391,11 +1424,11 @@ static int create_cmdq_wq(struct hinic3_cmdqs *cmdqs)
 		}
 
 		type = HINIC3_CMDQ_SYNC;
-		for (; type < cmdqs->cmdq_num; type++)
-			memcpy((u8 *)cmdqs->wq_block_vaddr +
-			       CMDQ_WQ_CLA_SIZE * type,
+		for (; type < cmdqs->cmdq_num; type++) {
+			memcpy((u8 *)cmdqs->wq_block_vaddr + ((u64)type * CMDQ_WQ_CLA_SIZE),
 			       cmdqs->cmdq[type].wq.wq_block_vaddr,
 			       cmdqs->cmdq[type].wq.num_wq_pages * sizeof(u64));
+		}
 	}
 
 	return 0;

@@ -8,11 +8,16 @@
 #include <linux/completion.h>
 #include <linux/spinlock.h>
 
-#include "comm_msg_intf.h"
+#include "mpu_inband_cmd_defs.h"
 #include "hinic3_hw.h"
 #include "hinic3_wq.h"
 #include "hinic3_common.h"
 #include "hinic3_hwdev.h"
+
+struct dma_pool {
+    unsigned int size;
+    void *dev_hdl;
+};
 
 #define HINIC3_SCMD_DATA_LEN		16
 
@@ -131,14 +136,14 @@ struct hinic3_cmdq_cmd_info {
 	u16				channel;
 	u16				rsvd1;
 
-	struct completion		*done;
-	int				*errcode;
-	int				*cmpt_code;
-	u64				*direct_resp;
-	u64				cmdq_msg_id;
+	struct completion *done;
+	int *errcode;
+	int *cmpt_code;
+	u64 *direct_resp;
+	u64 cmdq_msg_id;
 
-	struct hinic3_cmd_buf		*buf_in;
-	struct hinic3_cmd_buf		*buf_out;
+	struct hinic3_cmd_buf *buf_in;
+	struct hinic3_cmd_buf *buf_out;
 };
 
 struct hinic3_cmdq {
@@ -152,22 +157,22 @@ struct hinic3_cmdq {
 
 	struct cmdq_ctxt_info		cmdq_ctxt;
 
-	struct hinic3_cmdq_cmd_info	*cmd_infos;
+	struct hinic3_cmdq_cmd_info *cmd_infos;
 
-	struct hinic3_hwdev		*hwdev;
+	struct hinic3_hwdev *hwdev;
 	u64				rsvd1[2];
 };
 
 struct hinic3_cmdqs {
-	struct hinic3_hwdev		*hwdev;
+	struct hinic3_hwdev *hwdev;
 
-	struct dma_pool			*cmd_buf_pool;
+	struct dma_pool *cmd_buf_pool;
 	/* doorbell area */
-	u8 __iomem			*cmdqs_db_base;
+	u8 __iomem *cmdqs_db_base;
 
 	/* All cmdq's CLA of a VF occupy a PAGE when cmdq wq is 1-level CLA */
 	dma_addr_t			wq_block_paddr;
-	void				*wq_block_vaddr;
+	void *wq_block_vaddr;
 	struct hinic3_cmdq		cmdq[HINIC3_MAX_CMDQ_TYPES];
 
 	u32				status;
