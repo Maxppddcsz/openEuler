@@ -18,6 +18,47 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/bpf_test_run.h>
 
+long bpf_testmod_test_struct_arg_result;
+
+struct bpf_testmod_struct_arg_1 {
+	int a;
+};
+struct bpf_testmod_struct_arg_2 {
+	long a;
+	long b;
+};
+
+noinline int
+bpf_testmod_test_struct_arg_1(struct bpf_testmod_struct_arg_2 a, int b, int c) {
+	bpf_testmod_test_struct_arg_result = a.a + a.b  + b + c;
+	return bpf_testmod_test_struct_arg_result;
+}
+
+noinline int
+bpf_testmod_test_struct_arg_2(int a, struct bpf_testmod_struct_arg_2 b, int c) {
+	bpf_testmod_test_struct_arg_result = a + b.a + b.b + c;
+	return bpf_testmod_test_struct_arg_result;
+}
+
+noinline int
+bpf_testmod_test_struct_arg_3(int a, int b, struct bpf_testmod_struct_arg_2 c) {
+	bpf_testmod_test_struct_arg_result = a + b + c.a + c.b;
+	return bpf_testmod_test_struct_arg_result;
+}
+
+noinline int
+bpf_testmod_test_struct_arg_4(struct bpf_testmod_struct_arg_1 a, int b,
+			      int c, int d, struct bpf_testmod_struct_arg_2 e) {
+	bpf_testmod_test_struct_arg_result = a.a + b + c + d + e.a + e.b;
+	return bpf_testmod_test_struct_arg_result;
+}
+
+noinline int
+bpf_testmod_test_struct_arg_5(void) {
+	bpf_testmod_test_struct_arg_result = 1;
+	return bpf_testmod_test_struct_arg_result;
+}
+
 struct bpf_test_timer {
 	enum { NO_PREEMPT, NO_MIGRATE } mode;
 	u32 i;
@@ -242,6 +283,20 @@ static void *bpf_test_init(const union bpf_attr *kattr, u32 size,
 	return data;
 }
 
+static int bpf_prog_test_struct_arg(void)
+{
+	struct bpf_testmod_struct_arg_1 struct_arg1 = {10};
+	struct bpf_testmod_struct_arg_2 struct_arg2 = {2, 3};
+
+	(void)bpf_testmod_test_struct_arg_1(struct_arg2, 1, 4);
+	(void)bpf_testmod_test_struct_arg_2(1, struct_arg2, 4);
+	(void)bpf_testmod_test_struct_arg_3(1, 4, struct_arg2);
+	(void)bpf_testmod_test_struct_arg_4(struct_arg1, 1, 2, 3, struct_arg2);
+	(void)bpf_testmod_test_struct_arg_5();
+
+	return 0;
+}
+
 int bpf_prog_test_run_tracing(struct bpf_prog *prog,
 			      const union bpf_attr *kattr,
 			      union bpf_attr __user *uattr)
@@ -264,7 +319,7 @@ int bpf_prog_test_run_tracing(struct bpf_prog *prog,
 		    bpf_fentry_test5(11, (void *)12, 13, 14, 15) != 65 ||
 		    bpf_fentry_test6(16, (void *)17, 18, 19, (void *)20, 21) != 111 ||
 		    bpf_fentry_test7((struct bpf_fentry_test_t *)0) != 0 ||
-		    bpf_fentry_test8(&arg) != 0)
+		    bpf_fentry_test8(&arg) != 0 || bpf_prog_test_struct_arg() != 0)
 			goto out;
 		break;
 	case BPF_MODIFY_RETURN:
