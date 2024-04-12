@@ -3479,6 +3479,8 @@ static inline void update_current_exec_runtime(struct task_struct *curr,
 
 #ifdef CONFIG_SCHED_MM_CID
 
+DECLARE_STATIC_KEY_FALSE(sched_mm_cid_enable);
+
 #define SCHED_MM_CID_PERIOD_NS	(100ULL * 1000000)	/* 100ms */
 #define MM_CID_SCAN_DELAY	100			/* 100ms */
 
@@ -3663,6 +3665,9 @@ static inline void switch_mm_cid(struct rq *rq,
 				 struct task_struct *prev,
 				 struct task_struct *next)
 {
+	if (static_branch_unlikely(&sched_mm_cid_enable))
+		return;
+
 	/*
 	 * Provide a memory barrier between rq->curr store and load of
 	 * {prev,next}->mm->pcpu_cid[cpu] on rq->curr->mm transition.
