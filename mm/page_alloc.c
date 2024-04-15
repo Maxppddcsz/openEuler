@@ -68,6 +68,7 @@
 #include <linux/nmi.h>
 #include <linux/khugepaged.h>
 #include <linux/ktask.h>
+#include <linux/gfp.h>
 
 #include <asm/sections.h>
 #include <asm/tlbflush.h>
@@ -6194,7 +6195,9 @@ static void __meminit zone_pageset_init(struct zone *zone, int cpu)
 void __meminit setup_zone_pageset(struct zone *zone)
 {
 	int cpu;
-	zone->pageset = alloc_percpu(struct per_cpu_pageset);
+	zone->pageset = alloc_percpu_gfp(
+		struct per_cpu_pageset, __GFP_HIGH | __GFP_NOFAIL);
+
 	for_each_possible_cpu(cpu)
 		zone_pageset_init(zone, cpu);
 }
