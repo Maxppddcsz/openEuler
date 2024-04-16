@@ -1136,6 +1136,7 @@ config QOS_SCHED_DYNAMIC_AFFINITY
 	 cpus allowed.
 
 config SCHED_MM_CID
+	bool "RSEQ node id and mm concurrency id extensions"
 	def_bool y
 	depends on SMP && RSEQ
 
