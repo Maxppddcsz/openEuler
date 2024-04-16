@@ -7,8 +7,9 @@
 #include <linux/types.h>
 #include <linux/netdevice.h>
 
-#include "hinic3_mgmt_interface.h"
-#include "mag_cmd.h"
+#include "nic_mpu_cmd_defs.h"
+#include "mag_mpu_cmd.h"
+#include "mag_mpu_cmd_defs.h"
 
 #define OS_VF_ID_TO_HW(os_vf_id) ((os_vf_id) + 1)
 #define HW_VF_ID_TO_OS(hw_vf_id) ((hw_vf_id) - 1)
