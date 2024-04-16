@@ -30,7 +30,9 @@
 #include <linux/uio.h>
 #include <linux/mman.h>
 #include <linux/backing-dev.h>
+#ifdef CONFIG_BPF_READAHEAD_OPTIMIZATION
 #include <trace/events/fs.h>
+#endif
 #include "ext4.h"
 #include "ext4_jbd2.h"
 #include "xattr.h"
@@ -145,7 +147,9 @@ static ssize_t ext4_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 	if (iocb->ki_flags & IOCB_DIRECT)
 		return ext4_dio_read_iter(iocb, to);
 
+#ifdef CONFIG_BPF_READAHEAD_OPTIMIZATION
 	fs_file_read_do_trace(iocb);
+#endif
 	return generic_file_read_iter(iocb, to);
 }
 
@@ -167,7 +171,9 @@ static ssize_t ext4_file_splice_read(struct file *in, loff_t *ppos,
  */
 static int ext4_release_file(struct inode *inode, struct file *filp)
 {
+#ifdef CONFIG_BPF_READAHEAD_OPTIMIZATION
 	trace_fs_file_release(inode, filp);
+#endif
 
 	if (ext4_test_inode_state(inode, EXT4_STATE_DA_ALLOC_CLOSE)) {
 		ext4_alloc_da_blocks(inode);
