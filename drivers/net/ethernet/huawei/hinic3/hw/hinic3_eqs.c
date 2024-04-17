@@ -26,6 +26,8 @@
 #include "hinic3_prof_adap.h"
 #include "hinic3_eqs.h"
 
+#include "vram_common.h"
+
 #define HINIC3_EQS_WQ_NAME			"hinic3_eqs"
 
 #define AEQ_CTRL_0_INTR_IDX_SHIFT		0
@@ -66,7 +68,6 @@
 #define HINIC3_TASK_PROCESS_EQE_LIMIT		1024
 #define HINIC3_EQ_UPDATE_CI_STEP		64
 
-/*lint -e806*/
 static uint g_aeq_len = HINIC3_DEFAULT_AEQ_LEN;
 module_param(g_aeq_len, uint, 0444);
 MODULE_PARM_DESC(g_aeq_len,
@@ -83,7 +84,6 @@ static uint g_num_ceqe_in_tasklet = HINIC3_TASK_PROCESS_EQE_LIMIT;
 module_param(g_num_ceqe_in_tasklet, uint, 0444);
 MODULE_PARM_DESC(g_num_ceqe_in_tasklet,
 		 "The max number of ceqe can be processed in tasklet, default = 1024");
-/*lint +e806*/
 
 #define CEQ_CTRL_0_INTR_IDX_SHIFT		0
 #define CEQ_CTRL_0_DMA_ATTR_SHIFT		12
@@ -643,6 +643,7 @@ static irqreturn_t aeq_interrupt(int irq, void *data)
 
 	queue_work_on(hisdk3_get_work_cpu_affinity(hwdev, WORK_TYPE_AEQ),
 		      workq, &aeq->aeq_work);
+
 	return IRQ_HANDLED;
 }
 
@@ -804,17 +805,20 @@ static int alloc_eq_pages(struct hinic3_eq *eq)
 
 	eq->eq_pages = kcalloc(eq->num_pages, sizeof(*eq->eq_pages),
 			       GFP_KERNEL);
-	if (!eq->eq_pages)
+	if (!eq->eq_pages) {
+		sdk_err(eq->hwdev->dev_hdl, "Failed to alloc eq pages description\n");
 		return -ENOMEM;
+	}
 
 	for (pg_idx = 0; pg_idx < eq->num_pages; pg_idx++) {
 		eq_page = &eq->eq_pages[pg_idx];
 		err = hinic3_dma_zalloc_coherent_align(eq->hwdev->dev_hdl,
 						       eq->page_size,
 						       HINIC3_MIN_EQ_PAGE_SIZE,
-						       GFP_KERNEL, eq_page);
+						       GFP_KERNEL,
+						       eq_page);
 		if (err) {
-			sdk_err(eq->hwdev->dev_hdl, "Failed to alloc eq page, page index: %u\n",
+			sdk_err(eq->hwdev->dev_hdl, "Failed to alloc eq page, page index: %hu\n",
 				pg_idx);
 			goto dma_alloc_err;
 		}
@@ -894,16 +898,11 @@ static int request_eq_irq(struct hinic3_eq *eq, struct irq_info *entry)
 		tasklet_init(&eq->ceq_tasklet, ceq_tasklet, (ulong)eq);
 
 	if (eq->type == HINIC3_AEQ) {
-		snprintf(eq->irq_name, sizeof(eq->irq_name),
-			 "hinic3_aeq%u@pci:%s", eq->q_id,
-			 pci_name(eq->hwdev->pcidev_hdl));
-
+		sprintf(eq->irq_name, "hinic3_aeq%u@pci:%s", eq->q_id, pci_name(eq->hwdev->pcidev_hdl));
 		err = request_irq(entry->irq_id, aeq_interrupt, 0UL,
 				  eq->irq_name, eq);
 	} else {
-		snprintf(eq->irq_name, sizeof(eq->irq_name),
-			 "hinic3_ceq%u@pci:%s", eq->q_id,
-			 pci_name(eq->hwdev->pcidev_hdl));
+		sprintf(eq->irq_name, "hinic3_ceq%u@pci:%s", eq->q_id, pci_name(eq->hwdev->pcidev_hdl));
 		err = request_irq(entry->irq_id, ceq_interrupt, 0UL,
 				  eq->irq_name, eq);
 	}
@@ -1001,6 +1000,40 @@ req_irq_err:
 	free_eq_pages(eq);
 	return err;
 }
+
+int hinic3_init_single_ceq_status(void *hwdev, u16 q_id)
+{
+    int err = 0;
+    struct hinic3_hwdev *dev = hwdev;
+    struct hinic3_eq *eq = NULL;
+
+    if (!hwdev) {
+		sdk_err(dev->dev_hdl, "hwdev is null\n");
+		return -EINVAL;
+    }
+
+    if (q_id >= dev->ceqs->num_ceqs) {
+		sdk_err(dev->dev_hdl, "q_id=%u is larger than num_ceqs %u.\n", q_id, dev->ceqs->num_ceqs);
+		return -EINVAL;
+    }
+
+    eq = &dev->ceqs->ceq[q_id];
+    /* Indirect access should set q_id first */
+    hinic3_hwif_write_reg(dev->hwif, HINIC3_EQ_INDIR_IDX_ADDR(eq->type), eq->q_id);
+    wmb(); /* write index before config */
+
+    reset_eq(eq);
+
+    err = set_eq_ctrls(eq);
+    if (err) {
+		sdk_err(dev->dev_hdl, "Failed to set ctrls for eq\n");
+		return err;
+    }
+    set_eq_cons_idx(eq, HINIC3_EQ_ARMED);
+
+    return 0;
+}
+EXPORT_SYMBOL(hinic3_init_single_ceq_status);
 
 /**
  * remove_eq - remove eq

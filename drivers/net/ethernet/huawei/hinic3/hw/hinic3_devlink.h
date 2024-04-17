@@ -7,12 +7,12 @@
 #include "ossl_knl.h"
 #include "hinic3_hwdev.h"
 
-#define FW_MAGIC_NUM           0x5a5a1100
-#define FW_IMAGE_HEAD_SIZE     4096
-#define FW_FRAGMENT_MAX_LEN    1536
+#define FW_MAGIC_NUM		   0x5a5a1100
+#define FW_IMAGE_HEAD_SIZE	 4096
+#define FW_FRAGMENT_MAX_LEN	1536
 #define FW_CFG_DEFAULT_INDEX   0xFF
-#define FW_TYPE_MAX_NUM        0x40
-#define FW_CFG_MAX_INDEX       7
+#define FW_TYPE_MAX_NUM		0x40
+#define FW_CFG_MAX_INDEX	   7
 
 #ifdef HAVE_DEVLINK_FLASH_UPDATE_PARAMS
 enum hinic3_devlink_param_id {
@@ -24,9 +24,9 @@ enum hinic3_devlink_param_id {
 
 enum hinic3_firmware_type {
 	UP_FW_UPDATE_MIN_TYPE1  = 0x0,
-	UP_FW_UPDATE_UP_TEXT    = 0x0,
-	UP_FW_UPDATE_UP_DATA    = 0x1,
-	UP_FW_UPDATE_UP_DICT    = 0x2,
+	UP_FW_UPDATE_UP_TEXT	= 0x0,
+	UP_FW_UPDATE_UP_DATA	= 0x1,
+	UP_FW_UPDATE_UP_DICT	= 0x2,
 	UP_FW_UPDATE_TILE_PCPTR = 0x3,
 	UP_FW_UPDATE_TILE_TEXT  = 0x4,
 	UP_FW_UPDATE_TILE_DATA  = 0x5,
@@ -35,27 +35,27 @@ enum hinic3_firmware_type {
 	UP_FW_UPDATE_PPE_BRANCH = 0x8,
 	UP_FW_UPDATE_PPE_EXTACT = 0x9,
 	UP_FW_UPDATE_MAX_TYPE1  = 0x9,
-	UP_FW_UPDATE_CFG0       = 0xa,
-	UP_FW_UPDATE_CFG1       = 0xb,
-	UP_FW_UPDATE_CFG2       = 0xc,
-	UP_FW_UPDATE_CFG3       = 0xd,
+	UP_FW_UPDATE_CFG0	   = 0xa,
+	UP_FW_UPDATE_CFG1	   = 0xb,
+	UP_FW_UPDATE_CFG2	   = 0xc,
+	UP_FW_UPDATE_CFG3	   = 0xd,
 	UP_FW_UPDATE_MAX_TYPE1_CFG = 0xd,
 
 	UP_FW_UPDATE_MIN_TYPE2  = 0x14,
 	UP_FW_UPDATE_MAX_TYPE2  = 0x14,
 
 	UP_FW_UPDATE_MIN_TYPE3  = 0x18,
-	UP_FW_UPDATE_PHY        = 0x18,
-	UP_FW_UPDATE_BIOS       = 0x19,
+	UP_FW_UPDATE_PHY		= 0x18,
+	UP_FW_UPDATE_BIOS	   = 0x19,
 	UP_FW_UPDATE_HLINK_ONE  = 0x1a,
 	UP_FW_UPDATE_HLINK_TWO  = 0x1b,
 	UP_FW_UPDATE_HLINK_THR  = 0x1c,
 	UP_FW_UPDATE_MAX_TYPE3  = 0x1c,
 
 	UP_FW_UPDATE_MIN_TYPE4  = 0x20,
-	UP_FW_UPDATE_L0FW       = 0x20,
-	UP_FW_UPDATE_L1FW       = 0x21,
-	UP_FW_UPDATE_BOOT       = 0x22,
+	UP_FW_UPDATE_L0FW	   = 0x20,
+	UP_FW_UPDATE_L1FW	   = 0x21,
+	UP_FW_UPDATE_BOOT	   = 0x22,
 	UP_FW_UPDATE_SEC_DICT   = 0x23,
 	UP_FW_UPDATE_HOT_PATCH0 = 0x24,
 	UP_FW_UPDATE_HOT_PATCH1 = 0x25,
@@ -105,9 +105,9 @@ enum hinic3_firmware_type {
 #define IMAGE_COLD_SUB_MODULES_MUST_IN (IMAGE_MPU_ALL_IN | IMAGE_NPU_ALL_IN)
 
 #define IMAGE_CFG_SUB_MODULES_MUST_IN (BIT_ULL(UP_FW_UPDATE_CFG0) | \
-				       BIT_ULL(UP_FW_UPDATE_CFG1) | \
-				       BIT_ULL(UP_FW_UPDATE_CFG2) | \
-				       BIT_ULL(UP_FW_UPDATE_CFG3))
+					   BIT_ULL(UP_FW_UPDATE_CFG1) | \
+					   BIT_ULL(UP_FW_UPDATE_CFG2) | \
+					   BIT_ULL(UP_FW_UPDATE_CFG3))
 
 struct firmware_section {
 	u32 section_len;
@@ -130,7 +130,7 @@ struct firmware_image {
 	u32 device_id;   /* cfg fw board_type value */
 	u32 rsvd0[101];  /* device_id and rsvd0[101] is update_head_extend_info */
 	u32 rsvd1[534];  /* big bin file total size 4096B */
-	u32 bin_data;    /* obtain the address for use */
+	u32 bin_data;	/* obtain the address for use */
 };
 
 struct host_image {
@@ -141,6 +141,30 @@ struct host_image {
 	} image_info;
 	u32 type_num;
 	u32 device_id;
+};
+
+struct hinic3_cmd_update_firmware {
+	struct mgmt_msg_head msg_head;
+
+	struct {
+		u32 sl : 1;
+		u32 sf : 1;
+		u32 flag : 1;
+		u32 bit_signed : 1;
+		u32 reserved : 12;
+		u32 fragment_len : 16;
+	} ctl_info;
+
+	struct {
+		u32 section_crc;
+		u32 section_type;
+	} section_info;
+
+	u32 total_len;
+	u32 section_len;
+	u32 section_version;
+	u32 section_offset;
+	u32 data[384];
 };
 
 int hinic3_init_devlink(struct hinic3_hwdev *hwdev);

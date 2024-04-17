@@ -3,16 +3,17 @@
  * Copyright (c) Huawei Technologies Co., Ltd. 2018-2022. All rights reserved.
  * @file hinic3_srv_nic.h
  * @details nic service interface
- * History       :
- * 1.Date        : 2018/3/8
+ * History	   :
+ * 1.Date		: 2018/3/8
  *   Modification: Created file
  */
 
 #ifndef HINIC3_SRV_NIC_H
 #define HINIC3_SRV_NIC_H
 
-#include "hinic3_mgmt_interface.h"
-#include "mag_cmd.h"
+#include "nic_mpu_cmd_defs.h"
+#include "mag_mpu_cmd.h"
+#include "mag_mpu_cmd_defs.h"
 #include "hinic3_lld.h"
 
 enum hinic3_queue_type {
@@ -61,6 +62,8 @@ enum hinic3_nic_event_type {
 	EVENT_NIC_LINK_UP,
 	EVENT_NIC_PORT_MODULE_EVENT,
 	EVENT_NIC_DCB_STATE_CHANGE,
+	EVENT_NIC_BOND_DOWN,
+	EVENT_NIC_BOND_UP,
 };
 
 /* *
@@ -171,7 +174,7 @@ int hinic3_get_cos_by_pri(void *hwdev, u8 pri, u8 *cos);
  * @retval non-zero: failure
  */
 int hinic3_create_qps(void *hwdev, u16 num_qp, u32 sq_depth, u32 rq_depth,
-		      struct irq_info *qps_msix_arry);
+			  struct irq_info *qps_msix_arry);
 
 /* *
  * @brief hinic3_destroy_qps - destroy queue pairs
@@ -207,6 +210,8 @@ void hinic3_free_qp_ctxts(void *hwdev);
  * @param hwdev: device pointer to hwdev
  * @param vf_link_forced: set link forced
  * @param link_state: Set link state, This parameter is valid only when vf_link_forced is true
+ * @retval zero: success
+ * @retval non-zero: failure
  */
 int hinic3_pf_set_vf_link_state(void *hwdev, bool vf_link_forced, bool link_state);
 

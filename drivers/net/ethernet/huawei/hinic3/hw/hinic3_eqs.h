@@ -62,7 +62,7 @@ enum hinic3_eq_ci_arm_state {
 };
 
 struct hinic3_eq {
-	struct hinic3_hwdev		*hwdev;
+	struct hinic3_hwdev *hwdev;
 	u16				q_id;
 	u16				rsvd1;
 	enum hinic3_eq_type		type;
@@ -81,7 +81,7 @@ struct hinic3_eq {
 	struct irq_info			eq_irq;
 	char				irq_name[EQ_IRQ_NAME_LEN];
 
-	struct hinic3_dma_addr_align	*eq_pages;
+	struct hinic3_dma_addr_align *eq_pages;
 
 	struct work_struct		aeq_work;
 	struct tasklet_struct		ceq_tasklet;

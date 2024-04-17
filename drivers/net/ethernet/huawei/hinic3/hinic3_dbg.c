@@ -18,11 +18,14 @@
 #include "hinic3_tx.h"
 #include "hinic3_dcb.h"
 #include "hinic3_nic.h"
-#include "hinic3_mgmt_interface.h"
+#include "nic_mpu_cmd_defs.h"
+#include "mag_mpu_cmd.h"
+#include "mag_mpu_cmd_defs.h"
+// #include "hinic3_mgmt_interface.h"
 
 typedef int (*nic_driv_module)(struct hinic3_nic_dev *nic_dev,
-			       const void *buf_in, u32 in_size,
-			       void *buf_out, u32 *out_size);
+				   const void *buf_in, u32 in_size,
+				   void *buf_out, u32 *out_size);
 
 struct nic_drv_module_handle {
 	enum driver_cmd_type	driv_cmd_name;
@@ -41,12 +44,12 @@ static int get_nic_drv_version(void *buf_out, const u32 *out_size)
 
 	if (*out_size != sizeof(*ver_info)) {
 		pr_err("Unexpect out buf size from user :%u, expect: %lu\n",
-		       *out_size, sizeof(*ver_info));
+			   *out_size, sizeof(*ver_info));
 		return -EINVAL;
 	}
 
 	err = snprintf(ver_info->ver, sizeof(ver_info->ver), "%s  %s",
-		       HINIC3_NIC_DRV_VERSION, "2023-05-17_19:56:38");
+			   HINIC3_NIC_DRV_VERSION, "2023-05-17_19:56:38");
 	if (err < 0)
 		return -EINVAL;
 
@@ -54,7 +57,7 @@ static int get_nic_drv_version(void *buf_out, const u32 *out_size)
 }
 
 static int get_tx_info(struct hinic3_nic_dev *nic_dev, const void *buf_in,
-		       u32 in_size, void *buf_out, u32 *out_size)
+			   u32 in_size, void *buf_out, u32 *out_size)
 {
 	u16 q_id;
 
@@ -83,8 +86,8 @@ static int get_tx_info(struct hinic3_nic_dev *nic_dev, const void *buf_in,
 }
 
 static int get_q_num(struct hinic3_nic_dev *nic_dev,
-		     const void *buf_in, u32 in_size,
-		     void *buf_out, u32 *out_size)
+			 const void *buf_in, u32 in_size,
+			 void *buf_out, u32 *out_size)
 {
 	if (!HINIC3_CHANNEL_RES_VALID(nic_dev)) {
 		nicif_err(nic_dev, drv, nic_dev->netdev,
@@ -136,12 +139,12 @@ static int get_tx_wqe_info(struct hinic3_nic_dev *nic_dev,
 	}
 
 	return hinic3_dbg_get_wqe_info(nic_dev->hwdev, (u16)info->q_id,
-				       (u16)info->wqe_id, wqebb_cnt,
-				       buf_out, (u16 *)out_size, HINIC3_SQ);
+					   (u16)info->wqe_id, wqebb_cnt,
+					   buf_out, (u16 *)out_size, HINIC3_SQ);
 }
 
 static int get_rx_info(struct hinic3_nic_dev *nic_dev, const void *buf_in,
-		       u32 in_size, void *buf_out, u32 *out_size)
+			   u32 in_size, void *buf_out, u32 *out_size)
 {
 	struct nic_rq_info *rq_info = buf_out;
 	u16 q_id;
@@ -211,8 +214,8 @@ static int get_rx_wqe_info(struct hinic3_nic_dev *nic_dev, const void *buf_in,
 	}
 
 	return hinic3_dbg_get_wqe_info(nic_dev->hwdev, (u16)info->q_id,
-				       (u16)info->wqe_id, wqebb_cnt,
-				       buf_out, (u16 *)out_size, HINIC3_RQ);
+					   (u16)info->wqe_id, wqebb_cnt,
+					   buf_out, (u16 *)out_size, HINIC3_RQ);
 }
 
 static int get_rx_cqe_info(struct hinic3_nic_dev *nic_dev, const void *buf_in,
@@ -258,7 +261,7 @@ static int get_rx_cqe_info(struct hinic3_nic_dev *nic_dev, const void *buf_in,
 	}
 
 	memcpy(buf_out, nic_dev->rxqs[q_id].rx_info[idx].cqe,
-	       sizeof(struct hinic3_rq_cqe));
+		   sizeof(struct hinic3_rq_cqe));
 
 	return 0;
 }
@@ -275,7 +278,7 @@ static void clean_nicdev_stats(struct hinic3_nic_dev *nic_dev)
 }
 
 static int clear_func_static(struct hinic3_nic_dev *nic_dev, const void *buf_in,
-			     u32 in_size, void *buf_out, u32 *out_size)
+				 u32 in_size, void *buf_out, u32 *out_size)
 {
 	int i;
 
@@ -293,7 +296,7 @@ static int clear_func_static(struct hinic3_nic_dev *nic_dev, const void *buf_in,
 }
 
 static int get_loopback_mode(struct hinic3_nic_dev *nic_dev, const void *buf_in,
-			     u32 in_size, void *buf_out, u32 *out_size)
+				 u32 in_size, void *buf_out, u32 *out_size)
 {
 	struct hinic3_nic_loop_mode *mode = buf_out;
 
@@ -312,7 +315,7 @@ static int get_loopback_mode(struct hinic3_nic_dev *nic_dev, const void *buf_in,
 }
 
 static int set_loopback_mode(struct hinic3_nic_dev *nic_dev, const void *buf_in,
-			     u32 in_size, void *buf_out, u32 *out_size)
+				 u32 in_size, void *buf_out, u32 *out_size)
 {
 	const struct hinic3_nic_loop_mode *mode = buf_in;
 	int err;
@@ -334,7 +337,7 @@ static int set_loopback_mode(struct hinic3_nic_dev *nic_dev, const void *buf_in,
 	}
 
 	err = hinic3_set_loopback_mode(nic_dev->hwdev, (u8)mode->loop_mode,
-				       (u8)mode->loop_ctrl);
+					   (u8)mode->loop_ctrl);
 	if (err == 0)
 		nicif_info(nic_dev, drv, nic_dev->netdev, "Set loopback mode %u en %u succeed\n",
 			   mode->loop_mode, mode->loop_ctrl);
@@ -350,8 +353,8 @@ enum hinic3_nic_link_mode {
 };
 
 static int set_link_mode_param_valid(struct hinic3_nic_dev *nic_dev,
-				     const void *buf_in, u32 in_size,
-				     const u32 *out_size)
+					 const void *buf_in, u32 in_size,
+					 const u32 *out_size)
 {
 	if (!test_bit(HINIC3_INTF_UP, &nic_dev->flags)) {
 		nicif_err(nic_dev, drv, nic_dev->netdev,
@@ -360,7 +363,7 @@ static int set_link_mode_param_valid(struct hinic3_nic_dev *nic_dev,
 	}
 
 	if (!buf_in || !out_size ||
-	    in_size != sizeof(enum hinic3_nic_link_mode))
+		in_size != sizeof(enum hinic3_nic_link_mode))
 		return -EINVAL;
 
 	if (*out_size != sizeof(enum hinic3_nic_link_mode)) {
@@ -474,7 +477,7 @@ static int get_sset_count(struct hinic3_nic_dev *nic_dev, const void *buf_in,
 	u32 count;
 
 	if (!buf_in || in_size != sizeof(u32) || !out_size ||
-	    *out_size != sizeof(u32) || !buf_out) {
+		*out_size != sizeof(u32) || !buf_out) {
 		nicif_err(nic_dev, drv, nic_dev->netdev, "Invalid parameters, in_size: %u\n",
 			  in_size);
 		return -EINVAL;
@@ -539,8 +542,8 @@ static int get_sset_stats(struct hinic3_nic_dev *nic_dev, const void *buf_in,
 }
 
 static int update_pcp_dscp_cfg(struct hinic3_nic_dev *nic_dev,
-			       struct hinic3_dcb_config *wanted_dcb_cfg,
-			       const struct hinic3_mt_qos_dev_cfg *qos_in)
+				   struct hinic3_dcb_config *wanted_dcb_cfg,
+				   const struct hinic3_mt_qos_dev_cfg *qos_in)
 {
 	int i;
 	u8 cos_num = 0, valid_cos_bitmap = 0;
@@ -674,7 +677,7 @@ static int dcb_mt_qos_map(struct hinic3_nic_dev *nic_dev, const void *buf_in,
 	qos_out->head.status = 0;
 	if (qos_in->op_code & MT_DCB_OPCODE_WR) {
 		memcpy(&nic_dev->wanted_dcb_cfg, &nic_dev->hw_dcb_cfg,
-		       sizeof(struct hinic3_dcb_config));
+			   sizeof(struct hinic3_dcb_config));
 		err = update_wanted_qos_cfg(nic_dev, &nic_dev->wanted_dcb_cfg, qos_in);
 		if (err) {
 			qos_out->head.status = MT_EINVAL;
@@ -697,7 +700,7 @@ static int dcb_mt_qos_map(struct hinic3_nic_dev *nic_dev, const void *buf_in,
 }
 
 static int dcb_mt_dcb_state(struct hinic3_nic_dev *nic_dev, const void *buf_in,
-			    u32 in_size, void *buf_out, u32 *out_size)
+				u32 in_size, void *buf_out, u32 *out_size)
 {
 	const struct hinic3_mt_dcb_state *dcb_in = buf_in;
 	struct hinic3_mt_dcb_state *dcb_out = buf_out;
@@ -740,7 +743,7 @@ static int dcb_mt_dcb_state(struct hinic3_nic_dev *nic_dev, const void *buf_in,
 		}
 
 		err = hinic3_setup_cos(nic_dev->netdev, dcb_in->state ? user_cos_num : 0,
-				       netif_run);
+					   netif_run);
 		if (err)
 			goto setup_cos_fail;
 
@@ -768,7 +771,7 @@ setup_cos_fail:
 }
 
 static int dcb_mt_hw_qos_get(struct hinic3_nic_dev *nic_dev, const void *buf_in,
-			     u32 in_size, void *buf_out, u32 *out_size)
+				 u32 in_size, void *buf_out, u32 *out_size)
 {
 	const struct hinic3_mt_qos_cos_cfg *cos_cfg_in = buf_in;
 	struct hinic3_mt_qos_cos_cfg *cos_cfg_out = buf_out;
@@ -869,7 +872,7 @@ static int set_netdev_tx_timeout(struct hinic3_nic_dev *nic_dev, const void *buf
 }
 
 static int get_xsfp_present(struct hinic3_nic_dev *nic_dev, const void *buf_in,
-			    u32 in_size, void *buf_out, u32 *out_size)
+				u32 in_size, void *buf_out, u32 *out_size)
 {
 	struct mag_cmd_get_xsfp_present *sfp_abs = buf_out;
 
@@ -941,8 +944,8 @@ static const struct nic_drv_module_handle nic_driv_module_cmd_handle[] = {
 };
 
 static int send_to_nic_driver(struct hinic3_nic_dev *nic_dev,
-			      u32 cmd, const void *buf_in,
-			      u32 in_size, void *buf_out, u32 *out_size)
+				  u32 cmd, const void *buf_in,
+				  u32 in_size, void *buf_out, u32 *out_size)
 {
 	int index, num_cmds = sizeof(nic_driv_module_cmd_handle) /
 				sizeof(nic_driv_module_cmd_handle[0]);
@@ -970,7 +973,7 @@ static int send_to_nic_driver(struct hinic3_nic_dev *nic_dev,
 }
 
 int nic_ioctl(void *uld_dev, u32 cmd, const void *buf_in,
-	      u32 in_size, void *buf_out, u32 *out_size)
+		  u32 in_size, void *buf_out, u32 *out_size)
 {
 	if (cmd == GET_DRV_VERSION)
 		return get_nic_drv_version(buf_out, out_size);

@@ -209,21 +209,21 @@ struct hinic3_api_cmd_resp_fmt {
 };
 
 struct hinic3_api_cmd_cell_ctxt {
-	struct hinic3_api_cmd_cell	*cell_vaddr;
+	struct hinic3_api_cmd_cell *cell_vaddr;
 
-	void				*api_cmd_vaddr;
+	void *api_cmd_vaddr;
 
-	struct hinic3_api_cmd_resp_fmt	*resp;
+	struct hinic3_api_cmd_resp_fmt *resp;
 
 	struct completion		done;
 	int				status;
 
 	u32				saved_prod_idx;
-	struct hinic3_hwdev		*hwdev;
+	struct hinic3_hwdev *hwdev;
 };
 
 struct hinic3_api_cmd_chain_attr {
-	struct hinic3_hwdev		*hwdev;
+	struct hinic3_hwdev *hwdev;
 	enum hinic3_api_cmd_chain_type	chain_type;
 
 	u32				num_cells;
@@ -232,7 +232,7 @@ struct hinic3_api_cmd_chain_attr {
 };
 
 struct hinic3_api_cmd_chain {
-	struct hinic3_hwdev		*hwdev;
+	struct hinic3_hwdev *hwdev;
 	enum hinic3_api_cmd_chain_type	chain_type;
 
 	u32				num_cells;
@@ -249,27 +249,27 @@ struct hinic3_api_cmd_chain {
 	spinlock_t			async_lock;
 
 	dma_addr_t			wb_status_paddr;
-	struct hinic3_api_cmd_status	*wb_status;
+	struct hinic3_api_cmd_status *wb_status;
 
 	dma_addr_t			head_cell_paddr;
-	struct hinic3_api_cmd_cell	*head_node;
+	struct hinic3_api_cmd_cell *head_node;
 
-	struct hinic3_api_cmd_cell_ctxt	*cell_ctxt;
-	struct hinic3_api_cmd_cell	*curr_node;
+	struct hinic3_api_cmd_cell_ctxt *cell_ctxt;
+	struct hinic3_api_cmd_cell *curr_node;
 
 	struct hinic3_dma_addr_align	cells_addr;
 
-	u8				*cell_vaddr_base;
-	u64				cell_paddr_base;
-	u8				*rsp_vaddr_base;
-	u64				rsp_paddr_base;
-	u8				*buf_vaddr_base;
-	u64				buf_paddr_base;
-	u64				cell_size_align;
-	u64				rsp_size_align;
-	u64				buf_size_align;
+	u8 *cell_vaddr_base;
+	u64 cell_paddr_base;
+	u8 *rsp_vaddr_base;
+	u64 rsp_paddr_base;
+	u8 *buf_vaddr_base;
+	u64 buf_paddr_base;
+	u64 cell_size_align;
+	u64 rsp_size_align;
+	u64 buf_size_align;
 
-	u64				rsvd2;
+	u64 rsvd2;
 };
 
 int hinic3_api_cmd_write(struct hinic3_api_cmd_chain *chain, u8 node_id,
