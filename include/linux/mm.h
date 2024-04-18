@@ -2333,6 +2333,9 @@ void sched_mm_cid_fork(struct task_struct *t);
 void sched_mm_cid_exit_signals(struct task_struct *t);
 static inline int task_mm_cid(struct task_struct *t)
 {
+	if (sched_mm_cid_enabled)
+		return raw_smp_processor_id();
+
 	return t->mm_cid;
 }
 #else
