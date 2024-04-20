@@ -125,6 +125,8 @@
  */
 #define MAX_THREADS FUTEX_TID_MASK
 
+DEFINE_STATIC_KEY_TRUE(mm_counter_atomic_enable);
+
 /*
  * Protected counters by write_lock_irq(&tasklist_lock)
  */
@@ -853,7 +855,7 @@ static void check_mm(struct mm_struct *mm)
 			 "Please make sure 'struct resident_page_types[]' is updated as well");
 
 	for (i = 0; i < NR_MM_COUNTERS; i++) {
-		long x = percpu_counter_sum(&mm->rss_stat[i]);
+		long x = mm_counter_sum(mm, i);
 
 		if (unlikely(x))
 			pr_alert("BUG: Bad rss-counter state mm:%p type:%s val:%ld\n",
@@ -954,7 +956,7 @@ void __mmdrop(struct mm_struct *mm)
 	put_user_ns(mm->user_ns);
 	mm_pasid_drop(mm);
 	mm_destroy_cid(mm);
-	percpu_counter_destroy_many(mm->rss_stat, NR_MM_COUNTERS);
+	mm_counter_destroy(mm);
 
 	free_mm(mm);
 }
@@ -1357,7 +1359,8 @@ static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
 	if (mm_alloc_cid(mm))
 		goto fail_cid;
 
-	if (percpu_counter_init_many(mm->rss_stat, 0, GFP_KERNEL_ACCOUNT,
+	if (!static_branch_likely(&mm_counter_atomic_enable) &&
+	    percpu_counter_init_many(mm->rss_stat, 0, GFP_KERNEL_ACCOUNT,
 				     NR_MM_COUNTERS))
 		goto fail_pcpu;
 
@@ -1782,6 +1785,17 @@ static int copy_mm(unsigned long clone_flags, struct task_struct *tsk)
 	oldmm = current->mm;
 	if (!oldmm)
 		return 0;
+
+	/*
+	 * For single-thread processes, rss_stat is in atomic mode, which
+	 * reduces the memory consumption and performance regression caused by
+	 * using percpu. For multiple-thread processes, rss_stat is switched to
+	 * the percpu mode to reduce the error margin.
+	 */
+	if (static_branch_likely(&mm_counter_atomic_enable) &&
+	    clone_flags & CLONE_THREAD)
+		if (mm_counter_switch_to_pcpu(oldmm))
+			return -ENOMEM;
 
 	if (clone_flags & CLONE_VM) {
 		mmget(oldmm);
@@ -3623,3 +3637,11 @@ int sysctl_max_threads(struct ctl_table *table, int write,
 
 	return 0;
 }
+
+static int __init mm_counter_atomic_disable(char *buf)
+{
+	static_branch_disable(&mm_counter_atomic_enable);
+
+	return 0;
+}
+early_param("mm_counter_atomic_mode", mm_counter_atomic_disable);
