@@ -154,6 +154,8 @@ int lockdep_tasklist_lock_is_held(void)
 EXPORT_SYMBOL_GPL(lockdep_tasklist_lock_is_held);
 #endif /* #ifdef CONFIG_PROVE_RCU */
 
+static bool __ro_after_init mm_counter_atomic_enable = true;
+
 int nr_processes(void)
 {
 	int cpu;
@@ -1307,6 +1309,25 @@ static void mm_init_uprobes_state(struct mm_struct *mm)
 #endif
 }
 
+static __always_inline int mm_counter_init(struct mm_struct *mm)
+{
+	/*
+	 * Depending on whether counters is NULL, we can support two modes for
+	 * mm counter, atomic mode and perpcu mode. Currently, the mm counter
+	 * atomic mode is enabled by default. Introduce cmdline interface
+	 * disable_mm_counter_atomic to disable mm counter atomic mode, which
+	 * changes mm_counter_atomic_enable from true to false.
+	 */
+	if (mm_counter_atomic_enable)
+		return 0;
+
+	if (percpu_counter_init_many(mm->rss_stat, 0, GFP_KERNEL_ACCOUNT,
+				     NR_MM_COUNTERS))
+		return -ENOMEM;
+
+	return 0;
+}
+
 static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
 	struct user_namespace *user_ns)
 {
@@ -1357,11 +1378,16 @@ static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
 	if (mm_alloc_cid(mm))
 		goto fail_cid;
 
+	if (mm_counter_init(mm))
+		goto fail_pcpu;
+
 	sp_init_mm(mm);
 	mm->user_ns = get_user_ns(user_ns);
 	lru_gen_init_mm(mm);
 	return mm;
 
+fail_pcpu:
+	mm_destroy_cid(mm);
 fail_cid:
 	destroy_context(mm);
 fail_nocontext:
@@ -3627,3 +3653,11 @@ int sysctl_max_threads(struct ctl_table *table, int write,
 
 	return 0;
 }
+
+static int __init disable_mm_counter_atomic(char *buf)
+{
+	mm_counter_atomic_enable = false;
+
+	return 0;
+}
+early_param("disable_mm_counter_atomic", disable_mm_counter_atomic);
