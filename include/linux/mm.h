@@ -2579,32 +2579,79 @@ static inline bool get_user_page_fast_only(unsigned long addr,
 /*
  * per-process(per-mm_struct) statistics.
  */
+DECLARE_STATIC_KEY_TRUE(mm_counter_atomic_enable);
+
+static inline bool mm_counter_in_pcpu_mode(struct percpu_counter *fbc)
+{
+	if (!static_branch_likely(&mm_counter_atomic_enable))
+		return true;
+	if (percpu_counter_initialized(fbc))
+		return true;
+	return false;
+}
+
 static inline unsigned long get_mm_counter(struct mm_struct *mm, int member)
 {
-	return percpu_counter_read_positive(&mm->rss_stat[member]);
+	struct percpu_counter *fbc = &mm->rss_stat[member];
+
+	if (mm_counter_in_pcpu_mode(fbc))
+		return percpu_counter_read_positive(fbc);
+
+	return percpu_counter_atomic_read(fbc);
 }
 
 void mm_trace_rss_stat(struct mm_struct *mm, int member);
 
 static inline void add_mm_counter(struct mm_struct *mm, int member, long value)
 {
-	percpu_counter_add(&mm->rss_stat[member], value);
+	struct percpu_counter *fbc = &mm->rss_stat[member];
+
+	if (mm_counter_in_pcpu_mode(fbc))
+		percpu_counter_add(fbc, value);
+	else
+		percpu_counter_atomic_add(fbc, value);
 
 	mm_trace_rss_stat(mm, member);
 }
 
 static inline void inc_mm_counter(struct mm_struct *mm, int member)
 {
-	percpu_counter_inc(&mm->rss_stat[member]);
-
-	mm_trace_rss_stat(mm, member);
+	add_mm_counter(mm, member, 1);
 }
 
 static inline void dec_mm_counter(struct mm_struct *mm, int member)
 {
-	percpu_counter_dec(&mm->rss_stat[member]);
+	add_mm_counter(mm, member, -1);
+}
 
-	mm_trace_rss_stat(mm, member);
+static inline s64 mm_counter_sum(struct mm_struct *mm, int member)
+{
+	struct percpu_counter *fbc = &mm->rss_stat[member];
+
+	if (mm_counter_in_pcpu_mode(fbc))
+		return percpu_counter_sum(fbc);
+
+	return percpu_counter_atomic_read(fbc);
+}
+
+static inline s64 mm_counter_sum_positive(struct mm_struct *mm, int member)
+{
+	struct percpu_counter *fbc = &mm->rss_stat[member];
+
+	if (mm_counter_in_pcpu_mode(fbc))
+		return percpu_counter_sum_positive(fbc);
+
+	return percpu_counter_atomic_read(fbc);
+}
+
+static inline int mm_counter_switch_to_pcpu(struct mm_struct *mm)
+{
+	return percpu_counter_switch_to_pcpu_many(mm->rss_stat, NR_MM_COUNTERS);
+}
+
+static inline void mm_counter_destroy(struct mm_struct *mm)
+{
+	percpu_counter_destroy_many(mm->rss_stat, NR_MM_COUNTERS);
 }
 
 /* Optimized variant when folio is already known not to be anon */
