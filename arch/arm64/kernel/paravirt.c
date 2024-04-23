@@ -259,6 +259,8 @@ static bool has_kvm_pvsched(void)
 	return (res.a0 == SMCCC_RET_SUCCESS);
 }
 
+DECLARE_STATIC_KEY_TRUE(vcpu_has_preemption);
+
 int __init pv_sched_init(void)
 {
 	int ret;
@@ -276,6 +278,7 @@ int __init pv_sched_init(void)
 		return ret;
 
 	static_call_update(pv_vcpu_preempted, kvm_vcpu_is_preempted);
+	static_branch_disable(&vcpu_has_preemption);
 	pr_info("using PV sched preempted\n");
 
 	return 0;
