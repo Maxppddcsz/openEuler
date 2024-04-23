@@ -259,14 +259,19 @@ static bool has_kvm_pvsched(void)
 	return (res.a0 == SMCCC_RET_SUCCESS);
 }
 
+DECLARE_STATIC_KEY_TRUE(vcpu_has_preemption);
+
 int __init pv_sched_init(void)
 {
 	int ret;
 
-	if (is_hyp_mode_available())
+	if (is_hyp_mode_available()) {
+		static_branch_disable(&vcpu_has_preemption);
 		return 0;
+	}
 
 	if (!has_kvm_pvsched()) {
+		static_branch_disable(&vcpu_has_preemption);
 		pr_warn("PV sched is not available\n");
 		return 0;
 	}
