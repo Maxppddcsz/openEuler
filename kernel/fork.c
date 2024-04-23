@@ -154,6 +154,8 @@ int lockdep_tasklist_lock_is_held(void)
 EXPORT_SYMBOL_GPL(lockdep_tasklist_lock_is_held);
 #endif /* #ifdef CONFIG_PROVE_RCU */
 
+static bool __ro_after_init mm_counter_atomic_enable = true;
+
 int nr_processes(void)
 {
 	int cpu;
@@ -853,7 +855,7 @@ static void check_mm(struct mm_struct *mm)
 			 "Please make sure 'struct resident_page_types[]' is updated as well");
 
 	for (i = 0; i < NR_MM_COUNTERS; i++) {
-		long x = percpu_counter_sum(&mm->rss_stat[i]);
+		long x = mm_counter_sum(mm, i);
 
 		if (unlikely(x))
 			pr_alert("BUG: Bad rss-counter state mm:%p type:%s val:%ld\n",
@@ -954,7 +956,7 @@ void __mmdrop(struct mm_struct *mm)
 	put_user_ns(mm->user_ns);
 	mm_pasid_drop(mm);
 	mm_destroy_cid(mm);
-	percpu_counter_destroy_many(mm->rss_stat, NR_MM_COUNTERS);
+	mm_counter_destroy(mm);
 
 	free_mm(mm);
 }
@@ -1307,6 +1309,25 @@ static void mm_init_uprobes_state(struct mm_struct *mm)
 #endif
 }
 
+static __always_inline int mm_counter_init(struct mm_struct *mm)
+{
+	/*
+	 * Depending on whether counters is NULL, we can support two modes for
+	 * mm counter, atomic mode and perpcu mode. Currently, the mm counter
+	 * atomic mode is enabled by default. Introduce cmdline interface
+	 * disable_mm_counter_atomic to disable mm counter atomic mode, which
+	 * changes mm_counter_atomic_enable from true to false.
+	 */
+	if (mm_counter_atomic_enable)
+		return 0;
+
+	if (percpu_counter_init_many(mm->rss_stat, 0, GFP_KERNEL_ACCOUNT,
+				     NR_MM_COUNTERS))
+		return -ENOMEM;
+
+	return 0;
+}
+
 static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
 	struct user_namespace *user_ns)
 {
@@ -1357,8 +1378,7 @@ static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
 	if (mm_alloc_cid(mm))
 		goto fail_cid;
 
-	if (percpu_counter_init_many(mm->rss_stat, 0, GFP_KERNEL_ACCOUNT,
-				     NR_MM_COUNTERS))
+	if (mm_counter_init(mm))
 		goto fail_pcpu;
 
 	sp_init_mm(mm);
@@ -1782,6 +1802,16 @@ static int copy_mm(unsigned long clone_flags, struct task_struct *tsk)
 	oldmm = current->mm;
 	if (!oldmm)
 		return 0;
+
+	/*
+	 * For single-thread processes, rss_stat is in atomic mode, which
+	 * reduces the memory consumption and performance regression caused by
+	 * using percpu. For multiple-thread processes, rss_stat is switched to
+	 * the percpu mode to reduce the error margin.
+	 */
+	if (clone_flags & CLONE_THREAD)
+		if (mm_counter_switch_to_pcpu(oldmm))
+			return -ENOMEM;
 
 	if (clone_flags & CLONE_VM) {
 		mmget(oldmm);
@@ -3623,3 +3653,11 @@ int sysctl_max_threads(struct ctl_table *table, int write,
 
 	return 0;
 }
+
+static int __init disable_mm_counter_atomic(char *buf)
+{
+	mm_counter_atomic_enable = false;
+
+	return 0;
+}
+early_param("disable_mm_counter_atomic", disable_mm_counter_atomic);
