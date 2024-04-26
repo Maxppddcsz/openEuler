@@ -6,6 +6,9 @@
 #include <linux/init.h>
 #include <linux/types.h>
 #include <linux/limits.h>
+#ifdef CONFIG_CVM_GUEST
+#include <asm/cvm_guest.h>
+#endif
 
 struct device;
 struct page;
@@ -74,6 +77,16 @@ static inline bool is_swiotlb_buffer(phys_addr_t paddr)
 {
 	return paddr >= io_tlb_start && paddr < io_tlb_end;
 }
+
+#ifdef CONFIG_CVM_GUEST
+static inline bool is_swiotlb_for_alloc(struct device *dev)
+{
+	return is_cvm_world();
+}
+
+struct page *swiotlb_alloc(struct device *dev, size_t size);
+bool swiotlb_free(struct device *dev, struct page *page, size_t size);
+#endif
 
 void __init swiotlb_exit(void);
 unsigned int swiotlb_max_segment(void);
