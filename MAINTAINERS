@@ -8171,6 +8171,10 @@ L:	netdev@vger.kernel.org
 S:	Supported
 F:	Documentation/networking/hinic3.txt
 F:	drivers/net/ethernet/huawei/hinic3/
+F:	drivers/net/ethernet/huawei/hinic3/bond/
+F:	drivers/net/ethernet/huawei/hinic3/cqm/
+F:	drivers/net/ethernet/huawei/hinic3/hw/
+F:	drivers/net/ethernet/huawei/hinic3/include/
 
 HUGETLB FILESYSTEM
 M:	Mike Kravetz <mike.kravetz@oracle.com>
