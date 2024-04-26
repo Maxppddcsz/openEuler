@@ -75,6 +75,20 @@ static bool dma_coherent_ok(struct device *dev, phys_addr_t phys, size_t size)
 		min_not_zero(dev->coherent_dma_mask, dev->bus_dma_limit);
 }
 
+#ifdef CONFIG_CVM_GUEST
+static struct page *dma_direct_alloc_swiotlb(struct device *dev, size_t size)
+{
+	struct page *page = swiotlb_alloc(dev, size);
+
+	if (page && !dma_coherent_ok(dev, page_to_phys(page), size)) {
+		swiotlb_free(dev, page, size);
+		return NULL;
+	}
+
+	return page;
+}
+#endif
+
 static struct page *__dma_direct_alloc_pages(struct device *dev, size_t size,
 		gfp_t gfp)
 {
@@ -83,6 +97,11 @@ static struct page *__dma_direct_alloc_pages(struct device *dev, size_t size,
 	u64 phys_limit;
 
 	WARN_ON_ONCE(!PAGE_ALIGNED(size));
+
+#ifdef CONFIG_CVM_GUEST
+	if (is_swiotlb_for_alloc(dev))
+		return dma_direct_alloc_swiotlb(dev, size);
+#endif
 
 	gfp |= dma_direct_optimal_gfp_mask(dev, dev->coherent_dma_mask,
 					   &phys_limit);
@@ -237,6 +256,11 @@ out_encrypt_pages:
 			return NULL;
 	}
 out_free_pages:
+#ifdef CONFIG_CVM_GUEST
+	if (is_swiotlb_for_alloc(dev) &&
+		swiotlb_free(dev, page, size))
+		return NULL;
+#endif
 	dma_free_contiguous(dev, page, size);
 	return NULL;
 }
@@ -271,6 +295,11 @@ void dma_direct_free(struct device *dev, size_t size,
 	else if (IS_ENABLED(CONFIG_ARCH_HAS_DMA_CLEAR_UNCACHED))
 		arch_dma_clear_uncached(cpu_addr, size);
 
+#ifdef CONFIG_CVM_GUEST
+	if (is_swiotlb_for_alloc(dev) &&
+		swiotlb_free(dev, dma_direct_to_page(dev, dma_addr), size))
+		return;
+#endif
 	dma_free_contiguous(dev, dma_direct_to_page(dev, dma_addr), size);
 }
 
@@ -307,6 +336,11 @@ struct page *dma_direct_alloc_pages(struct device *dev, size_t size,
 	*dma_handle = phys_to_dma_direct(dev, page_to_phys(page));
 	return page;
 out_free_pages:
+#ifdef CONFIG_CVM_GUEST
+	if (is_swiotlb_for_alloc(dev) &&
+		swiotlb_free(dev, page, size))
+		return NULL;
+#endif
 	dma_free_contiguous(dev, page, size);
 	return NULL;
 }
@@ -325,6 +359,11 @@ void dma_direct_free_pages(struct device *dev, size_t size,
 	if (force_dma_unencrypted(dev))
 		set_memory_encrypted((unsigned long)vaddr, PFN_UP(size));
 
+#ifdef CONFIG_CVM_GUEST
+	if (is_swiotlb_for_alloc(dev) &&
+		swiotlb_free(dev, page, size))
+		return;
+#endif
 	dma_free_contiguous(dev, page, size);
 }
 
