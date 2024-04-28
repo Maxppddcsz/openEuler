@@ -21,7 +21,7 @@
 #define SDEI_NMI_WATCHDOG_HWIRQ		29
 
 static int sdei_watchdog_event_num;
-bool disable_sdei_nmi_watchdog;
+bool disable_sdei_nmi_watchdog = true;
 static bool sdei_watchdog_registered;
 static DEFINE_PER_CPU(ktime_t, last_check_time);
 
@@ -93,12 +93,12 @@ static void sdei_nmi_watchdog_bind(void *data)
 				smp_processor_id(), ret);
 }
 
-static int __init disable_sdei_nmi_watchdog_setup(char *str)
+static int __init enable_sdei_nmi_watchdog_setup(char *str)
 {
-	disable_sdei_nmi_watchdog = true;
+	disable_sdei_nmi_watchdog = false;
 	return 1;
 }
-__setup("disable_sdei_nmi_watchdog", disable_sdei_nmi_watchdog_setup);
+__setup("enable_sdei_nmi_watchdog", enable_sdei_nmi_watchdog_setup);
 
 void sdei_watchdog_clear_eoi(void)
 {
