@@ -11,6 +11,7 @@
 #include <asm/cacheflush.h>
 #include <asm/set_memory.h>
 #include <asm/tlbflush.h>
+#include <asm/cvm_guest.h>
 
 struct page_change_data {
 	pgprot_t set_mask;
@@ -188,6 +189,10 @@ int set_direct_map_default_noflush(struct page *page)
 
 void __kernel_map_pages(struct page *page, int numpages, int enable)
 {
+#ifdef CONFIG_CVM_GUEST
+	if (is_cvm_world())
+		return;
+#endif
 	if (!debug_pagealloc_enabled() && !rodata_full)
 		return;
 
