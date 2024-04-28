@@ -56,7 +56,11 @@
 #include <linux/numa.h>
 #include <linux/pgtable.h>
 #include <linux/overflow.h>
+<<<<<<< HEAD
 #include <linux/cpuset.h>
+=======
+#include <linux/syscore_ops.h>
+>>>>>>> 9c7d9017a49f... x86: PM: Register syscore_ops for scale invariance
 
 #include <asm/acpi.h>
 #include <asm/desc.h>
@@ -2115,6 +2119,23 @@ static void init_counter_refs(void)
 	this_cpu_write(arch_prev_mperf, mperf);
 }
 
+#ifdef CONFIG_PM_SLEEP
+static struct syscore_ops freq_invariance_syscore_ops = {
+       .resume = init_counter_refs,
+};
+
+static void register_freq_invariance_syscore_ops(void)
+{
+       /* Bail out if registered already. */
+       if (freq_invariance_syscore_ops.node.prev)
+               return;
+
+       register_syscore_ops(&freq_invariance_syscore_ops);
+}
+#else
+static inline void register_freq_invariance_syscore_ops(void) {}
+#endif
+
 static void init_freq_invariance(bool secondary)
 {
 	bool ret = false;
@@ -2135,6 +2156,7 @@ static void init_freq_invariance(bool secondary)
 	if (ret) {
 		init_counter_refs();
 		static_branch_enable(&arch_scale_freq_key);
+		register_freq_invariance_syscore_ops();
 	} else {
 		pr_debug("Couldn't determine max cpu frequency, necessary for scale-invariant accounting.\n");
 	}
