@@ -14,6 +14,19 @@
 extern int iommu_merge;
 extern int panic_on_overflow;
 
+#ifdef CONFIG_PCI
+extern bool is_zhaoxin_kh40000;
+
+#define ZX_P2CW_PARAM_NODE_CHECK   BIT(0)
+#define ZX_P2CW_PARAMS_DEFAULT     ZX_P2CW_PARAM_NODE_CHECK
+
+extern phys_addr_t kh40000_iommu_iova_to_phys(struct device *dev,
+		dma_addr_t paddr);
+extern void kh40000_sync_single_dma_for_cpu(struct device *dev,
+		dma_addr_t paddr, enum dma_data_direction dir, bool is_iommu);
+extern struct page *kh40000_alloc_coherent(int node, gfp_t gfp, size_t size);
+#endif
+
 extern const struct dma_map_ops *dma_ops;
 
 static inline const struct dma_map_ops *get_arch_dma_ops(struct bus_type *bus)
