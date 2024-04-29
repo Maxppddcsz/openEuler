@@ -1236,6 +1236,17 @@ config HISILICON_ERRATUM_162102203
 
 	  If unsure, say N.
 
+config HISILICON_ERRATUM_162200803
+	bool "Hisilicon erratum 162200803"
+	default y
+	help
+	  When multiple vPEs are sending vPE schedule/de-schedule commands
+	  concurrently and repeatedly, some vPE schedule command may be not
+	  scheduled, which causes the command timeout.
+	  Limit the number of vLPI to 4096 for virtual machine.
+
+	  If unsure, say Y.
+
 config QCOM_FALKOR_ERRATUM_1003
 	bool "Falkor E1003: Incorrect translation due to ASID change"
 	default y
