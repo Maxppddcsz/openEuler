@@ -17,7 +17,6 @@
 #include "ossl_knl.h"
 #include "hinic3_crm.h"
 #include "hinic3_hw.h"
-#include "mag_cmd.h"
 #include "hinic3_nic_io.h"
 #include "hinic3_nic_cfg.h"
 #include "hinic3_srv_nic.h"

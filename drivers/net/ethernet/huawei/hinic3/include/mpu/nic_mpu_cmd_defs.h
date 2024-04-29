@@ -1,24 +1,18 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Huawei HiNIC PCI Express Linux driver
- * Copyright(c) 2017 Huawei Technologies Co., Ltd
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
- * for more details.
- *
+ * Copyright (C), 2001-2011, Huawei Tech. Co., Ltd.
+ * File Name	 : nic_mpu_cmd_defs.h
+ * Version	   : Initial Draft
+ * Created	   : 2019/4/25
+ * Last Modified :
+ * Description   : NIC Commands Structure definition between Driver and MPU
+ * Function List :
  */
 
-#ifndef HINIC_MGMT_INTERFACE_H
-#define HINIC_MGMT_INTERFACE_H
+#ifndef NIC_MPU_CMD_DEFS_H
+#define NIC_MPU_CMD_DEFS_H
 
 #include "nic_cfg_comm.h"
-#include "mgmt_msg_base.h"
+#include "mpu_cmd_base_defs.h"
 
 #ifndef ETH_ALEN
 #define ETH_ALEN 6
@@ -29,6 +23,11 @@
 
 #define HINIC3_CMD_OP_ADD	1
 #define HINIC3_CMD_OP_DEL	0
+
+#define NIC_TCAM_BLOCK_LARGE_NUM 256
+#define NIC_TCAM_BLOCK_LARGE_SIZE 16
+
+#define NIC_TCAM_FLOW_BIFUR_FLAG (1 << 0)
 
 #ifndef BIT
 #define BIT(n) (1UL << (n))
@@ -269,6 +268,50 @@ struct hinic3_cmd_cons_idx_attr {
 	u64 ci_addr;
 };
 
+typedef union {
+	struct {
+		u32 tbl_index;
+		u32 cnt;
+		u32 total_cnt;
+	} mac_table_arg;
+	struct {
+		u32 er_id;
+		u32 vlan_id;
+	} vlan_elb_table_arg;
+	struct {
+		u32 func_id;
+	} vlan_filter_arg;
+	struct {
+		u32 mc_id;
+	} mc_elb_arg;
+	struct {
+		u32 func_id;
+	} func_tbl_arg;
+	struct {
+		u32 port_id;
+	} port_tbl_arg;
+	struct {
+		u32 tbl_index;
+		u32 cnt;
+		u32 total_cnt;
+	} fdir_io_table_arg;
+	struct {
+		u32 tbl_index;
+		u32 cnt;
+		u32 total_cnt;
+	} flexq_table_arg;
+	u32 args[4];
+} sm_tbl_args;
+
+#define DFX_SM_TBL_BUF_MAX (768)
+
+struct nic_cmd_dfx_sm_table {
+	struct hinic3_mgmt_msg_head msg_head;
+	u32 tbl_type;
+	sm_tbl_args args;
+	u8 tbl_buf[DFX_SM_TBL_BUF_MAX];
+};
+
 struct hinic3_cmd_vlan_offload {
 	struct hinic3_mgmt_msg_head msg_head;
 
@@ -282,9 +325,9 @@ struct nic_cmd_capture_info {
 	struct hinic3_mgmt_msg_head msg_head;
 	u32 op_type;
 	u32 func_port;
-	u32 is_en_trx;       /* 也作为tx_rx */
-	u32 offset_cos;      /* 也作为cos */
-	u32 data_vlan;       /* 也作为vlan */
+	u32 is_en_trx;	   /* 也作为tx_rx */
+	u32 offset_cos;	  /* 也作为cos */
+	u32 data_vlan;	   /* 也作为vlan */
 };
 
 struct hinic3_cmd_lro_config {
@@ -403,10 +446,10 @@ struct hinic3_cmd_link_ksettings_info {
 	u8 rsvd1[3];
 
 	u32 valid_bitmap;
-	u8 speed;          /* enum nic_speed_level */
-	u8 autoneg;        /* 0 - off, 1 - on */
-	u8 fec;            /* 0 - RSFEC, 1 - BASEFEC, 2 - NOFEC */
-	u8 rsvd2[21];      /* reserved for duplex, port, etc. */
+	u8 speed;		  /* enum nic_speed_level */
+	u8 autoneg;		/* 0 - off, 1 - on */
+	u8 fec;			/* 0 - RSFEC, 1 - BASEFEC, 2 - NOFEC */
+	u8 rsvd2[21];	  /* reserved for duplex, port, etc. */
 };
 
 struct mpu_lt_info {
@@ -431,7 +474,6 @@ struct hinic3_force_pkt_drop {
 	u8 port;
 	u8 rsvd1[3];
 };
-
 struct hinic3_rx_mode_config {
 	struct hinic3_mgmt_msg_head msg_head;
 
@@ -449,6 +491,7 @@ struct hinic3_rss_context_table {
 	u32 context;
 };
 
+
 struct hinic3_cmd_rss_engine_type {
 	struct hinic3_mgmt_msg_head msg_head;
 
@@ -458,6 +501,7 @@ struct hinic3_cmd_rss_engine_type {
 	u8 rsvd1[4];
 };
 
+
 struct hinic3_cmd_rss_hash_key {
 	struct hinic3_mgmt_msg_head msg_head;
 
@@ -466,6 +510,7 @@ struct hinic3_cmd_rss_hash_key {
 	u8 rsvd1;
 	u8 key[NIC_RSS_KEY_SIZE];
 };
+
 
 struct hinic3_rss_indir_table {
 	struct hinic3_mgmt_msg_head msg_head;
@@ -486,6 +531,7 @@ struct hinic3_rss_template_mgmt {
 	u8 template_id;
 	u8 rsvd1[4];
 };
+
 
 struct hinic3_cmd_rss_config {
 	struct hinic3_mgmt_msg_head msg_head;
@@ -527,33 +573,33 @@ struct hinic3_up_ets_cfg { /* delet */
 	u8 tc_prio[NIC_DCB_TC_MAX];
 };
 
-#define CMD_QOS_ETS_COS_TC     BIT(0)
-#define CMD_QOS_ETS_TC_BW      BIT(1)
+#define CMD_QOS_ETS_COS_TC	 BIT(0)
+#define CMD_QOS_ETS_TC_BW	  BIT(1)
 #define CMD_QOS_ETS_COS_PRIO   BIT(2)
-#define CMD_QOS_ETS_COS_BW     BIT(3)
-#define CMD_QOS_ETS_TC_PRIO    BIT(4)
+#define CMD_QOS_ETS_COS_BW	 BIT(3)
+#define CMD_QOS_ETS_TC_PRIO	BIT(4)
 struct hinic3_cmd_ets_cfg {
 	struct hinic3_mgmt_msg_head head;
 
 	u8 port_id;
-	u8 op_code;        /* 1 - set, 0 - get */
+	u8 op_code;		/* 1 - set, 0 - get */
 	/* bit0 - cos_tc, bit1 - tc_bw, bit2 - cos_prio, bit3 - cos_bw, bit4 - tc_prio */
 	u8 cfg_bitmap;
 	u8 rsvd;
 
 	u8 cos_tc[NIC_DCB_COS_MAX];
 	u8 tc_bw[NIC_DCB_TC_MAX];
-	u8 cos_prio[NIC_DCB_COS_MAX];      /* 0 - DWRR, 1 - STRICT */
+	u8 cos_prio[NIC_DCB_COS_MAX];	  /* 0 - DWRR, 1 - STRICT */
 	u8 cos_bw[NIC_DCB_COS_MAX];
-	u8 tc_prio[NIC_DCB_TC_MAX];        /* 0 - DWRR, 1 - STRICT */
+	u8 tc_prio[NIC_DCB_TC_MAX];		/* 0 - DWRR, 1 - STRICT */
 };
 
 struct hinic3_cmd_set_dcb_state {
 	struct hinic3_mgmt_msg_head head;
 
 	u16 func_id;
-	u8 op_code;      /* 0 - get dcb state, 1 - set dcb state */
-	u8 state;        /* 0 - disable, 1 - enable dcb */
+	u8 op_code;	  /* 0 - get dcb state, 1 - set dcb state */
+	u8 state;		/* 0 - disable, 1 - enable dcb */
 	u8 port_state;   /* 0 - disable, 1 - enable dcb */
 	u8 rsvd[7];
 };
@@ -569,14 +615,14 @@ struct hinic3_cmd_set_pfc {
 	u8 rsvd[4];
 };
 
-#define CMD_QOS_PORT_TRUST     BIT(0)
+#define CMD_QOS_PORT_TRUST	 BIT(0)
 #define CMD_QOS_PORT_DFT_COS   BIT(1)
 struct hinic3_cmd_qos_port_cfg {
 	struct hinic3_mgmt_msg_head head;
 
 	u8 port_id;
-	u8 op_code;       /* 0 - get, 1 - set */
-	u8 cfg_bitmap;    /* bit0 - trust, bit1 - dft_cos */
+	u8 op_code;	   /* 0 - get, 1 - set */
+	u8 cfg_bitmap;	/* bit0 - trust, bit1 - dft_cos */
 	u8 rsvd0;
 
 	u8 trust;
@@ -585,8 +631,8 @@ struct hinic3_cmd_qos_port_cfg {
 };
 
 #define MAP_COS_MAX_NUM 8
-#define CMD_QOS_MAP_PCP2COS     BIT(0)
-#define CMD_QOS_MAP_DSCP2COS    BIT(1)
+#define CMD_QOS_MAP_PCP2COS	 BIT(0)
+#define CMD_QOS_MAP_DSCP2COS	BIT(1)
 struct hinic3_cmd_qos_map_cfg {
 	struct hinic3_mgmt_msg_head head;
 
@@ -635,16 +681,16 @@ struct nic_cmd_pause_inquiry_cfg {
 
 	u32 rx_inquiry_pause_drop_pkts_en; /* rx 卸包使能 */
 	u32 rx_inquiry_pause_period_ms;  /* rx pause 检测周期 默认 200ms */
-	u32 rx_inquiry_pause_times;      /* rx pause 检测次数 默认1次 */
+	u32 rx_inquiry_pause_times;	  /* rx pause 检测次数 默认1次 */
 	/* rx pause 检测阈值 默认 PAUSE_FRAME_THD_10G/25G/40G/100 */
 	u32 rx_inquiry_pause_frame_thd;
-	u32 rx_inquiry_tx_total_pkts;    /* rx pause 检测tx收包总数 */
+	u32 rx_inquiry_tx_total_pkts;	/* rx pause 检测tx收包总数 */
 
 	u32 tx_inquiry_pause_en; /* tx pause 检测使能 */
 	u32 tx_inquiry_pause_period_ms;  /* tx pause 检测周期 默认 200ms */
-	u32 tx_inquiry_pause_times;      /* tx pause 检测次数 默认 5次 */
+	u32 tx_inquiry_pause_times;	  /* tx pause 检测次数 默认 5次 */
 	u32 tx_inquiry_pause_frame_thd;  /* tx pause 检测阈值 */
-	u32 tx_inquiry_rx_total_pkts;    /* tx pause 检测rx收包总数 */
+	u32 tx_inquiry_rx_total_pkts;	/* tx pause 检测rx收包总数 */
 
 	u32 rsvd[4];
 };
@@ -749,14 +795,14 @@ struct nic_cmd_set_fdir_status {
 	u8 rsvd2;
 };
 
-#define HINIC3_TCAM_BLOCK_ENABLE      1
-#define HINIC3_TCAM_BLOCK_DISABLE     0
+#define HINIC3_TCAM_BLOCK_ENABLE	  1
+#define HINIC3_TCAM_BLOCK_DISABLE	 0
 #define HINIC3_MAX_TCAM_RULES_NUM   4096
 
 /* tcam block type, according to tcam block size */
 enum {
 	NIC_TCAM_BLOCK_TYPE_LARGE = 0, /* block_size: 16 */
-	NIC_TCAM_BLOCK_TYPE_SMALL,     /* block_size: 0 */
+	NIC_TCAM_BLOCK_TYPE_SMALL,	 /* block_size: 0 */
 	NIC_TCAM_BLOCK_TYPE_MAX
 };
 
@@ -832,7 +878,7 @@ struct nic_cmd_fdir_add_rule {
 
 	u16 func_id;
 	u8 type;
-	u8 rsvd;
+	u8 fdir_ext; /* 0x1: flow bifur en bit */
 	struct nic_tcam_cfg_rule rule;
 };
 
@@ -859,6 +905,16 @@ struct nic_cmd_fdir_get_rule {
 	u64 byte_count;
 };
 
+struct nic_cmd_fdir_get_block_rules {
+	struct hinic3_mgmt_msg_head head;
+	u8 tcam_block_type;		 // 目前仅有 NIC_TCAM_BLOCK_TYPE_LARGE
+	u8 tcam_table_type;		 // TCAM_RULE_PPA_TYPE 或 TCAM_RULE_FDIR_TYPE
+	u16 tcam_block_index;
+	u8 valid[NIC_TCAM_BLOCK_LARGE_SIZE];
+	struct tcam_key_x_y key[NIC_TCAM_BLOCK_LARGE_SIZE];
+	struct tcam_result data[NIC_TCAM_BLOCK_LARGE_SIZE];
+};
+
 struct hinic3_tcam_key_ipv4_mem {
 	u32 rsvd1 : 4;
 	u32 tunnel_type : 4;
@@ -869,7 +925,8 @@ struct hinic3_tcam_key_ipv4_mem {
 	u32 function_id : 15;
 	u32 dipv4_h : 16;
 	u32 sipv4_l : 16;
-	u32 rsvd2 : 16;
+	u32 vlan_id   : 15;
+	u32 vlan_flag : 1;
 	u32 dipv4_l : 16;
 	u32 rsvd3;
 	u32 dport : 16;
@@ -885,6 +942,18 @@ struct hinic3_tcam_key_ipv4_mem {
 	u32 rsvd7 : 16;
 	u32 vni_l : 16;
 };
+
+typedef union hinic3_tag_tcam_ext_info {
+	struct {
+		u32 id : 16;  /* id */
+		u32 type : 4; /* type: 0-func, 1-vmdq, 2-port, 3-rsvd, 4-trunk, 5-dp, 6-mc */
+		u32 host_id : 3;
+		u32 rsv : 8;
+		u32 ext : 1;
+	} bs;
+	u32 value;
+} hinic3_tcam_ext_info_u;
+
 
 struct hinic3_tcam_key_ipv6_mem {
 	u32 rsvd1 : 4;
@@ -992,6 +1061,40 @@ struct hinic3_ppa_cfg_ppa_en_cmd {
 	u8 rsvd;
 };
 
+struct hinic3_func_flow_bifur_en_cmd {
+	struct hinic3_mgmt_msg_head msg_head;
+	u16 func_id;
+	u8 flow_bifur_en;
+	u8 rsvd[5];
+};
+
+struct hinic3_port_flow_bifur_en_cmd {
+	struct hinic3_mgmt_msg_head msg_head;
+	u16 port_id;
+	u8 flow_bifur_en;
+	u8 rsvd[5];
+};
+
+struct hinic3_bond_mask_cmd {
+	struct hinic3_mgmt_msg_head msg_head;
+	u16 func_id;
+	u8 bond_mask;
+	u8 bond_en;
+	u8 func_valid;
+	u8 rsvd[3];
+};
+
+#define HINIC3_TX_SET_PROMISC_SKIP 0
+#define HINIC3_TX_GET_PROMISC_SKIP 1
+
+struct hinic3_tx_promisc_cfg {
+	struct hinic3_mgmt_msg_head msg_head;
+	u8 port_id;
+	u8 promisc_skip_en; /* 0: disable tx promisc replication, 1: enable tx promisc replication */
+	u8 opcode; /* 0: set, 1: get */
+	u8 rsvd1;
+};
+
 struct hinic3_ppa_cfg_mode_cmd {
 	struct hinic3_mgmt_msg_head msg_head;
 
@@ -1037,43 +1140,43 @@ enum {
 	NIC_NVM_DATA_RESET = BIT(31),
 };
 
-#define BIOS_CFG_SIGNATURE                  0x1923E518
-#define BIOS_OP_CFG_ALL(op_code_val)        (((op_code_val) >> 1) & (0xFFFFFFFF))
-#define BIOS_OP_CFG_WRITE(op_code_val)      ((op_code_val) & NIC_NVM_DATA_SET)
-#define BIOS_OP_CFG_PXE_EN(op_code_val)     ((op_code_val) & NIC_NVM_DATA_PXE)
-#define BIOS_OP_CFG_VLAN_EN(op_code_val)    ((op_code_val) & NIC_NVM_DATA_VLAN)
-#define BIOS_OP_CFG_VLAN_PRI(op_code_val)   ((op_code_val) & NIC_NVM_DATA_VLAN_PRI)
-#define BIOS_OP_CFG_VLAN_ID(op_code_val)    ((op_code_val) & NIC_NVM_DATA_VLAN_ID)
-#define BIOS_OP_CFG_WORK_MODE(op_code_val)  ((op_code_val) & NIC_NVM_DATA_WORK_MODE)
-#define BIOS_OP_CFG_PF_BW(op_code_val)      ((op_code_val) & NIC_NVM_DATA_PF_SPEED_LIMIT)
-#define BIOS_OP_CFG_GE_SPEED(op_code_val)   ((op_code_val) & NIC_NVM_DATA_GE_MODE)
-#define BIOS_OP_CFG_AUTO_NEG(op_code_val)   ((op_code_val) & NIC_NVM_DATA_AUTO_NEG)
-#define BIOS_OP_CFG_LINK_FEC(op_code_val)   ((op_code_val) & NIC_NVM_DATA_LINK_FEC)
-#define BIOS_OP_CFG_AUTO_ADPAT(op_code_val) ((op_code_val) & NIC_NVM_DATA_PF_ADAPTIVE_LINK)
-#define BIOS_OP_CFG_SRIOV_ENABLE(op_code_val)   ((op_code_val) & NIC_NVM_DATA_SRIOV_CONTROL)
-#define BIOS_OP_CFG_EXTEND_MODE(op_code_val)    ((op_code_val) & NIC_NVM_DATA_EXTEND_MODE)
-#define BIOS_OP_CFG_RST_DEF_SET(op_code_val)    ((op_code_val) & (u32)NIC_NVM_DATA_RESET)
+#define BIOS_CFG_SIGNATURE				  0x1923E518
+#define BIOS_OP_CFG_ALL(op_code_val)		((((op_code_val) >> 1) & (0xFFFFFFFF)) != 0)
+#define BIOS_OP_CFG_WRITE(op_code_val)	  ((((op_code_val) & NIC_NVM_DATA_SET)) != 0)
+#define BIOS_OP_CFG_PXE_EN(op_code_val)	 (((op_code_val) & NIC_NVM_DATA_PXE) != 0)
+#define BIOS_OP_CFG_VLAN_EN(op_code_val)	(((op_code_val) & NIC_NVM_DATA_VLAN) != 0)
+#define BIOS_OP_CFG_VLAN_PRI(op_code_val)   (((op_code_val) & NIC_NVM_DATA_VLAN_PRI) != 0)
+#define BIOS_OP_CFG_VLAN_ID(op_code_val)	(((op_code_val) & NIC_NVM_DATA_VLAN_ID) != 0)
+#define BIOS_OP_CFG_WORK_MODE(op_code_val)  (((op_code_val) & NIC_NVM_DATA_WORK_MODE) != 0)
+#define BIOS_OP_CFG_PF_BW(op_code_val)	  (((op_code_val) & NIC_NVM_DATA_PF_SPEED_LIMIT) != 0)
+#define BIOS_OP_CFG_GE_SPEED(op_code_val)   (((op_code_val) & NIC_NVM_DATA_GE_MODE) != 0)
+#define BIOS_OP_CFG_AUTO_NEG(op_code_val)   (((op_code_val) & NIC_NVM_DATA_AUTO_NEG) != 0)
+#define BIOS_OP_CFG_LINK_FEC(op_code_val)   (((op_code_val) & NIC_NVM_DATA_LINK_FEC) != 0)
+#define BIOS_OP_CFG_AUTO_ADPAT(op_code_val) (((op_code_val) & NIC_NVM_DATA_PF_ADAPTIVE_LINK) != 0)
+#define BIOS_OP_CFG_SRIOV_ENABLE(op_code_val) (((op_code_val) & NIC_NVM_DATA_SRIOV_CONTROL) != 0)
+#define BIOS_OP_CFG_EXTEND_MODE(op_code_val)  (((op_code_val) & NIC_NVM_DATA_EXTEND_MODE) != 0)
+#define BIOS_OP_CFG_RST_DEF_SET(op_code_val)  (((op_code_val) & (u32)NIC_NVM_DATA_RESET) != 0)
 
 #define NIC_BIOS_CFG_MAX_PF_BW 100
 /* 注意:此结构必须保证4字节对齐 */
 struct nic_bios_cfg {
 	u32 signature; /* 签名，用于判断FLASH的内容合法性 */
-	u8 pxe_en;     /* PXE enable: 0 - disable 1 - enable */
+	u8 pxe_en;	 /* PXE enable: 0 - disable 1 - enable */
 	u8 extend_mode;
 	u8 rsvd0[2];
-	u8 pxe_vlan_en;     /* PXE VLAN enable: 0 - disable 1 - enable */
-	u8 pxe_vlan_pri;    /* PXE VLAN priority: 0-7 */
-	u16 pxe_vlan_id;    /* PXE VLAN ID 1-4094 */
+	u8 pxe_vlan_en;	 /* PXE VLAN enable: 0 - disable 1 - enable */
+	u8 pxe_vlan_pri;	/* PXE VLAN priority: 0-7 */
+	u16 pxe_vlan_id;	/* PXE VLAN ID 1-4094 */
 	u32 service_mode;   /* 参考CHIPIF_SERVICE_MODE_x 宏 */
-	u32 pf_bw;          /* PF速率，百分比 0-100 */
-	u8 speed;           /* enum of port speed */
-	u8 auto_neg;        /* 自协商开关 0 - 字段无效 1 - 开2 - 关 */
-	u8 lanes;           /* lane num */
-	u8 fec;             /* FEC模式, 参考 enum mag_cmd_port_fec */
-	u8 auto_adapt;      /* 自适应模式配置0 - 无效配置 1 - 开启 2 - 关闭 */
-	u8 func_valid;      /* 指示func_id是否有效; 0 - 无效，other - 有效 */
-	u8 func_id;         /* 当func_valid不为0时，该成员才有意义 */
-	u8 sriov_en;        /* SRIOV-EN: 0 - 无效配置， 1 - 开启， 2 - 关闭 */
+	u32 pf_bw;		  /* PF速率，百分比 0-100 */
+	u8 speed;		   /* enum of port speed */
+	u8 auto_neg;		/* 自协商开关 0 - 字段无效 1 - 开2 - 关 */
+	u8 lanes;		   /* lane num */
+	u8 fec;			 /* FEC模式, 参考 enum mag_cmd_port_fec */
+	u8 auto_adapt;	  /* 自适应模式配置0 - 无效配置 1 - 开启 2 - 关闭 */
+	u8 func_valid;	  /* 指示func_id是否有效; 0 - 无效，other - 有效 */
+	u8 func_id;		 /* 当func_valid不为0时，该成员才有意义 */
+	u8 sriov_en;		/* SRIOV-EN: 0 - 无效配置， 1 - 开启， 2 - 关闭 */
 };
 
 struct nic_cmd_bios_cfg {
@@ -1087,18 +1190,18 @@ struct nic_cmd_vhd_config {
 
 	u16 func_id;
 	u8  vhd_type;
-	u8  virtio_small_enable;    /* 0: mergeable mode, 1: small mode */
+	u8  virtio_small_enable;	/* 0: mergeable mode, 1: small mode */
 };
 
 /* BOND */
 struct hinic3_create_bond_info {
-	u32 bond_id;              /* bond设备号,output时有效,mpu操作成功返回时回填 */
+	u32 bond_id;			  /* bond设备号,output时有效,mpu操作成功返回时回填 */
 	u32 master_slave_port_id; /*  */
-	u32 slave_bitmap;         /* bond port id bitmap */
-	u32 poll_timeout;         /* bond设备链路检查时间 */
-	u32 up_delay;             /* 暂时预留 */
-	u32 down_delay;           /* 暂时预留 */
-	u32 bond_mode;            /* 暂时预留 */
+	u32 slave_bitmap;		 /* bond port id bitmap */
+	u32 poll_timeout;		 /* bond设备链路检查时间 */
+	u32 up_delay;			 /* 暂时预留 */
+	u32 down_delay;		   /* 暂时预留 */
+	u32 bond_mode;			/* 暂时预留 */
 	u32 active_pf; /* bond使用的active pf id */
 	u32 active_port_max_num; /* bond活动成员口个数上限 */
 	u32 active_port_min_num; /* bond活动成员口个数下限 */
@@ -1119,8 +1222,8 @@ struct hinic3_cmd_delete_bond {
 };
 
 struct hinic3_open_close_bond_info {
-	u32 bond_id;                 /* bond设备号 */
-	u32 open_close_flag;         /* 开启/关闭bond标识:1为open, 0为close */
+	u32 bond_id;				 /* bond设备号 */
+	u32 open_close_flag;		 /* 开启/关闭bond标识:1为open, 0为close */
 	u32 rsvd[2];
 };
 
@@ -1143,9 +1246,9 @@ struct lacp_port_params {
 
 struct lacp_port_info {
 	u32 selected;
-	u32 aggregator_port_id;           /* 使用的 aggregator port ID */
+	u32 aggregator_port_id;		   /* 使用的 aggregator port ID */
 
-	struct lacp_port_params actor;    /* actor port参数 */
+	struct lacp_port_params actor;	/* actor port参数 */
 	struct lacp_port_params partner;  /* partner port参数 */
 
 	u64 tx_lacp_pkts;
@@ -1163,12 +1266,12 @@ struct hinic3_bond_status_info {
 	u32 bond_id;
 	u32 bon_mmi_status; /* 该bond子设备的链路状态 */
 	u32 active_bitmap;  /* 该bond子设备的slave port状态 */
-	u32 port_count;     /* 该bond子设备个数 */
+	u32 port_count;	 /* 该bond子设备个数 */
 
 	struct lacp_port_info port_info[4];
 
 	u64 success_report_cnt[4]; /* 每个host成功上报lacp协商结果次数 */
-	u64 fail_report_cnt[4];    /* 每个host上报lacp协商结果失败次数 */
+	u64 fail_report_cnt[4];	/* 每个host上报lacp协商结果失败次数 */
 
 	u64 poll_timeout;
 	u64 fast_periodic_timeout;
@@ -1204,6 +1307,11 @@ struct hinic3_smac_check_state {
 	u8 smac_check_en; /* 1: enable 0: disable */
 	u8 op_code; /* 1: set 0: get */
 	u8 rsvd[2];
+};
+
+struct hinic3_clear_log_state {
+	struct hinic3_mgmt_msg_head head;
+	u32 type;
 };
 
 #endif /* HINIC_MGMT_INTERFACE_H */
