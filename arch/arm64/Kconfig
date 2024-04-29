@@ -1247,6 +1247,16 @@ config HISILICON_ERRATUM_162200803
 
 	  If unsure, say Y.
 
+config HISILICON_ERRATUM_162200806
+	bool "Hisilicon erratum 162200806"
+	default y
+	help
+	  For gicv4.1 of hip09, it has a soc bug with the status of
+	  vpe pending is inaccurate, so read the pending status from
+	  memory to fix the issue.
+
+	  If unsure, say Y.
+
 config QCOM_FALKOR_ERRATUM_1003
 	bool "Falkor E1003: Incorrect translation due to ASID change"
 	default y
