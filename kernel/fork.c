@@ -161,6 +161,9 @@ static inline struct task_struct *alloc_task_struct_node(int node)
 
 static inline void free_task_struct(struct task_struct *tsk)
 {
+#if !defined(__GENKSYMS__)
+	kfree(tsk->_resvd);
+#endif
 	kmem_cache_free(task_struct_cachep, tsk);
 }
 #endif
@@ -463,6 +466,7 @@ void free_task(struct task_struct *tsk)
 #ifdef CONFIG_QOS_SCHED_DYNAMIC_AFFINITY
 	sched_prefer_cpus_free(tsk);
 #endif
+
 #ifdef CONFIG_QOS_SCHED_SMART_GRID
 	sched_grid_qos_free(tsk);
 #endif
@@ -845,6 +849,20 @@ void set_task_stack_end_magic(struct task_struct *tsk)
 	*stackend = STACK_END_MAGIC;	/* for overflow detection */
 }
 
+#if !defined(__GENKSYMS__)
+static bool dup_resvd_task_struct(struct task_struct *dst,
+				  struct task_struct *orig, int node)
+{
+	dst->_resvd = kzalloc_node(sizeof(struct task_struct_resvd),
+					  GFP_KERNEL, node);
+	if (!dst->_resvd)
+		return false;
+
+	dst->_resvd->task = dst;
+	return true;
+}
+#endif
+
 static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 {
 	struct task_struct *tsk;
@@ -857,6 +875,15 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	tsk = alloc_task_struct_node(node);
 	if (!tsk)
 		return NULL;
+
+#if !defined(__GENKSYMS__)
+	/*
+	 * before proceeding, we need to make tsk->_resvd = NULL,
+	 * otherwise the error paths below, if taken, might end up causing
+	 * a double-free for task_struct_resvd extension object.
+	 */
+	WRITE_ONCE(tsk->_resvd, NULL);
+#endif
 
 	stack = alloc_thread_stack_node(tsk, node);
 	if (!stack)
@@ -884,6 +911,11 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 
 	if (err)
 		goto free_stack;
+
+#if !defined(__GENKSYMS__)
+	if (!dup_resvd_task_struct(tsk, orig, node))
+		goto free_stack;
+#endif
 
 #ifdef CONFIG_SECCOMP
 	/*
