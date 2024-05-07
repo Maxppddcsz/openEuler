@@ -8530,13 +8530,23 @@ unsigned long cpu_util_cfs_boost(int cpu)
  * utilization of the specified task, whenever the task is currently
  * contributing to the CPU utilization.
  */
-static unsigned long cpu_util_without(int cpu, struct task_struct *p)
+static inline unsigned long cpu_util_without(int cpu, struct task_struct *p)
 {
-	/* Task has no contribution or is new */
-	if (cpu != task_cpu(p) || !READ_ONCE(p->se.avg.last_update_time))
-		p = NULL;
+	struct cfs_rq *cfs_rq = &cpu_rq(cpu)->cfs;
+	unsigned long util = READ_ONCE(cfs_rq->avg.util_avg);
+	/*
+	 * If @dst_cpu is -1 or @p migrates from @cpu to @dst_cpu remove its
+	 * contribution. If @p migrates from another CPU to @cpu add its
+	 * contribution. In all the other cases @cpu is not impacted by the
+	 * migration so its util_avg is already correct.
+	 */
+	if (sched_feat(UTIL_EST)) {
+		unsigned long util_est;
+		util_est = READ_ONCE(cfs_rq->avg.util_est.enqueued);
+		util = max(util, util_est);
+	}
 
-	return cpu_util(cpu, p, -1, 0);
+	return min(util, capacity_orig_of(cpu));
 }
 
 /*
