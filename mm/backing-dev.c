@@ -387,22 +387,9 @@ void bind_memcg_blkcg_link(struct cgroup_subsys *ss,
 	if ((memcg_css == &root_mem_cgroup->css) ||
 	    (blkcg_css == blkcg_root_css))
 		return;
-	if (mutex_trylock(&cgroup_mutex)) {
-		struct cgroup *blk_cgroup = blkcg_css->cgroup;
-
-		if (IS_ERR(blk_cgroup)) {
-			mutex_unlock(&cgroup_mutex);
-			return;
-		}
-		wb_attach_memcg_to_blkcg(memcg_css, blkcg_css);
-		mutex_unlock(&cgroup_mutex);
-	} else {
-		struct cgroup *blk_cgroup = blkcg_css->cgroup;
-
-		if (IS_ERR(blk_cgroup))
-			return;
-		wb_attach_memcg_to_blkcg(memcg_css, blkcg_css);
-	}
+    if (IS_ERR(blkcg_css->cgroup))
+        return;
+    wb_attach_memcg_to_blkcg(memcg_css, blkcg_css);
 }
 
 /*
