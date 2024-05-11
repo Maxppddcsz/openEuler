@@ -12189,6 +12189,17 @@ void call_trace_sched_update_nr_running(struct rq *rq, int count)
 
 #ifdef CONFIG_SCHED_MM_CID
 
+DEFINE_STATIC_KEY_FALSE(sched_mm_cid_enable);
+
+static int __init sched_mm_cid_setup(char *buf)
+{
+	static_branch_enable(&sched_mm_cid_enable);
+	pr_debug("sched mm cid enabled\n");
+
+	return 0;
+}
+early_param("sched_mm_cid", sched_mm_cid_setup);
+
 /*
  * @cid_lock: Guarantee forward-progress of cid allocation.
  *
@@ -12419,6 +12430,10 @@ void sched_mm_cid_migrate_to(struct rq *dst_rq, struct task_struct *t)
 
 	if (!mm)
 		return;
+
+	if (static_branch_unlikely(&sched_mm_cid_enable))
+		return;
+
 	src_cpu = t->migrate_from_cpu;
 	if (src_cpu == -1) {
 		t->last_mm_cid = -1;
@@ -12615,6 +12630,9 @@ void init_sched_mm_cid(struct task_struct *t)
 	struct mm_struct *mm = t->mm;
 	int mm_users = 0;
 
+	if (static_branch_unlikely(&sched_mm_cid_enable))
+		return;
+
 	if (mm) {
 		mm_users = atomic_read(&mm->mm_users);
 		if (mm_users == 1)
@@ -12628,6 +12646,9 @@ void task_tick_mm_cid(struct rq *rq, struct task_struct *curr)
 {
 	struct callback_head *work = &curr->cid_work;
 	unsigned long now = jiffies;
+
+	if (static_branch_unlikely(&sched_mm_cid_enable))
+		return;
 
 	if (!curr->mm || (curr->flags & (PF_EXITING | PF_KTHREAD)) ||
 	    work->next != work)
@@ -12644,6 +12665,9 @@ void sched_mm_cid_exit_signals(struct task_struct *t)
 	struct rq *rq;
 
 	if (!mm)
+		return;
+
+	if (static_branch_unlikely(&sched_mm_cid_enable))
 		return;
 
 	preempt_disable();
@@ -12670,6 +12694,9 @@ void sched_mm_cid_before_execve(struct task_struct *t)
 	if (!mm)
 		return;
 
+	if (static_branch_unlikely(&sched_mm_cid_enable))
+		return;
+
 	preempt_disable();
 	rq = this_rq();
 	rq_lock_irqsave(rq, &rf);
@@ -12694,6 +12721,9 @@ void sched_mm_cid_after_execve(struct task_struct *t)
 	if (!mm)
 		return;
 
+	if (static_branch_unlikely(&sched_mm_cid_enable))
+		return;
+
 	preempt_disable();
 	rq = this_rq();
 	rq_lock_irqsave(rq, &rf);
@@ -12711,6 +12741,9 @@ void sched_mm_cid_after_execve(struct task_struct *t)
 
 void sched_mm_cid_fork(struct task_struct *t)
 {
+	if (static_branch_unlikely(&sched_mm_cid_enable))
+		return;
+
 	WARN_ON_ONCE(!t->mm || t->mm_cid != -1);
 	t->mm_cid_active = 1;
 }
