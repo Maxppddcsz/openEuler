@@ -4115,6 +4115,20 @@ static int ext4_iomap_swap_activate(struct swap_info_struct *sis,
 				       &ext4_iomap_report_ops);
 }
 
+static void ext4_iomap_invalidate_folio(struct folio *folio, size_t offset,
+					size_t len)
+{
+	struct inode *inode = folio->mapping->host;
+	size_t start, end;
+
+	if (offset == 0 && len == folio_size(folio))
+		return iomap_invalidate_folio(folio, offset, len);
+
+	start = round_up(offset, EXT4_BLOCK_SIZE(inode->i_sb));
+	end = round_down(offset + len, EXT4_BLOCK_SIZE(inode->i_sb));
+	iomap_clear_range_dirty(folio, start, end - start);
+}
+
 static const struct address_space_operations ext4_aops = {
 	.read_folio		= ext4_read_folio,
 	.readahead		= ext4_readahead,
@@ -4174,7 +4188,7 @@ static const struct address_space_operations ext4_iomap_aops = {
 	.write_end		= ext4_iomap_write_end,
 	.dirty_folio		= iomap_dirty_folio,
 	.bmap			= ext4_bmap,
-	.invalidate_folio	= iomap_invalidate_folio,
+	.invalidate_folio	= ext4_iomap_invalidate_folio,
 	.release_folio		= iomap_release_folio,
 	.direct_IO		= noop_direct_IO,
 	.migrate_folio		= filemap_migrate_folio,
