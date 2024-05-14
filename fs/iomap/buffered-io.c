@@ -146,13 +146,14 @@ static void ifs_clear_range_dirty(struct folio *folio,
 	spin_unlock_irqrestore(&ifs->state_lock, flags);
 }
 
-static void iomap_clear_range_dirty(struct folio *folio, size_t off, size_t len)
+void iomap_clear_range_dirty(struct folio *folio, size_t off, size_t len)
 {
 	struct iomap_folio_state *ifs = folio->private;
 
 	if (ifs)
 		ifs_clear_range_dirty(folio, ifs, off, len);
 }
+EXPORT_SYMBOL_GPL(iomap_clear_range_dirty);
 
 static void ifs_set_range_dirty(struct folio *folio,
 		struct iomap_folio_state *ifs, size_t off, size_t len)
