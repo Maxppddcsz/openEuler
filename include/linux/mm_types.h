@@ -1092,6 +1092,12 @@ static inline void vma_iter_init(struct vma_iterator *vmi,
 
 #ifdef CONFIG_SCHED_MM_CID
 
+DECLARE_STATIC_KEY_FALSE(sched_mm_cid_enable);
+
+#ifndef sched_mm_cid_enabled
+#define sched_mm_cid_enabled static_branch_unlikely(&sched_mm_cid_enable)
+#endif
+
 enum mm_cid_state {
 	MM_CID_UNSET = -1U,		/* Unset state has lazy_put flag set. */
 	MM_CID_LAZY_PUT = (1U << 31),
@@ -1137,6 +1143,9 @@ static inline void mm_init_cid(struct mm_struct *mm)
 {
 	int i;
 
+	if (sched_mm_cid_enabled)
+		return;
+
 	for_each_possible_cpu(i) {
 		struct mm_cid *pcpu_cid = per_cpu_ptr(mm->pcpu_cid, i);
 
@@ -1148,6 +1157,9 @@ static inline void mm_init_cid(struct mm_struct *mm)
 
 static inline int mm_alloc_cid(struct mm_struct *mm)
 {
+	if (sched_mm_cid_enabled)
+		return 0;
+
 	mm->pcpu_cid = alloc_percpu(struct mm_cid);
 	if (!mm->pcpu_cid)
 		return -ENOMEM;
@@ -1157,12 +1169,18 @@ static inline int mm_alloc_cid(struct mm_struct *mm)
 
 static inline void mm_destroy_cid(struct mm_struct *mm)
 {
+	if (sched_mm_cid_enabled)
+		return;
+
 	free_percpu(mm->pcpu_cid);
 	mm->pcpu_cid = NULL;
 }
 
 static inline unsigned int mm_cid_size(void)
 {
+	if (sched_mm_cid_enabled)
+		return 0;
+
 	return cpumask_size();
 }
 #else /* CONFIG_SCHED_MM_CID */
