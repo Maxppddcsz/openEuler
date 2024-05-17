@@ -64,6 +64,14 @@ int __blkdev_issue_discard(struct block_device *bdev, sector_t sector,
 		sector_t req_sects =
 			min(nr_sects, bio_discard_limit(bdev, sector));
 
+		if (!req_sects) {
+			if (bio) {
+				bio_io_error(bio);
+				bio_put(bio);
+			}
+			return -EOPNOTSUPP;
+		}
+
 		bio = blk_next_bio(bio, bdev, 0, REQ_OP_DISCARD, gfp_mask);
 		bio->bi_iter.bi_sector = sector;
 		bio->bi_iter.bi_size = req_sects << 9;
