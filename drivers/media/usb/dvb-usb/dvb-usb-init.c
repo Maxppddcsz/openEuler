@@ -104,6 +104,14 @@ static int dvb_usb_adapter_init(struct dvb_usb_device *d, short *adapter_nrs)
 	 * sometimes a timeout occurs, this helps
 	 */
 	if (d->props.generic_bulk_ctrl_endpoint != 0) {
+		ret = usb_pipe_type_check(d->udev, usb_sndbulkpipe(d->udev,
+					  d->props.generic_bulk_ctrl_endpoint));
+		if (ret)
+			goto frontend_init_err;
+		ret = usb_pipe_type_check(d->udev, usb_rcvbulkpipe(d->udev,
+					  d->props.generic_bulk_ctrl_endpoint));
+		if (ret)
+			goto frontend_init_err;
 		usb_clear_halt(d->udev, usb_sndbulkpipe(d->udev, d->props.generic_bulk_ctrl_endpoint));
 		usb_clear_halt(d->udev, usb_rcvbulkpipe(d->udev, d->props.generic_bulk_ctrl_endpoint));
 	}
