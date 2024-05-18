@@ -203,11 +203,22 @@ PMD-mappable transparent hugepage::
 	cat /sys/kernel/mm/transparent_hugepage/hpage_pmd_size
 
 The kernel tries to use huge, PMD-mappable page on read page fault for
-file exec mapping if CONFIG_READ_ONLY_THP_FOR_FS enabled. It's possible
-to enabled the feature by writing 1 or disablt by writing 0::
+if CONFIG_READ_ONLY_THP_FOR_FS enabled, or try non-PMD size page(eg,
+64K arm64) for file exec mapping, BIT0 for PMD THP, BIT1 for mTHP. It's
+possible to enable/disable it by configurate the corresponding bit::
 
-	echo 0x0 >/sys/kernel/mm/transparent_hugepage/thp_exec_enabled
 	echo 0x1 >/sys/kernel/mm/transparent_hugepage/thp_exec_enabled
+	echo 0x2 >/sys/kernel/mm/transparent_hugepage/thp_exec_enabled
+	echo 0x3 >/sys/kernel/mm/transparent_hugepage/thp_exec_enabled
+
+The kernel could try to enable other larger size mappings align other
+than THP size, eg, 64K on arm64, BIT0 for file mapping, BIT1 for anon
+mapping, it is disabled by default, and could enable this feature by
+writing the corresponding bit to 1::
+
+	echo 0x1 >/sys/kernel/mm/transparent_hugepage/thp_mapping_align
+	echo 0x2 >/sys/kernel/mm/transparent_hugepage/thp_mapping_align
+	echo 0x3 >/sys/kernel/mm/transparent_hugepage/thp_mapping_align
 
 khugepaged will be automatically started when one or more hugepage
 sizes are enabled (either by directly setting "always" or "madvise",

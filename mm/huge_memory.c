@@ -426,30 +426,106 @@ static struct kobj_attribute hpage_pmd_size_attr =
 	__ATTR_RO(hpage_pmd_size);
 
 #ifdef CONFIG_READ_ONLY_THP_FOR_FS
+#define FILE_EXEC_THP_ENABLE	BIT(0)
+#else
+#define FILE_EXEC_THP_ENABLE	0
+#endif
+
+#define FILE_EXEC_MTHP_ENABLE	BIT(1)
+#define FILE_EXEC_THP_ALL	(FILE_EXEC_THP_ENABLE | FILE_EXEC_MTHP_ENABLE)
+
+static void thp_flag_set(enum transparent_hugepage_flag flag, bool enable)
+{
+	if (enable)
+		set_bit(flag, &transparent_hugepage_flags);
+	else
+		clear_bit(flag, &transparent_hugepage_flags);
+}
+
 static ssize_t thp_exec_enabled_show(struct kobject *kobj,
 				     struct kobj_attribute *attr, char *buf)
 {
-	return single_hugepage_flag_show(kobj, attr, buf,
-				 TRANSPARENT_HUGEPAGE_FILE_EXEC_THP_FLAG);
+	unsigned long val = 0;
+
+#ifdef CONFIG_READ_ONLY_THP_FOR_FS
+	if (test_bit(TRANSPARENT_HUGEPAGE_FILE_EXEC_THP_FLAG,
+		     &transparent_hugepage_flags))
+		val |= FILE_EXEC_THP_ENABLE;
+#endif
+
+	if (test_bit(TRANSPARENT_HUGEPAGE_FILE_EXEC_MTHP_FLAG,
+		     &transparent_hugepage_flags))
+		val |= FILE_EXEC_MTHP_ENABLE;
+
+	return sysfs_emit(buf, "0x%lx\n", val);
 }
 static ssize_t thp_exec_enabled_store(struct kobject *kobj,
 		struct kobj_attribute *attr, const char *buf, size_t count)
 {
-	size_t ret = single_hugepage_flag_store(kobj, attr, buf, count,
-				 TRANSPARENT_HUGEPAGE_FILE_EXEC_THP_FLAG);
-	if (ret > 0) {
-		int err = start_stop_khugepaged();
+	unsigned long val;
+	int ret;
 
-		if (err)
-			ret = err;
-	}
+	ret = kstrtoul(buf, 16, &val);
+	if (ret < 0)
+		return ret;
+	if (val & ~FILE_EXEC_THP_ALL)
+		return -EINVAL;
 
-	return ret;
+#ifdef CONFIG_READ_ONLY_THP_FOR_FS
+	thp_flag_set(TRANSPARENT_HUGEPAGE_FILE_EXEC_THP_FLAG,
+		     val & FILE_EXEC_THP_ENABLE);
+	ret = start_stop_khugepaged();
+	if (ret)
+		return ret;
+#endif
+	thp_flag_set(TRANSPARENT_HUGEPAGE_FILE_EXEC_MTHP_FLAG,
+		     val & FILE_EXEC_MTHP_ENABLE);
+
+	return count;
 }
 static struct kobj_attribute thp_exec_enabled_attr =
 	__ATTR_RW(thp_exec_enabled);
 
-#endif
+#define FILE_MAPPING_ALIGN	BIT(0)
+#define ANON_MAPPING_ALIGN	BIT(1)
+#define THP_MAPPING_ALIGN_ALL	(FILE_MAPPING_ALIGN | ANON_MAPPING_ALIGN)
+
+static ssize_t thp_mapping_align_show(struct kobject *kobj,
+				      struct kobj_attribute *attr, char *buf)
+{
+	unsigned long val = 0;
+
+	if (test_bit(TRANSPARENT_HUGEPAGE_FILE_MAPPING_ALIGN_FLAG,
+		     &transparent_hugepage_flags))
+		val |= FILE_MAPPING_ALIGN;
+
+	if (test_bit(TRANSPARENT_HUGEPAGE_ANON_MAPPING_ALIGN_FLAG,
+		     &transparent_hugepage_flags))
+		val |= ANON_MAPPING_ALIGN;
+
+	return sysfs_emit(buf, "0x%lx\n", val);
+}
+static ssize_t thp_mapping_align_store(struct kobject *kobj,
+		struct kobj_attribute *attr, const char *buf, size_t count)
+{
+	unsigned long val;
+	int ret;
+
+	ret = kstrtoul(buf, 16, &val);
+	if (ret < 0)
+		return ret;
+	if (val & ~THP_MAPPING_ALIGN_ALL)
+		return -EINVAL;
+
+	thp_flag_set(TRANSPARENT_HUGEPAGE_FILE_MAPPING_ALIGN_FLAG,
+		     val & FILE_MAPPING_ALIGN);
+	thp_flag_set(TRANSPARENT_HUGEPAGE_ANON_MAPPING_ALIGN_FLAG,
+		     val & ANON_MAPPING_ALIGN);
+
+	return count;
+}
+static struct kobj_attribute thp_mapping_align_attr =
+	__ATTR_RW(thp_mapping_align);
 
 static struct attribute *hugepage_attr[] = {
 	&enabled_attr.attr,
@@ -459,9 +535,8 @@ static struct attribute *hugepage_attr[] = {
 #ifdef CONFIG_SHMEM
 	&shmem_enabled_attr.attr,
 #endif
-#ifdef CONFIG_READ_ONLY_THP_FOR_FS
 	&thp_exec_enabled_attr.attr,
-#endif
+	&thp_mapping_align_attr.attr,
 	NULL,
 };
 
@@ -853,6 +928,65 @@ static unsigned long __thp_get_unmapped_area(struct file *filp,
 	return ret;
 }
 
+#define transparent_hugepage_file_mapping_align_enabled()		\
+	(transparent_hugepage_flags &					\
+	 (1<<TRANSPARENT_HUGEPAGE_FILE_MAPPING_ALIGN_FLAG))
+
+#define transparent_hugepage_anon_mapping_align_enabled()		\
+	(transparent_hugepage_flags &					\
+	 (1<<TRANSPARENT_HUGEPAGE_ANON_MAPPING_ALIGN_FLAG))
+
+static bool file_mapping_align_enabled(struct file *filp)
+{
+	struct address_space *mapping;
+
+	if (!transparent_hugepage_file_mapping_align_enabled())
+		return false;
+
+	if (!filp)
+		return false;
+
+	mapping = filp->f_mapping;
+	if (!mapping || !mapping_large_folio_support(mapping))
+		return false;
+
+	return true;
+}
+
+static bool anon_mapping_align_enabled(int order)
+{
+	unsigned long mask;
+
+	if (!transparent_hugepage_anon_mapping_align_enabled())
+		return 0;
+
+	mask = READ_ONCE(huge_anon_orders_always) |
+	       READ_ONCE(huge_anon_orders_madvise);
+
+	if (hugepage_global_enabled())
+		mask |= READ_ONCE(huge_anon_orders_inherit);
+
+	mask = BIT(order) & mask;
+	if (!mask)
+		return false;
+
+	return true;
+}
+
+static unsigned long folio_get_unmapped_area(struct file *filp, unsigned long addr,
+		unsigned long len, unsigned long pgoff, unsigned long flags)
+{
+	int order = arch_wants_exec_folio_order();
+
+	if (order < 0)
+		return 0;
+
+	if (file_mapping_align_enabled(filp) || anon_mapping_align_enabled(order))
+		return __thp_get_unmapped_area(filp, addr, len, pgoff, flags,
+					       PAGE_SIZE << order);
+	return 0;
+}
+
 unsigned long thp_get_unmapped_area(struct file *filp, unsigned long addr,
 		unsigned long len, unsigned long pgoff, unsigned long flags)
 {
@@ -860,6 +994,10 @@ unsigned long thp_get_unmapped_area(struct file *filp, unsigned long addr,
 	loff_t off = (loff_t)pgoff << PAGE_SHIFT;
 
 	ret = __thp_get_unmapped_area(filp, addr, len, off, flags, PMD_SIZE);
+	if (ret)
+		return ret;
+
+	ret = folio_get_unmapped_area(filp, addr, len, off, flags);
 	if (ret)
 		return ret;
 
