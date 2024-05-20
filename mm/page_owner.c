@@ -604,6 +604,9 @@ read_page_owner(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 		if (!handle)
 			goto ext_put_continue;
 
+		if (po_is_filtered(page_owner))
+			goto ext_put_continue;
+
 		/* Record the next PFN to read in the file offset */
 		*ppos = (pfn - min_low_pfn) + 1;
 
@@ -727,6 +730,7 @@ static int __init pageowner_init(void)
 	debugfs_create_file("page_owner", 0400, NULL, NULL,
 			    &proc_page_owner_operations);
 
+	po_module_stat_init();
 	return 0;
 }
 late_initcall(pageowner_init)

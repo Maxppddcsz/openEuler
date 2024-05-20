@@ -28,6 +28,8 @@ struct page_owner {
 void po_find_module_name_with_update(depot_stack_handle_t handle, char *mod_name, size_t size);
 void po_set_module_name(struct page_owner *page_owner, char *mod_name);
 int po_module_name_snprint(struct page_owner *page_owner, char *kbuf, size_t size);
+void po_module_stat_init(void);
+bool po_is_filtered(struct page_owner *page_owner);
 
 static inline void po_copy_module_name(struct page_owner *dst,
 		struct page_owner *src)
@@ -53,6 +55,15 @@ static inline int po_module_name_snprint(struct page_owner *page_owner,
 
 static inline void po_copy_module_name(struct page_owner *dst, struct page_owner *src)
 {
+}
+
+static inline void po_module_stat_init(void)
+{
+}
+
+static inline bool po_is_filtered(struct page_owner *page_owner)
+{
+	return false;
 }
 #endif
 
