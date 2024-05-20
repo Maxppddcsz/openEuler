@@ -48,6 +48,9 @@ static int __init early_page_owner_param(char *buf)
 	if (strcmp(buf, "on") == 0)
 		page_owner_enabled = true;
 
+	if (page_owner_enabled)
+		stack_depot_want_early_init();
+
 	return 0;
 }
 early_param("page_owner", early_page_owner_param);
@@ -85,8 +88,6 @@ static void init_page_owner(void)
 {
 	if (!page_owner_enabled)
 		return;
-
-	stack_depot_init();
 
 	register_dummy_stack();
 	register_failure_stack();
