@@ -47,7 +47,6 @@ int handle_cvm_exit(struct kvm_vcpu *vcpu, int rec_run_status);
 int kvm_arm_create_cvm(struct kvm *kvm);
 void kvm_free_rd(struct kvm *kvm);
 int cvm_create_rd(struct kvm *kvm);
-int kvm_arm_cvm_first_run(struct kvm_vcpu *vcpu);
 int cvm_psci_complete(struct kvm_vcpu *calling, struct kvm_vcpu *target);
 int kvm_arch_tec_init(struct kvm_vcpu *vcpu);
 
