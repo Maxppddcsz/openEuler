@@ -98,6 +98,7 @@
 #include <linux/jump_label.h>
 #include <linux/kcsan.h>
 #include <linux/init_syscalls.h>
+#include <linux/stackdepot.h>
 #include <linux/randomize_kstack.h>
 
 #include <asm/io.h>
@@ -829,6 +830,7 @@ static void __init mm_init(void)
 	init_debug_pagealloc();
 	kfence_alloc_pool();
 	report_meminit();
+	stack_depot_init();
 	mem_init();
 	/* page_owner must be initialized after buddy is ready */
 	page_ext_init_flatmem_late();
