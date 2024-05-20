@@ -33,6 +33,8 @@ bool pv_is_native_vcpu_is_preempted(void)
 		__raw_callee_save___native_vcpu_is_preempted;
 }
 
+DECLARE_STATIC_KEY_TRUE(vcpu_has_preemption);
+
 void __init paravirt_set_cap(void)
 {
 	if (!pv_is_native_spin_unlock())
@@ -40,4 +42,6 @@ void __init paravirt_set_cap(void)
 
 	if (!pv_is_native_vcpu_is_preempted())
 		setup_force_cpu_cap(X86_FEATURE_VCPUPREEMPT);
+	else
+		static_branch_disable(&vcpu_has_preemption);
 }

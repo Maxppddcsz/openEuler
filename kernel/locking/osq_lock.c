@@ -27,6 +27,23 @@ static inline int node_cpu(struct optimistic_spin_node *node)
 	return node->cpu - 1;
 }
 
+#ifdef vcpu_is_preempted
+DEFINE_STATIC_KEY_TRUE(vcpu_has_preemption);
+
+static inline bool vcpu_is_preempted_node(struct optimistic_spin_node *node)
+{
+	if (static_branch_likely(&vcpu_has_preemption))
+		return vcpu_is_preempted(node_cpu(node->prev));
+
+	return false;
+}
+#else
+static inline bool vcpu_is_preempted_node(struct optimistic_spin_node *node)
+{
+	return false;
+}
+#endif
+
 static inline struct optimistic_spin_node *decode_cpu(int encoded_cpu_val)
 {
 	int cpu_nr = encoded_cpu_val - 1;
@@ -147,7 +164,7 @@ bool osq_lock(struct optimistic_spin_queue *lock)
 	 * polling, be careful.
 	 */
 	if (smp_cond_load_relaxed(&node->locked, VAL || need_resched() ||
-				  vcpu_is_preempted(node_cpu(node->prev))))
+						vcpu_is_preempted_node(node)))
 		return true;
 
 	/* unqueue */
