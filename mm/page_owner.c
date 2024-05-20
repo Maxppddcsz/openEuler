@@ -135,7 +135,7 @@ void __reset_page_owner(struct page *page, unsigned int order)
 	char mod_name[MODULE_NAME_LEN] = {0};
 
 	handle = save_stack(GFP_NOWAIT | __GFP_NOWARN);
-	po_find_module_name_with_update(handle, mod_name, MODULE_NAME_LEN);
+	po_find_module_name_with_update(handle, mod_name, MODULE_NAME_LEN, -(1 << order));
 
 	page_ext = page_ext_get(page);
 	if (unlikely(!page_ext))
@@ -160,7 +160,7 @@ static inline void __set_page_owner_handle(struct page *page,
 	u64 ts_nsec = local_clock();
 	char mod_name[MODULE_NAME_LEN] = {0};
 
-	po_find_module_name_with_update(handle, mod_name, MODULE_NAME_LEN);
+	po_find_module_name_with_update(handle, mod_name, MODULE_NAME_LEN, 1 << order);
 
 	for (i = 0; i < (1 << order); i++) {
 		page_owner = get_page_owner(page_ext);

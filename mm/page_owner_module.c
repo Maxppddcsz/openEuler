@@ -8,6 +8,9 @@
 #include <linux/module.h>
 #include <linux/debugfs.h>
 #include <linux/ctype.h>
+#include <linux/list_sort.h>
+#include <linux/oom.h>
+#include <linux/slab.h>
 
 #include "page_owner.h"
 
@@ -15,9 +18,65 @@
 #define PAGE_OWNER_NONE_FILTER 0
 #define PAGE_OWNER_MODULE_FILTER 1
 
+#define PO_MODULE_DEFAULT_TOPN 20
+
 static unsigned int page_owner_filter = PAGE_OWNER_NONE_FILTER;
 
-void po_find_module_name_with_update(depot_stack_handle_t handle, char *mod_name, size_t size)
+struct po_module {
+	struct list_head list;
+	struct module *mod;
+	long nr_pages_used;
+};
+
+LIST_HEAD(po_module_list);
+DEFINE_SPINLOCK(po_module_list_lock);
+
+static unsigned int po_module_topn = PO_MODULE_DEFAULT_TOPN;
+
+static int po_module_cmp(void *priv, const struct list_head *h1,
+		const struct list_head *h2)
+{
+	struct po_module *lhs, *rhs;
+
+	lhs = container_of(h1, struct po_module, list);
+	rhs = container_of(h2, struct po_module, list);
+
+	return lhs->nr_pages_used < rhs->nr_pages_used;
+}
+
+static inline struct po_module *po_find_module(const struct module *mod)
+{
+	struct po_module *po_mod;
+
+	lockdep_assert_held(&po_module_list_lock);
+	list_for_each_entry(po_mod, &po_module_list, list) {
+		if (po_mod->mod == mod)
+			return po_mod;
+	}
+
+	pr_warn("page_owner_module: failed to find module %s in po_module list\n",
+		mod->name);
+	return NULL;
+}
+
+void po_update_module_pages(const struct module *mod, long nr_pages)
+{
+	struct po_module *po_mod;
+	unsigned long flags;
+
+	if (unlikely(!mod))
+		return;
+
+	spin_lock_irqsave(&po_module_list_lock, flags);
+	po_mod = po_find_module(mod);
+	if (po_mod)
+		po_mod->nr_pages_used += nr_pages;
+	spin_unlock_irqrestore(&po_module_list_lock, flags);
+}
+
+
+void po_find_module_name_with_update(depot_stack_handle_t handle, char *mod_name,
+		size_t size, long nr_pages)
 {
 	int i;
 	struct module *mod = NULL;
@@ -42,6 +101,7 @@ void po_find_module_name_with_update(depot_stack_handle_t handle, char *mod_name
 			continue;
 
 		strscpy(mod_name, mod->name, size);
+		po_update_module_pages(mod, nr_pages);
 		return;
 	}
 }
@@ -131,8 +191,106 @@ bool po_is_filtered(struct page_owner *page_owner)
 	return false;
 }
 
+static int po_module_coming(struct module *mod)
+{
+	struct po_module *po_mod;
+	unsigned long flags;
+
+	po_mod = kmalloc(sizeof(*po_mod), GFP_KERNEL);
+	if (!po_mod)
+		return -ENOMEM;
+
+	po_mod->nr_pages_used = 0;
+	po_mod->mod = mod;
+	INIT_LIST_HEAD(&po_mod->list);
+	spin_lock_irqsave(&po_module_list_lock, flags);
+	list_add_tail(&po_mod->list, &po_module_list);
+	spin_unlock_irqrestore(&po_module_list_lock, flags);
+
+	return 0;
+}
+
+static void po_module_going(struct module *mod)
+{
+	struct po_module *po_mod;
+	unsigned long flags;
+
+	spin_lock_irqsave(&po_module_list_lock, flags);
+	po_mod = po_find_module(mod);
+	list_del(&po_mod->list);
+	spin_unlock_irqrestore(&po_module_list_lock, flags);
+	kfree(po_mod);
+}
+
+static int po_module_notify(struct notifier_block *self,
+		unsigned long val, void *data)
+{
+	struct module *mod = data;
+	int ret = 0;
+
+	switch (val) {
+	case MODULE_STATE_COMING:
+		ret = po_module_coming(mod);
+		break;
+	case MODULE_STATE_GOING:
+		po_module_going(mod);
+		break;
+	}
+
+	return notifier_from_errno(ret);
+}
+
+static struct notifier_block po_module_nb = {
+	.notifier_call = po_module_notify,
+	.priority = 0
+};
+
+static int po_oom_notify(struct notifier_block *self,
+		unsigned long val, void *data)
+{
+	struct po_module *po_mod;
+	unsigned long flags;
+	unsigned int nr = po_module_topn;
+	int ret = notifier_from_errno(0);
+
+	if (!nr)
+		return ret;
+
+	spin_lock_irqsave(&po_module_list_lock, flags);
+	list_sort(NULL, &po_module_list, po_module_cmp);
+	pr_info("Top modules allocating pages:\n");
+	list_for_each_entry(po_mod, &po_module_list, list) {
+		pr_info("\tModule %s allocated %ld pages\n", po_mod->mod->name,
+			po_mod->nr_pages_used);
+		--nr;
+		if (!nr)
+			break;
+	}
+	spin_unlock_irqrestore(&po_module_list_lock, flags);
+
+	return ret;
+}
+
+static struct notifier_block po_oom_nb = {
+	.notifier_call = po_oom_notify,
+	.priority = 0
+};
+
 void po_module_stat_init(void)
 {
+	int ret;
+
 	debugfs_create_file("page_owner_filter", 0600, NULL, NULL,
 			&page_owner_filter_ops);
+
+	ret = register_module_notifier(&po_module_nb);
+	if (ret) {
+		pr_warn("Failed to register page owner module enter notifier\n");
+		return;
+	}
+
+	ret = register_oom_notifier(&po_oom_nb);
+	if (ret)
+		pr_warn("Failed to register page owner oom notifier\n");
+
 }

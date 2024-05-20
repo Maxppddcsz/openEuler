@@ -25,7 +25,8 @@ struct page_owner {
 };
 
 #ifdef CONFIG_PAGE_OWNER_MODULE_STAT
-void po_find_module_name_with_update(depot_stack_handle_t handle, char *mod_name, size_t size);
+void po_find_module_name_with_update(depot_stack_handle_t handle, char *mod_name,
+		size_t size, long nr_pages);
 void po_set_module_name(struct page_owner *page_owner, char *mod_name);
 int po_module_name_snprint(struct page_owner *page_owner, char *kbuf, size_t size);
 void po_module_stat_init(void);
@@ -39,7 +40,7 @@ static inline void po_copy_module_name(struct page_owner *dst,
 
 #else
 static void po_find_module_name_with_update(depot_stack_handle_t handle, char *mod_name,
-		size_t size)
+		size_t size, long nr_pages)
 {
 }
 
