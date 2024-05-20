@@ -68,6 +68,18 @@ are caught and marked, although they are mostly allocated from struct
 page extension feature. Anyway, after that, no page is left in
 un-tracking state.
 
+With CONFIG_PAGE_OWNER_MODULE_STAT config, page owner is able to track if
+the pages are allocated by modules. If a page is allocated by a module, the
+information dumped from /sys/kernel/debug/page_owner will show the module
+name. Users can use the user-space helper to analyze the allocation situation
+of modules. /sys/kernel/debug/page_owner_filter can be used to filter out the pages
+that are not allocated by modules. The legal value is "module" or "none". The default value
+is "none", which means do not filter out any page.
+
+Besides, the top N modules that allocate the most pages will be dumped
+when oom occurs or users read /sys/kernel/debug/page_owner_module_stats. The N value
+can be configured with /sys/kernel/debug/page_owner_show_max. The default N is 20.
+
 Usage
 =====
 
