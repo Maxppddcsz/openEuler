@@ -276,6 +276,21 @@ static struct notifier_block po_oom_nb = {
 	.priority = 0
 };
 
+static int po_module_topn_set(void *data, u64 val)
+{
+	po_module_topn = val;
+	return 0;
+}
+
+static int po_module_topn_get(void *data, u64 *val)
+{
+	*val = po_module_topn;
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(po_module_topn_fops, po_module_topn_get,
+			po_module_topn_set, "%llu\n");
+
 void po_module_stat_init(void)
 {
 	int ret;
@@ -293,4 +308,5 @@ void po_module_stat_init(void)
 	if (ret)
 		pr_warn("Failed to register page owner oom notifier\n");
 
+	debugfs_create_file("page_owner_module_show_max", 0600, NULL, NULL, &po_module_topn_fops);
 }
