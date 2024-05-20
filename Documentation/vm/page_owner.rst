@@ -120,7 +120,8 @@ Usage
 
    By default, ``page_owner_sort`` is sorted according to the times of buf.
    If you want to sort by the page nums of buf, use the ``-m`` parameter.
-   The detailed parameters are:
+   The parameters related to modules depend on the kernel built with
+   CONFIG_PAGE_OWNER_MODULE_STAT. The detailed parameters are:
 
    fundamental function::
 
@@ -163,6 +164,7 @@ Usage
 
 	Filter:
 		-f		Filter out the information of blocks whose memory has not been released.
+		-M		Filter out the information of blocks whose memory isn't allocated by modules.
 
 	Select:
 		--pid <pidlist>		Select by pid. This selects the blocks whose process ID
@@ -171,8 +173,10 @@ Usage
 					group ID numbers appear in <tgidlist>.
 		--name <cmdlist>	Select by task command name. This selects the blocks whose
 					task command name appear in <cmdlist>.
+		--module <modulelist>	Select by module. This selects the information of blocks whose
+					memory is allocated by modules appear in <modulelist>.
 
-		<pidlist>, <tgidlist>, <cmdlist> are single arguments in the form of a comma-separated list,
+		<pidlist>, <tgidlist>, <cmdlist>, <modulelist> are single arguments in the form of a comma-separated list,
 		which offers a way to specify individual selecting rules.
 
 
@@ -196,6 +200,7 @@ STANDARD FORMAT SPECIFIERS
 	ft		free_ts		timestamp of the page when it was released
 	at		alloc_ts	timestamp of the page when it was allocated
 	ator		allocator	memory allocator for pages
+	mod		module		the name of the module that the page is allocated by
 
   For --cull option:
 
@@ -206,3 +211,4 @@ STANDARD FORMAT SPECIFIERS
 	f		free		whether the page has been released or not
 	st		stacktrace	stack trace of the page allocation
 	ator            allocator       memory allocator for pages
+	mod		module		the name of the module that the page is allocated by
