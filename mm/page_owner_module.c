@@ -11,6 +11,7 @@
 #include <linux/list_sort.h>
 #include <linux/oom.h>
 #include <linux/slab.h>
+#include <linux/sched/clock.h>
 
 #include "page_owner.h"
 
@@ -28,7 +29,15 @@ struct po_module {
 	long nr_pages_used;
 };
 
+struct leaked_po_module {
+	struct list_head list;
+	char module_name[MODULE_NAME_LEN];
+	long nr_pages_used;
+	u64 unload_ns;
+};
+
 LIST_HEAD(po_module_list);
+LIST_HEAD(leaked_po_module_list);
 DEFINE_SPINLOCK(po_module_list_lock);
 
 static unsigned int po_module_topn = PO_MODULE_DEFAULT_TOPN;
@@ -210,6 +219,24 @@ static int po_module_coming(struct module *mod)
 	return 0;
 }
 
+static void create_leaked_node(struct po_module *po_mod)
+{
+	struct leaked_po_module *leaked_po_mod;
+	unsigned long flags;
+
+	leaked_po_mod = kmalloc(sizeof(struct leaked_po_module), GFP_KERNEL);
+	if (!leaked_po_mod)
+		return;
+
+	leaked_po_mod->unload_ns = local_clock();
+	strscpy(leaked_po_mod->module_name, po_mod->mod->name, MODULE_NAME_LEN);
+	leaked_po_mod->nr_pages_used = po_mod->nr_pages_used;
+	INIT_LIST_HEAD(&leaked_po_mod->list);
+	spin_lock_irqsave(&po_module_list_lock, flags);
+	list_add_tail(&leaked_po_mod->list, &leaked_po_module_list);
+	spin_unlock_irqrestore(&po_module_list_lock, flags);
+}
+
 static void po_module_going(struct module *mod)
 {
 	struct po_module *po_mod;
@@ -219,6 +246,10 @@ static void po_module_going(struct module *mod)
 	po_mod = po_find_module(mod);
 	list_del(&po_mod->list);
 	spin_unlock_irqrestore(&po_module_list_lock, flags);
+
+	if (unlikely(po_mod->nr_pages_used))
+		create_leaked_node(po_mod);
+
 	kfree(po_mod);
 }
 
@@ -245,10 +276,52 @@ static struct notifier_block po_module_nb = {
 	.priority = 0
 };
 
+static void print_list(unsigned int nr, struct seq_file *m)
+{
+	struct po_module *po_mod;
+
+	lockdep_assert_held(&po_module_list_lock);
+
+	if (list_empty(&po_module_list))
+		return;
+
+	list_sort(NULL, &po_module_list, po_module_cmp);
+	list_for_each_entry(po_mod, &po_module_list, list) {
+		if (m)
+			seq_printf(m, "%s %ld\n", po_mod->mod->name,
+				po_mod->nr_pages_used);
+		else
+			pr_info("\tModule %s allocated %ld pages\n",
+				po_mod->mod->name, po_mod->nr_pages_used);
+		--nr;
+		if (!nr)
+			break;
+	}
+}
+
+static void print_leaked_list(struct seq_file *m)
+{
+	struct leaked_po_module *leaked_po_mod;
+
+	lockdep_assert_held(&po_module_list_lock);
+
+	if (list_empty(&leaked_po_module_list))
+		return;
+
+	list_for_each_entry(leaked_po_mod, &leaked_po_module_list, list) {
+		if (m)
+			seq_printf(m, "[unloaded %llu]%s %ld\n", leaked_po_mod->unload_ns,
+				leaked_po_mod->module_name,	leaked_po_mod->nr_pages_used);
+		else
+			pr_info("\t[unloaded %llu]Module %s allocated %ld pages\n",
+				leaked_po_mod->unload_ns, leaked_po_mod->module_name,
+				leaked_po_mod->nr_pages_used);
+	}
+}
+
 static int po_oom_notify(struct notifier_block *self,
 		unsigned long val, void *data)
 {
-	struct po_module *po_mod;
 	unsigned long flags;
 	unsigned int nr = po_module_topn;
 	int ret = notifier_from_errno(0);
@@ -257,15 +330,11 @@ static int po_oom_notify(struct notifier_block *self,
 		return ret;
 
 	spin_lock_irqsave(&po_module_list_lock, flags);
-	list_sort(NULL, &po_module_list, po_module_cmp);
 	pr_info("Top modules allocating pages:\n");
-	list_for_each_entry(po_mod, &po_module_list, list) {
-		pr_info("\tModule %s allocated %ld pages\n", po_mod->mod->name,
-			po_mod->nr_pages_used);
-		--nr;
-		if (!nr)
-			break;
-	}
+
+	print_list(nr, NULL);
+	print_leaked_list(NULL);
+
 	spin_unlock_irqrestore(&po_module_list_lock, flags);
 
 	return ret;
@@ -293,7 +362,6 @@ DEFINE_SIMPLE_ATTRIBUTE(po_module_topn_fops, po_module_topn_get,
 
 static int page_owner_module_stats_show(struct seq_file *m, void *v)
 {
-	struct po_module *po_mod;
 	unsigned long flags;
 	unsigned int nr = po_module_topn;
 
@@ -301,14 +369,10 @@ static int page_owner_module_stats_show(struct seq_file *m, void *v)
 		return 0;
 
 	spin_lock_irqsave(&po_module_list_lock, flags);
-	list_sort(NULL, &po_module_list, po_module_cmp);
-	list_for_each_entry(po_mod, &po_module_list, list) {
-		seq_printf(m, "%s %ld\n", po_mod->mod->name,
-			po_mod->nr_pages_used);
-		--nr;
-		if (!nr)
-			break;
-	}
+
+	print_list(nr, m);
+	print_leaked_list(m);
+
 	spin_unlock_irqrestore(&po_module_list_lock, flags);
 	return 0;
 }
