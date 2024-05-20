@@ -291,6 +291,30 @@ static int po_module_topn_get(void *data, u64 *val)
 DEFINE_SIMPLE_ATTRIBUTE(po_module_topn_fops, po_module_topn_get,
 			po_module_topn_set, "%llu\n");
 
+static int page_owner_module_stats_show(struct seq_file *m, void *v)
+{
+	struct po_module *po_mod;
+	unsigned long flags;
+	unsigned int nr = po_module_topn;
+
+	if (!nr)
+		return 0;
+
+	spin_lock_irqsave(&po_module_list_lock, flags);
+	list_sort(NULL, &po_module_list, po_module_cmp);
+	list_for_each_entry(po_mod, &po_module_list, list) {
+		seq_printf(m, "%s %ld\n", po_mod->mod->name,
+			po_mod->nr_pages_used);
+		--nr;
+		if (!nr)
+			break;
+	}
+	spin_unlock_irqrestore(&po_module_list_lock, flags);
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(page_owner_module_stats);
+
+
 void po_module_stat_init(void)
 {
 	int ret;
@@ -309,4 +333,6 @@ void po_module_stat_init(void)
 		pr_warn("Failed to register page owner oom notifier\n");
 
 	debugfs_create_file("page_owner_module_show_max", 0600, NULL, NULL, &po_module_topn_fops);
+	debugfs_create_file("page_owner_module_stats", 0400, NULL, NULL,
+		&page_owner_module_stats_fops);
 }
