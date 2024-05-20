@@ -13,6 +13,7 @@
 #include <linux/memcontrol.h>
 #include <linux/sched/clock.h>
 
+#include "page_owner.h"
 #include "internal.h"
 
 /*
@@ -20,19 +21,6 @@
  * to use off stack temporal storage
  */
 #define PAGE_OWNER_STACK_DEPTH (16)
-
-struct page_owner {
-	unsigned short order;
-	short last_migrate_reason;
-	gfp_t gfp_mask;
-	depot_stack_handle_t handle;
-	depot_stack_handle_t free_handle;
-	u64 ts_nsec;
-	u64 free_ts_nsec;
-	char comm[TASK_COMM_LEN];
-	pid_t pid;
-	pid_t tgid;
-};
 
 static bool page_owner_enabled = false;
 DEFINE_STATIC_KEY_FALSE(page_owner_inited);
@@ -144,8 +132,10 @@ void __reset_page_owner(struct page *page, unsigned int order)
 	depot_stack_handle_t handle = 0;
 	struct page_owner *page_owner;
 	u64 free_ts_nsec = local_clock();
+	char mod_name[MODULE_NAME_LEN] = {0};
 
 	handle = save_stack(GFP_NOWAIT | __GFP_NOWARN);
+	po_find_module_name_with_update(handle, mod_name, MODULE_NAME_LEN);
 
 	page_ext = page_ext_get(page);
 	if (unlikely(!page_ext))
@@ -155,6 +145,7 @@ void __reset_page_owner(struct page *page, unsigned int order)
 		page_owner = get_page_owner(page_ext);
 		page_owner->free_handle = handle;
 		page_owner->free_ts_nsec = free_ts_nsec;
+		po_set_module_name(page_owner, mod_name);
 		page_ext = page_ext_next(page_ext);
 	}
 	page_ext_put(page_ext);
@@ -167,6 +158,9 @@ static inline void __set_page_owner_handle(struct page *page,
 	struct page_owner *page_owner;
 	int i;
 	u64 ts_nsec = local_clock();
+	char mod_name[MODULE_NAME_LEN] = {0};
+
+	po_find_module_name_with_update(handle, mod_name, MODULE_NAME_LEN);
 
 	for (i = 0; i < (1 << order); i++) {
 		page_owner = get_page_owner(page_ext);
@@ -179,6 +173,7 @@ static inline void __set_page_owner_handle(struct page *page,
 		page_owner->ts_nsec = ts_nsec;
 		strscpy(page_owner->comm, current->comm,
 			sizeof(page_owner->comm));
+		po_set_module_name(page_owner, mod_name);
 		__set_bit(PAGE_EXT_OWNER, &page_ext->flags);
 		__set_bit(PAGE_EXT_OWNER_ALLOCATED, &page_ext->flags);
 
@@ -260,6 +255,7 @@ void __copy_page_owner(struct page *oldpage, struct page *newpage)
 	new_page_owner->ts_nsec = old_page_owner->ts_nsec;
 	new_page_owner->free_ts_nsec = old_page_owner->ts_nsec;
 	strcpy(new_page_owner->comm, old_page_owner->comm);
+	po_copy_module_name(new_page_owner, old_page_owner);
 
 	/*
 	 * We don't clear the bit on the oldpage as it's going to be freed
@@ -433,6 +429,8 @@ print_page_owner(char __user *buf, size_t count, unsigned long pfn,
 			pfn >> pageblock_order,
 			migratetype_names[pageblock_mt],
 			page->flags, &page->flags);
+
+	ret += po_module_name_snprint(page_owner, kbuf + ret, count - ret);
 
 	nr_entries = stack_depot_fetch(handle, &entries);
 	ret += stack_trace_snprint(kbuf + ret, count - ret, entries, nr_entries, 0);
