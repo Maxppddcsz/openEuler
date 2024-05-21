@@ -185,6 +185,17 @@ config BLK_DEBUG_FS
 	Unless you are building a kernel for a tiny system, you should
 	say Y here.
 
+config BLK_DEBUG_FS_SWITCH
+	bool "Disable/Enable block layer debugfs by demands"
+	default y
+	depends on BLK_DEBUG_FS
+	help
+	All block layer debugfs is enabled by default, enabling this option
+	allow user to disable all debugfs by module parameters. Noted that
+	user can still enable or disable debugfs by sysfs for each disk.
+
+	If memory resources is limited, you should say Y here.
+
 config BLK_DEBUG_FS_ZONED
        bool
        default BLK_DEBUG_FS && BLK_DEV_ZONED
