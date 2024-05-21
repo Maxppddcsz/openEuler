@@ -209,6 +209,15 @@ config BLK_DEV_DUMPINFO
 	  Dump info when open an write opened block device exclusively
 	  or open an exclusive opened device for write
 
+config BLK_IO_HUNG_TASK_CHECK
+	bool "Enable io hung task check"
+	depends on DETECT_HUNG_TASK
+	default y
+	help
+	  Enabling this lets the block layer detect hungtask for io, noted
+	  if this is set, hungtask will complain about slow io even if such
+	  io is not hanged. Be careful to enable hungtask panic in this case.
+
 menu "Partition Types"
 
 source "block/partitions/Kconfig"
