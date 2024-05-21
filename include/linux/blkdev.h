@@ -643,10 +643,12 @@ struct request_queue {
 #define QUEUE_FLAG_NOWAIT       29	/* device supports NOWAIT */
 /*at least one blk-mq hctx can't get driver tag */
 #define QUEUE_FLAG_HCTX_WAIT	30
+#define QUEUE_FLAG_DEBUGFS	31	/* supports debugfs */
 
 #define QUEUE_FLAG_MQ_DEFAULT	((1 << QUEUE_FLAG_IO_STAT) |		\
 				 (1 << QUEUE_FLAG_SAME_COMP) |		\
-				 (1 << QUEUE_FLAG_NOWAIT))
+				 (1 << QUEUE_FLAG_NOWAIT) |             \
+				 (1 << QUEUE_FLAG_DEBUGFS))
 
 void blk_queue_flag_set(unsigned int flag, struct request_queue *q);
 void blk_queue_flag_clear(unsigned int flag, struct request_queue *q);
