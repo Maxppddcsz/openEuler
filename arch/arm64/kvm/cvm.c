@@ -564,7 +564,7 @@ static int kvm_cvm_map_range(struct kvm *kvm)
 	struct kvm_numa_info *numa_info = &cvm->numa_info;
 	gpa_t gpa, gpa_data_end, data_size;
 
-	data_size = cvm->initrd_start - cvm->loader_start + cvm->initrd_size;
+	data_size = cvm->initrd_start - cvm->loader_start + cvm->dtb_end;
 	data_size = round_up(data_size, l2_granule);
 	gpa_data_end = cvm->loader_start + data_size + l2_granule;
 	gpa_data_end = round_up(gpa_data_end, l2_granule);
@@ -612,62 +612,57 @@ static int kvm_activate_cvm(struct kvm *kvm)
 	return 0;
 }
 
-static int kvm_init_ipa_cvm_range(struct kvm *kvm,
-				struct kvm_cap_arm_tmm_init_ipa_args *args)
+static int kvm_cvm_create_ttt(struct kvm *kvm, u64 granule_size,
+				gpa_t addr, gpa_t end)
 {
 	int ret = 0;
-	u64 l2_granule = cvm_granule_size(TMM_TTT_LEVEL_2);
-	gpa_t addr, end;
 	gpa_t ipa;
 	struct cvm *cvm = (struct cvm *)kvm->arch.cvm;
 
-	addr = round_down(args->init_ipa_base, l2_granule);
-	end = round_up(args->init_ipa_base + args->init_ipa_size, l2_granule);
-
-	if (end < addr)
-		return -EINVAL;
-
-	if (kvm_cvm_state(kvm) != CVM_STATE_NEW)
-		return -EINVAL;
-
-	for (ipa = addr; ipa < end; ipa += l2_granule) {
-		ret = kvm_cvm_create_ttt_levels(kvm, cvm, ipa,
-					kvm->arch.mmu.pgt->start_level,
-					TMM_TTT_LEVEL_2, NULL);
+	for (ipa = addr; ipa < end; ipa += granule_size) {
+		ret = kvm_cvm_create_ttt_levels(kvm, cvm,
+				ipa, kvm->arch.mmu.pgt->start_level,
+				TMM_TTT_LEVEL_2, NULL);
 		WARN_ON(ret);
 		if (ret)
 			return ret;
 	}
-
 	return ret;
 }
 
-static int kvm_populate_ipa_cvm_range(struct kvm *kvm,
-				struct kvm_cap_arm_tmm_populate_region_args *args)
+static int kvm_init_ipa_cvm_range(struct kvm *kvm,
+				struct kvm_cap_arm_tmm_init_ipa_args *args)
 {
-	struct cvm *cvm = (struct cvm *)kvm->arch.cvm;
+	int ret = 0;
+	gpa_t addr1, end1, addr2, end2;
 	u64 l2_granule = cvm_granule_size(TMM_TTT_LEVEL_2);
-	phys_addr_t ipa_base, ipa_end, gpa;
-	u64 map_size, dst_phys;
-	u64 numa_set;
+
+	addr1 = round_down(args->init_ipa_base1, l2_granule);
+	end1 = round_up(args->init_ipa_base1 + args->init_ipa_size1, l2_granule);
+	addr2 = round_down(args->init_ipa_base2, l2_granule);
+	end2 = round_up(args->init_ipa_base2 + args->init_ipa_size2, l2_granule);
+
+	if (end1 < addr1 || end2 < addr2)
+		return -EINVAL;
 
 	if (kvm_cvm_state(kvm) != CVM_STATE_NEW)
 		return -EINVAL;
-	if (!IS_ALIGNED(args->populate_ipa_base, PAGE_SIZE) ||
-		!IS_ALIGNED(args->populate_ipa_size, PAGE_SIZE))
-		return -EINVAL;
 
-	if (args->flags & ~TMI_MEASURE_CONTENT)
-		return -EINVAL;
-	ipa_base = round_down(args->populate_ipa_base, l2_granule);
-	ipa_end = round_up(args->populate_ipa_base +
-					   args->populate_ipa_size + l2_granule, l2_granule);
+	ret = kvm_cvm_create_ttt(kvm, l2_granule, addr1, end1);
+	if (ret)
+		return ret;
+	ret = kvm_cvm_create_ttt(kvm, l2_granule, addr2, end2);
+	return ret;
+}
 
-	if (ipa_end < ipa_base)
-		return -EINVAL;
+static int kvm_cvm_populate_ram_region(struct kvm *kvm, u64 map_size,
+				phys_addr_t ipa_base, phys_addr_t ipa_end)
+{
+	u64 dst_phys;
+	phys_addr_t gpa;
+	u64 numa_set = kvm_get_first_binded_numa_set(kvm);
+	struct cvm *cvm = (struct cvm *)kvm->arch.cvm;
 
-	numa_set = kvm_get_first_binded_numa_set(kvm);
-	map_size = l2_granule;
 	for (gpa = ipa_base; gpa < ipa_end; gpa += map_size) {
 		dst_phys = tmi_mem_alloc(cvm->rd, numa_set, TMM_MEM_TYPE_CVM_PA, map_size);
 		if (!dst_phys) {
@@ -680,8 +675,37 @@ static int kvm_populate_ipa_cvm_range(struct kvm *kvm,
 			return -EFAULT;
 		}
 	}
-
 	return 0;
+}
+
+static int kvm_populate_ipa_cvm_range(struct kvm *kvm,
+				struct kvm_cap_arm_tmm_populate_region_args *args)
+{
+	u64 l2_granule = cvm_granule_size(TMM_TTT_LEVEL_2);
+	phys_addr_t ipa_base1, ipa_end1, ipa_base2, ipa_end2;
+
+	if (kvm_cvm_state(kvm) != CVM_STATE_NEW)
+		return -EINVAL;
+	if (!IS_ALIGNED(args->populate_ipa_base1, PAGE_SIZE) ||
+		!IS_ALIGNED(args->populate_ipa_size1, PAGE_SIZE) ||
+		!IS_ALIGNED(args->populate_ipa_base2, PAGE_SIZE) ||
+		!IS_ALIGNED(args->populate_ipa_size2, PAGE_SIZE))
+		return -EINVAL;
+
+	if (args->flags & ~TMI_MEASURE_CONTENT)
+		return -EINVAL;
+	ipa_base1 = round_down(args->populate_ipa_base1, l2_granule);
+	ipa_end1 = round_up(args->populate_ipa_base1 +
+						args->populate_ipa_size1 + l2_granule, l2_granule);
+	ipa_base2 = round_down(args->populate_ipa_base2, l2_granule);
+	ipa_end2 = round_up(args->populate_ipa_base2 +
+						args->populate_ipa_size2 + l2_granule, l2_granule);
+
+	if (ipa_end1 < ipa_base1 || ipa_end2 < ipa_base2)
+		return -EINVAL;
+
+	return kvm_cvm_populate_ram_region(kvm, l2_granule, ipa_base1, ipa_end1) ||
+		   kvm_cvm_populate_ram_region(kvm, l2_granule, ipa_base2, ipa_end2);
 }
 
 int kvm_cvm_enable_cap(struct kvm *kvm, struct kvm_enable_cap *cap)
@@ -906,7 +930,7 @@ int kvm_load_user_data(struct kvm *kvm, unsigned long arg)
 		unsigned long ipa_end = numa_node->ipa_start + numa_node->ipa_size;
 
 		if (user_data.loader_start < numa_node->ipa_start ||
-			user_data.initrd_start + user_data.initrd_size > ipa_end)
+			user_data.dtb_end > ipa_end)
 			return -EFAULT;
 		for (i = 0; i < numa_info->numa_cnt; i++)
 			total_size += numa_info->numa_nodes[i].ipa_size;
@@ -915,8 +939,9 @@ int kvm_load_user_data(struct kvm *kvm, unsigned long arg)
 	}
 
 	cvm->loader_start = user_data.loader_start;
+	cvm->image_end = user_data.image_end;
 	cvm->initrd_start = user_data.initrd_start;
-	cvm->initrd_size = user_data.initrd_size;
+	cvm->dtb_end = user_data.dtb_end;
 	cvm->ram_size = user_data.ram_size;
 	memcpy(&cvm->numa_info, numa_info, sizeof(struct kvm_numa_info));
 

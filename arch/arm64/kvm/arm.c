@@ -145,7 +145,7 @@ static void set_default_csv2(struct kvm *kvm)
 		kvm->arch.pfr0_csv2 = 1;
 }
 
-/*
+/**
  * kvm_arch_init_vm - initializes a VM data structure
  * @kvm:	pointer to the KVM struct
  */

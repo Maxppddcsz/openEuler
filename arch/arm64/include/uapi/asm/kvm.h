@@ -106,7 +106,7 @@ struct kvm_regs {
 #define KVM_ARM_VCPU_SVE		4 /* enable SVE for this CPU */
 #define KVM_ARM_VCPU_PTRAUTH_ADDRESS	5 /* VCPU uses address authentication */
 #define KVM_ARM_VCPU_PTRAUTH_GENERIC	6 /* VCPU uses generic authentication */
-#define KVM_ARM_VCPU_TEC				8 /* VCPU TEC state as part of cvm */
+#define KVM_ARM_VCPU_TEC		8 /* VCPU TEC state as part of cvm */
 
 struct kvm_vcpu_init {
 	__u32 target;

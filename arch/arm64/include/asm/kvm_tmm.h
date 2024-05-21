@@ -19,8 +19,9 @@ struct cvm {
 	u32 cvm_vmid;
 	u64 rd;
 	u64 loader_start;
+	u64 image_end;
 	u64 initrd_start;
-	u64 initrd_size;
+	u64 dtb_end;
 	u64 ram_size;
 	struct kvm_numa_info numa_info;
 	struct tmi_cvm_params *params;
