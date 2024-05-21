@@ -212,7 +212,7 @@ config BLK_DEV_DUMPINFO
 config BLK_IO_HUNG_TASK_CHECK
 	bool "Enable io hung task check"
 	depends on DETECT_HUNG_TASK
-	default y
+	default n
 	help
 	  Enabling this lets the block layer detect hungtask for io, noted
 	  if this is set, hungtask will complain about slow io even if such
