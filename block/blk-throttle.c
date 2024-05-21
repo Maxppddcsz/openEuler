@@ -43,7 +43,7 @@ static struct blkcg_policy blkcg_policy_throtl;
 /* A workqueue to queue throttle related work */
 static struct workqueue_struct *kthrotld_workqueue;
 
-#ifdef BLK_DEV_SUPPORT_LEGACY_GLOBAL_LIMIT
+#ifdef CONFIG_BLK_DEV_SUPPORT_LEGACY_GLOBAL_LIMIT
 /* True if global limit is enabled in cgroup v1 */
 static bool global_limit;
 
