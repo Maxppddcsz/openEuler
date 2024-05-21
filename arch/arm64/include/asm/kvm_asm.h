@@ -211,6 +211,8 @@ struct kvm;
 struct kvm_vcpu;
 struct kvm_s2_mmu;
 
+extern bool __read_mostly enable_hdbss;
+
 DECLARE_KVM_NVHE_SYM(__kvm_hyp_init);
 DECLARE_KVM_HYP_SYM(__kvm_hyp_vector);
 #define __kvm_hyp_init		CHOOSE_NVHE_SYM(__kvm_hyp_init)
