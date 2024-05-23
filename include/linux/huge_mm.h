@@ -54,6 +54,7 @@ enum transparent_hugepage_flag {
 	TRANSPARENT_HUGEPAGE_FILE_EXEC_MTHP_FLAG,
 	TRANSPARENT_HUGEPAGE_FILE_MAPPING_ALIGN_FLAG,
 	TRANSPARENT_HUGEPAGE_ANON_MAPPING_ALIGN_FLAG,
+	TRANSPARENT_HUGEPAGE_ANON_MAPPING_PMD_ALIGN_FLAG,
 };
 
 struct kobject;
@@ -287,6 +288,10 @@ static inline void count_mthp_stat(int order, enum mthp_stat_item item)
 #define transparent_hugepage_use_zero_page()				\
 	(transparent_hugepage_flags &					\
 	 (1<<TRANSPARENT_HUGEPAGE_USE_ZERO_PAGE_FLAG))
+
+#define thp_anon_mapping_pmd_align()				\
+	(transparent_hugepage_flags &				\
+	 (1<<TRANSPARENT_HUGEPAGE_ANON_MAPPING_PMD_ALIGN_FLAG))
 
 unsigned long thp_get_unmapped_area(struct file *filp, unsigned long addr,
 		unsigned long len, unsigned long pgoff, unsigned long flags);
