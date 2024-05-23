@@ -19,6 +19,7 @@ enum hk_flags {
 
 #ifdef CONFIG_CPU_ISOLATION
 extern bool enhanced_isolcpus;
+extern bool support_cpu0_nohz_full;
 DECLARE_STATIC_KEY_FALSE(housekeeping_overridden);
 extern int housekeeping_any_cpu(enum hk_flags flags);
 extern const struct cpumask *housekeeping_cpumask(enum hk_flags flags);
@@ -30,6 +31,8 @@ extern void __init housekeeping_init(void);
 #else
 
 #define enhanced_isolcpus 0
+#define support_cpu0_nohz_full 0
+
 static inline int housekeeping_any_cpu(enum hk_flags flags)
 {
 	return smp_processor_id();
