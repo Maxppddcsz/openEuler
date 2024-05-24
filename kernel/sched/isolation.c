@@ -216,3 +216,16 @@ static int __init enhanced_isolcpus_setup(char *str)
 	return 0;
 }
 __setup("enhanced_isolcpus", enhanced_isolcpus_setup);
+
+void check_housekeeping_cpus_online(void)
+{
+	if (!support_cpu0_nohz_full)
+		return;
+	if (!housekeeping_flags)
+		return;
+	if (!cpumask_subset(housekeeping_mask, cpu_online_mask)) {
+		pr_err("Not all the housekeeping CPUs are online, please modify the kernel parameter !\n");
+		/* BUG_ON here, otherwise there may exist other potential error */
+		BUG_ON(1);
+	}
+}
