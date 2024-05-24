@@ -664,7 +664,8 @@ static void do_balance_runtime(struct rt_rq *rt_rq)
 		 * or __disable_runtime() below sets a specific rq to inf to
 		 * indicate its been disabled and disalow stealing.
 		 */
-		if (iter->rt_runtime == RUNTIME_INF)
+		if (iter->rt_runtime == RUNTIME_INF ||
+				iter->rt_runtime == RUNTIME_DISABLED)
 			goto next;
 
 		/*
