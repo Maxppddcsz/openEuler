@@ -1477,11 +1477,21 @@ static inline bool bpf_sk_lookup_run_v6(struct net *net, int protocol,
 #ifdef CONFIG_BPF_NET_GLOBAL_PROG
 struct bpf_gnet_ctx_kern {
 	struct sock *sk;
+	int curr_tid;
+	int peer_tid;
+	int numa_node;
+	__u64 rxtx_bytes;
+	int rx_dev_idx;
+	int rx_dev_queue_idx;
+	__u64 rx_dev_netns_cookie;
 };
 
 enum gnet_bpf_attach_type {
 	GNET_BPF_ATTACH_TYPE_INVALID = -1,
-	GNET_RESERVE0 = 0,
+	GNET_TCP_RECVMSG = 0,
+	GNET_SK_DST_SET,
+	GNET_RCV_NIC_NODE,
+	GNET_SEND_NIC_NODE,
 	MAX_GNET_BPF_ATTACH_TYPE
 };
 
@@ -1492,7 +1502,10 @@ static inline enum gnet_bpf_attach_type
 to_gnet_bpf_attach_type(enum bpf_attach_type attach_type)
 {
 	switch (attach_type) {
-	GNET_ATYPE(GNET_RESERVE0);
+	GNET_ATYPE(GNET_TCP_RECVMSG);
+	GNET_ATYPE(GNET_SK_DST_SET);
+	GNET_ATYPE(GNET_RCV_NIC_NODE);
+	GNET_ATYPE(GNET_SEND_NIC_NODE);
 	default:
 	return GNET_BPF_ATTACH_TYPE_INVALID;
 	}
