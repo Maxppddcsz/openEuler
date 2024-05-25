@@ -15,6 +15,7 @@
 
 #include "efistub.h"
 
+#ifdef CONFIG_UEFI_KASLR_SKIP_MEMMAP
 #define MAX_MEMMAP_REGIONS 32
 
 struct mem_vector {
@@ -103,6 +104,7 @@ void free_avoid_memmap(void)
 		efi_free(mem_avoid[i].size, mem_avoid[i].start);
 	}
 }
+#endif
 
 efi_status_t check_platform_features(void)
 {
