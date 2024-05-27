@@ -325,8 +325,10 @@ struct kvm_cap_arm_tmm_config_item {
 
 #define KVM_ARM_TMM_POPULATE_FLAGS_MEASURE	(1U << 0)
 struct kvm_cap_arm_tmm_populate_region_args {
-	__u64 populate_ipa_base;
-	__u64 populate_ipa_size;
+	__u64 populate_ipa_base1;
+	__u64 populate_ipa_size1;
+	__u64 populate_ipa_base2;
+	__u64 populate_ipa_size2;
 	__u32 flags;
 	__u32 reserved[3];
 };
