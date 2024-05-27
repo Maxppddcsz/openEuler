@@ -1261,6 +1261,9 @@ void __init dynamic_hugetlb_init(void)
 
 static int __init dynamic_hugetlb_setup(char *s)
 {
+	if (!s)
+		return 0;
+
 	if (!strcmp(s, "on"))
 		enable_dhugetlb = true;
 	return 1;
