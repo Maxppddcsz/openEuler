@@ -9,12 +9,14 @@
 #include <asm/kvm_asm.h>
 #include <asm/kvm_pgtable.h>
 #include <linux/virtio_ring.h>
+#include <asm/sysreg.h>
 
 #define GRANULE_SIZE		4096
 
 #define NO_NUMA			0 /* every bit in numa set is 0 */
 
-#define TMM_TTT_LEVEL_3 3
+#define TMM_TTT_LEVEL_2	2
+#define TMM_TTT_LEVEL_3	3
 
 #ifdef CONFIG_CVM_HOST_FVP_PLAT
 #define CVM_MEM_BASE	ULL(0x8800000000)	/* choose FVP platform to run cVM */
@@ -35,17 +37,18 @@
 /* TMI error codes. */
 #define TMI_SUCCESS				0
 #define TMI_ERROR_INPUT			1
-#define TMI_ERROR_MEMORY			2
+#define TMI_ERROR_MEMORY		2
 #define TMI_ERROR_ALIAS			3
-#define TMI_ERROR_IN_USE			4
-#define TMI_ERROR_CVM_STATE			5
+#define TMI_ERROR_IN_USE		4
+#define TMI_ERROR_CVM_STATE		5
 #define TMI_ERROR_OWNER			6
-#define TMI_ERROR_TEC				7
-#define TMI_ERROR_TTT_WALK			8
-#define TMI_ERROR_TTT_ENTRY			9
-#define TMI_ERROR_NOT_SUPPORTED		10
-#define TMI_ERROR_INTERNAL			11
-#define TMI_ERROR_CVM_POWEROFF			12
+#define TMI_ERROR_TEC			7
+#define TMI_ERROR_TTT_WALK		8
+#define TMI_ERROR_TTT_ENTRY		9
+#define TMI_ERROR_NOT_SUPPORTED	10
+#define TMI_ERROR_INTERNAL		11
+#define TMI_ERROR_CVM_POWEROFF		12
+#define TMI_ERROR_TTT_CREATED		13
 
 #define TMI_RETURN_STATUS(ret)		((ret) & 0xFF)
 #define TMI_RETURN_INDEX(ret)		(((ret) >> 8) & 0xFF)
@@ -268,10 +271,9 @@ struct tmi_tec_run {
 
 /* KVM_CAP_ARM_TMM on VM fd */
 #define KVM_CAP_ARM_TMM_CONFIG_CVM_HOST	0
-#define KVM_CAP_ARM_TMM_CREATE_CVM		1
-#define KVM_CAP_ARM_TMM_INIT_IPA_CVM		2
-#define KVM_CAP_ARM_TMM_POPULATE_CVM		3
-#define KVM_CAP_ARM_TMM_ACTIVATE_CVM		4
+#define KVM_CAP_ARM_TMM_CREATE_RD	1
+#define KVM_CAP_ARM_TMM_POPULATE_CVM	2
+#define KVM_CAP_ARM_TMM_ACTIVATE_CVM	3
 
 #define KVM_CAP_ARM_TMM_MEASUREMENT_ALGO_SHA256		0
 #define KVM_CAP_ARM_TMM_MEASUREMENT_ALGO_SHA512		1
@@ -321,6 +323,14 @@ struct kvm_cap_arm_tmm_config_item {
 	};
 };
 
+#define KVM_ARM_TMM_POPULATE_FLAGS_MEASURE	(1U << 0)
+struct kvm_cap_arm_tmm_populate_region_args {
+	__u64 populate_ipa_base;
+	__u64 populate_ipa_size;
+	__u32 flags;
+	__u32 reserved[3];
+};
+
 enum tmi_tmm_mem_type {
 	TMM_MEM_TYPE_RD,
 	TMM_MEM_TYPE_TEC,
@@ -340,6 +350,12 @@ static inline bool tmm_is_addr_ttt_level_aligned(uint64_t addr, int level)
 	uint64_t mask = (1 << (12 + 9 * (3 - level))) - 1;
 
 	return (addr & mask) == 0;
+}
+
+static inline bool is_armv8_4_sel2_present(void)
+{
+	return ((read_sysreg(id_aa64pfr0_el1) >> ID_AA64PFR0_SEL2_SHIFT) &
+			ID_AA64PFR0_SEL2_MASK) == 1UL;
 }
 
 u64 phys_to_cvm_phys(u64 phys);

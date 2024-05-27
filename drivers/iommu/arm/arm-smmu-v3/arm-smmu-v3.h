@@ -13,6 +13,9 @@
 #include <linux/kernel.h>
 #include <linux/mmzone.h>
 #include <linux/sizes.h>
+#ifdef CONFIG_CVM_HOST
+#include <linux/kvm_host.h>
+#endif
 
 /* MMIO registers */
 #define ARM_SMMU_IDR0			0x0
