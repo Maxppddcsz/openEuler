@@ -96,18 +96,28 @@ static int __init housekeeping_setup(char *str, enum hk_flags flags)
 		alloc_bootmem_cpumask_var(&housekeeping_mask);
 		cpumask_andnot(housekeeping_mask,
 			       cpu_possible_mask, non_housekeeping_mask);
+		if (support_cpu0_nohz_full && cpumask_empty(housekeeping_mask)) {
+			pr_warn("Housekeeping cpumask is NULL, using boot CPU\n");
+			__cpumask_set_cpu(smp_processor_id(), housekeeping_mask);
+			/* update non_housekeeping_mask because it will be used below
+			in tick_nohz_full_setup() */
+			cpumask_andnot(non_housekeeping_mask,
+						   cpu_possible_mask, housekeeping_mask);
+		}
 
 		cpumask_andnot(tmp, cpu_present_mask, non_housekeeping_mask);
-		if (cpumask_empty(tmp)) {
+		if (!support_cpu0_nohz_full && cpumask_empty(tmp)) {
 			pr_warn("Housekeeping: must include one present CPU, "
 				"using boot CPU:%d\n", smp_processor_id());
 			__cpumask_set_cpu(smp_processor_id(), housekeeping_mask);
 			__cpumask_clear_cpu(smp_processor_id(), non_housekeeping_mask);
 		}
 	} else {
-		cpumask_andnot(tmp, cpu_present_mask, non_housekeeping_mask);
-		if (cpumask_empty(tmp))
-			__cpumask_clear_cpu(smp_processor_id(), non_housekeeping_mask);
+		if (!support_cpu0_nohz_full) {
+			cpumask_andnot(tmp, cpu_present_mask, non_housekeeping_mask);
+			if (cpumask_empty(tmp))
+				__cpumask_clear_cpu(smp_processor_id(), non_housekeeping_mask);
+		}
 		cpumask_andnot(tmp, cpu_possible_mask, non_housekeeping_mask);
 		if (!cpumask_equal(tmp, housekeeping_mask)) {
 			pr_warn("Housekeeping: nohz_full= must match isolcpus=\n");
@@ -206,3 +216,16 @@ static int __init enhanced_isolcpus_setup(char *str)
 	return 0;
 }
 __setup("enhanced_isolcpus", enhanced_isolcpus_setup);
+
+void check_housekeeping_cpus_online(void)
+{
+	if (!support_cpu0_nohz_full)
+		return;
+	if (!housekeeping_flags)
+		return;
+	if (!cpumask_subset(housekeeping_mask, cpu_online_mask)) {
+		pr_err("Not all the housekeeping CPUs are online, please modify the kernel parameter !\n");
+		/* BUG_ON here, otherwise there may exist other potential error */
+		BUG_ON(1);
+	}
+}
