@@ -7954,6 +7954,50 @@ void mem_cgroup_calculate_protection(struct mem_cgroup *root,
 			atomic_long_read(&parent->memory.children_low_usage)));
 }
 
+#ifdef CONFIG_DYNAMIC_HUGETLB
+static struct mem_cgroup *get_mem_cgroup_from_swap(swp_entry_t entry)
+{
+	struct mem_cgroup *memcg;
+	unsigned short id;
+
+	if (mem_cgroup_disabled())
+		return NULL;
+
+	id = lookup_swap_cgroup_id(entry);
+
+	rcu_read_lock();
+	memcg = mem_cgroup_from_id(id);
+	if (memcg && !css_tryget_online(&memcg->css))
+		memcg = NULL;
+	rcu_read_unlock();
+
+	return memcg;
+}
+
+struct page *memcg_alloc_page_vma(swp_entry_t entry, gfp_t gfp_mask,
+				  struct vm_area_struct *vma, unsigned long addr)
+{
+	struct mem_cgroup *memcg;
+	struct page *page = NULL;
+
+	memcg = get_mem_cgroup_from_swap(entry);
+	if (memcg) {
+		page = alloc_page_from_dhugetlb_pool(memcg, gfp_mask, 0, 0);
+		css_put(&memcg->css);
+	}
+	if (!page)
+		page = alloc_page_vma(gfp_mask, vma, addr);
+
+	return page;
+}
+#else
+struct page *memcg_alloc_page_vma(swp_entry_t entry, gfp_t gfp_mask,
+				  struct vm_area_struct *vma, unsigned long addr)
+{
+	return alloc_page_vma(gfp_mask, vma, addr);
+}
+#endif
+
 /**
  * mem_cgroup_charge - charge a newly allocated page to a cgroup
  * @page: page to charge

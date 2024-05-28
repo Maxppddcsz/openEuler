@@ -808,6 +808,9 @@ static inline bool mem_cgroup_below_min(struct mem_cgroup *target,
 		page_counter_read(&memcg->memory);
 }
 
+struct page *memcg_alloc_page_vma(swp_entry_t entry, gfp_t gfp_mask,
+				  struct vm_area_struct *vma, unsigned long addr);
+
 int mem_cgroup_charge(struct page *page, struct mm_struct *mm, gfp_t gfp_mask);
 
 void mem_cgroup_uncharge(struct page *page);
@@ -1409,6 +1412,13 @@ static inline bool mem_cgroup_below_min(struct mem_cgroup *target,
 					struct mem_cgroup *memcg)
 {
 	return false;
+}
+
+static inline struct page *memcg_alloc_page_vma(swp_entry_t entry, gfp_t gfp_mask,
+						struct vm_area_struct *vma,
+						unsigned long addr)
+{
+	return alloc_page_vma(gfp_mask, vma, addr);
 }
 
 static inline int mem_cgroup_charge(struct page *page, struct mm_struct *mm,
