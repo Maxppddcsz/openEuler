@@ -521,6 +521,14 @@ config MEMCG_SWAP_QOS
 	  memcg swap control include memory force swapin, swapfile control
 	  and swap limit.
 
+config MEMCG_ZRAM
+	bool "Enable Memory Cgroup charge of zram usage"
+	depends on MEMCG_SWAP_QOS && ZRAM
+	depends on X86 || ARM64
+	default n
+	help
+	  Support to charge zram usage in memory cgroup.
+
 config ETMEM_SCAN
 	tristate "module: etmem page scan for etmem support"
 	depends on ETMEM

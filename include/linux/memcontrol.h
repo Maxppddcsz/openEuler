@@ -1325,6 +1325,9 @@ int mem_cgroup_force_empty(struct mem_cgroup *memcg);
 int memcg_get_swap_type(struct page *page);
 void memcg_remove_swapfile(int type);
 
+#ifdef CONFIG_MEMCG_ZRAM
+struct mem_cgroup *memcg_get_from_path(char *path, size_t buflen);
+#endif
 #else /* CONFIG_MEMCG */
 
 #define MEM_CGROUP_ID_SHIFT	0

@@ -57,6 +57,7 @@
 #include <linux/wait.h>
 #include <linux/pagemap.h>
 #include <linux/fs.h>
+#include <linux/memcontrol.h>
 
 #define ZSPAGE_MAGIC	0x58
 
@@ -273,6 +274,9 @@ struct zs_pool {
 	struct wait_queue_head migration_wait;
 	atomic_long_t isolated_pages;
 	bool destroying;
+#endif
+#ifdef CONFIG_MEMCG_ZRAM
+	struct mem_cgroup *memcg;
 #endif
 };
 
@@ -2527,10 +2531,33 @@ err:
 }
 EXPORT_SYMBOL_GPL(zs_create_pool);
 
+#ifdef CONFIG_MEMCG_ZRAM
+static inline void zs_set_memcg(struct zs_pool *pool, void *memcg)
+{
+	if (pool)
+		pool->memcg = memcg;
+}
+
+struct zs_pool *zs_create_pool_with_memcg(const char *name, void *memcg)
+{
+	struct zs_pool *pool = zs_create_pool(name);
+
+	zs_set_memcg(pool, memcg);
+
+	return pool;
+}
+EXPORT_SYMBOL_GPL(zs_create_pool_with_memcg);
+#else
+static inline void zs_set_memcg(struct zs_pool *pool, void *memcg)
+{
+}
+#endif
+
 void zs_destroy_pool(struct zs_pool *pool)
 {
 	int i;
 
+	zs_set_memcg(pool, NULL);
 	zs_unregister_shrinker(pool);
 	zs_unregister_migration(pool);
 	zs_pool_stat_destroy(pool);

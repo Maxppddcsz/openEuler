@@ -3628,6 +3628,33 @@ static u64 mem_cgroup_read_u64(struct cgroup_subsys_state *css,
 	}
 }
 
+#ifdef CONFIG_MEMCG_ZRAM
+struct mem_cgroup *memcg_get_from_path(char *path, size_t buflen)
+{
+	struct mem_cgroup *memcg;
+	char *memcg_path;
+
+	if (mem_cgroup_disabled())
+		return NULL;
+
+	memcg_path = kzalloc(buflen, GFP_KERNEL);
+	if (!memcg_path)
+		return NULL;
+
+	for_each_mem_cgroup(memcg) {
+		cgroup_path(memcg->css.cgroup, memcg_path, buflen);
+		if (!strcmp(path, memcg_path) && css_tryget_online(&memcg->css)) {
+			mem_cgroup_iter_break(NULL, memcg);
+			break;
+		}
+	}
+
+	kfree(memcg_path);
+	return memcg;
+}
+EXPORT_SYMBOL(memcg_get_from_path);
+#endif
+
 #ifdef CONFIG_MEMCG_KMEM
 static int memcg_online_kmem(struct mem_cgroup *memcg)
 {
