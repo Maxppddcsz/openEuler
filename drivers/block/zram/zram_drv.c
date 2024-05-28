@@ -1354,6 +1354,20 @@ static inline struct zs_pool *zram_create_pool(struct zram *zram)
 	return zs_create_pool_with_memcg(zram->disk->disk_name,
 					 zram->memcg);
 }
+
+static inline void zram_charge_memory(struct zram *zram, unsigned long size)
+{
+	unsigned long nr_pages = ALIGN(size, PAGE_SIZE) >> PAGE_SHIFT;
+
+	memcg_charge_zram(zram->memcg, nr_pages);
+}
+
+static inline void zram_uncharge_memory(struct zram *zram, unsigned long size)
+{
+	unsigned long nr_pages = ALIGN(size, PAGE_SIZE) >> PAGE_SHIFT;
+
+	memcg_uncharge_zram(zram->memcg, nr_pages);
+}
 #else
 static inline void reset_memcg(struct zram *zram)
 {
@@ -1363,11 +1377,20 @@ static inline struct zs_pool *zram_create_pool(struct zram *zram)
 {
 	return zs_create_pool(zram->disk->disk_name);
 }
+
+static inline void zram_charge_memory(struct zram *zram, unsigned long size)
+{
+}
+
+static inline void zram_uncharge_memory(struct zram *zram, unsigned long size)
+{
+}
 #endif
 
 static void zram_meta_free(struct zram *zram, u64 disksize)
 {
 	size_t num_pages = disksize >> PAGE_SHIFT;
+	unsigned long size = array_size(num_pages, sizeof(*zram->table));
 	size_t index;
 
 	/* Free all pages that are still in this zram device */
@@ -1376,14 +1399,15 @@ static void zram_meta_free(struct zram *zram, u64 disksize)
 
 	zs_destroy_pool(zram->mem_pool);
 	vfree(zram->table);
+	zram_uncharge_memory(zram, size);
 }
 
 static bool zram_meta_alloc(struct zram *zram, u64 disksize)
 {
-	size_t num_pages;
+	size_t num_pages = disksize >> PAGE_SHIFT;
+	unsigned long size = array_size(num_pages, sizeof(*zram->table));
 
-	num_pages = disksize >> PAGE_SHIFT;
-	zram->table = vzalloc(array_size(num_pages, sizeof(*zram->table)));
+	zram->table = vzalloc(size);
 	if (!zram->table)
 		return false;
 
@@ -1392,6 +1416,8 @@ static bool zram_meta_alloc(struct zram *zram, u64 disksize)
 		vfree(zram->table);
 		return false;
 	}
+
+	zram_charge_memory(zram, size);
 
 	if (!huge_class_size)
 		huge_class_size = zs_huge_class_size(zram->mem_pool);

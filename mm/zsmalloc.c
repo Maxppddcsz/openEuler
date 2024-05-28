@@ -935,6 +935,35 @@ unlock:
 	return 0;
 }
 
+#ifdef CONFIG_MEMCG_ZRAM
+static inline void zs_charge_memory(struct zs_pool *pool,
+				    unsigned long nr_pages)
+{
+	/*
+	 * Since only zram configures memcg for zs_pool,
+	 * charge the memory in zram usage.
+	 */
+	memcg_charge_zram(pool->memcg, nr_pages);
+}
+
+static inline void zs_uncharge_memory(struct zs_pool *pool,
+				      unsigned long nr_pages)
+{
+	/* See zs_charge_memory() for detail */
+	memcg_uncharge_zram(pool->memcg, nr_pages);
+}
+#else
+static inline void zs_charge_memory(struct zs_pool *pool,
+				    unsigned long nr_pages)
+{
+}
+
+static inline void zs_uncharge_memory(struct zs_pool *pool,
+				      unsigned long nr_pages)
+{
+}
+#endif
+
 static void __free_zspage(struct zs_pool *pool, struct size_class *class,
 				struct zspage *zspage)
 {
@@ -965,6 +994,7 @@ static void __free_zspage(struct zs_pool *pool, struct size_class *class,
 	zs_stat_dec(class, OBJ_ALLOCATED, class->objs_per_zspage);
 	atomic_long_sub(class->pages_per_zspage,
 					&pool->pages_allocated);
+	zs_uncharge_memory(pool, class->pages_per_zspage);
 }
 
 static void free_zspage(struct zs_pool *pool, struct size_class *class,
@@ -1484,6 +1514,7 @@ unsigned long zs_malloc(struct zs_pool *pool, size_t size, gfp_t gfp)
 	record_obj(handle, obj);
 	atomic_long_add(class->pages_per_zspage,
 				&pool->pages_allocated);
+	zs_charge_memory(pool, class->pages_per_zspage);
 	zs_stat_inc(class, OBJ_ALLOCATED, class->objs_per_zspage);
 
 	/* We completely set up zspage so mark them as movable */

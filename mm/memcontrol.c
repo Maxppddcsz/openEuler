@@ -3653,6 +3653,49 @@ struct mem_cgroup *memcg_get_from_path(char *path, size_t buflen)
 	return memcg;
 }
 EXPORT_SYMBOL(memcg_get_from_path);
+
+static inline void memcg_zram_usage_init(struct mem_cgroup *memcg)
+{
+	atomic64_set(&memcg->swap_dev->zram_usage, 0);
+}
+
+void memcg_charge_zram(struct mem_cgroup *memcg, unsigned int nr_pages)
+{
+	if (mem_cgroup_disabled() || !memcg)
+		return;
+
+	if (cgroup_subsys_on_dfl(memory_cgrp_subsys))
+		return;
+
+	page_counter_charge(&memcg->memory, nr_pages);
+	atomic_long_add(nr_pages, &memcg->swap_dev->zram_usage);
+}
+EXPORT_SYMBOL_GPL(memcg_charge_zram);
+
+void memcg_uncharge_zram(struct mem_cgroup *memcg, unsigned int nr_pages)
+{
+	if (mem_cgroup_disabled() || !memcg)
+		return;
+
+	if (cgroup_subsys_on_dfl(memory_cgrp_subsys))
+		return;
+
+	page_counter_uncharge(&memcg->memory, nr_pages);
+	atomic_long_sub(nr_pages, &memcg->swap_dev->zram_usage);
+}
+EXPORT_SYMBOL_GPL(memcg_uncharge_zram);
+
+static u64 mem_cgroup_zram_usage(struct cgroup_subsys_state *css,
+				 struct cftype *cft)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
+
+	return (u64)atomic64_read(&memcg->swap_dev->zram_usage) * PAGE_SIZE;
+}
+#else
+static inline void memcg_zram_usage_init(struct mem_cgroup *memcg)
+{
+}
 #endif
 
 #ifdef CONFIG_MEMCG_KMEM
@@ -4251,6 +4294,8 @@ static void memcg_swap_device_init(struct mem_cgroup *memcg,
 		WRITE_ONCE(memcg->swap_dev->type,
 			   READ_ONCE(parent->swap_dev->type));
 	}
+
+	memcg_zram_usage_init(memcg);
 }
 
 u64 memcg_swapmax_read(struct cgroup_subsys_state *css, struct cftype *cft)
@@ -6247,6 +6292,13 @@ static struct cftype mem_cgroup_legacy_files[] = {
 		.write = memcg_swapfile_write,
 		.seq_show = memcg_swapfile_read,
 	},
+#ifdef CONFIG_MEMCG_ZRAM
+	{
+		.name = "zram_usage_in_bytes",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.read_u64 = mem_cgroup_zram_usage,
+	},
+#endif
 #endif
 	{
 		.name = "high_async_ratio",

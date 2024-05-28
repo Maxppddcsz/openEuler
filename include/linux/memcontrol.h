@@ -248,6 +248,9 @@ struct obj_cgroup {
 struct swap_device {
 	unsigned long max;
 	int type;
+#ifdef CONFIG_MEMCG_ZRAM
+	atomic64_t zram_usage;
+#endif
 };
 
 /*
@@ -1327,6 +1330,8 @@ void memcg_remove_swapfile(int type);
 
 #ifdef CONFIG_MEMCG_ZRAM
 struct mem_cgroup *memcg_get_from_path(char *path, size_t buflen);
+void memcg_charge_zram(struct mem_cgroup *memcg, unsigned int nr_pages);
+void memcg_uncharge_zram(struct mem_cgroup *memcg, unsigned int nr_pages);
 #endif
 #else /* CONFIG_MEMCG */
 
