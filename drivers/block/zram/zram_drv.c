@@ -1265,9 +1265,144 @@ static DEVICE_ATTR_RO(bd_stat);
 #endif
 static DEVICE_ATTR_RO(debug_stat);
 
+#ifdef CONFIG_MEMCG_ZRAM
+static inline int init_memcg(struct zram *zram, struct mem_cgroup *memcg)
+{
+	if (init_done(zram))
+		return -EINVAL;
+
+	if (zram->memcg)
+		css_put(&zram->memcg->css);
+
+	zram->memcg = memcg;
+
+	return 0;
+}
+
+static inline void reset_memcg(struct zram *zram)
+{
+	struct mem_cgroup *memcg = zram->memcg;
+
+	if (!memcg)
+		return;
+
+	zram->memcg = NULL;
+	css_put(&memcg->css);
+}
+
+
+static ssize_t mem_cgroup_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct zram *zram = dev_to_zram(dev);
+	struct mem_cgroup *memcg = zram->memcg;
+
+	if (mem_cgroup_disabled() || !memcg)
+		return scnprintf(buf, PAGE_SIZE, "none\n");
+
+	if (!cgroup_path(memcg->css.cgroup, buf, PATH_MAX))
+		return scnprintf(buf, PAGE_SIZE, "none\n");
+
+	return scnprintf(buf, PAGE_SIZE, "%s\n", buf);
+}
+
+static ssize_t mem_cgroup_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	struct zram *zram = dev_to_zram(dev);
+	struct mem_cgroup *memcg;
+	char *kbuf;
+	size_t sz;
+	int ret = 0;
+
+	if (mem_cgroup_disabled())
+		return -EINVAL;
+
+	kbuf = kmalloc(PATH_MAX, GFP_KERNEL);
+	if (!kbuf)
+		return -ENOMEM;
+
+	strlcpy(kbuf, buf, PATH_MAX);
+	sz = strlen(kbuf);
+	if (sz > 0 && kbuf[sz - 1] == '\n')
+		kbuf[sz - 1] = 0x00;
+
+	if (!strcmp(kbuf, "none")) {
+		memcg = NULL;
+	} else {
+		memcg = memcg_get_from_path(kbuf, PATH_MAX);
+		if (!memcg) {
+			ret = -EINVAL;
+			goto out;
+		}
+	}
+
+	down_write(&zram->init_lock);
+	ret = init_memcg(zram, memcg);
+	if (ret && memcg)
+		css_put(&memcg->css);
+	up_write(&zram->init_lock);
+
+out:
+	kfree(kbuf);
+	return ret ? ret : len;
+}
+static DEVICE_ATTR_RW(mem_cgroup);
+
+static inline struct zs_pool *zram_create_pool(struct zram *zram)
+{
+	return zs_create_pool_with_memcg(zram->disk->disk_name,
+					 zram->memcg);
+}
+
+static inline void zram_charge_memory(struct zram *zram, unsigned long size)
+{
+	unsigned long nr_pages = ALIGN(size, PAGE_SIZE) >> PAGE_SHIFT;
+
+	memcg_charge_zram(zram->memcg, nr_pages);
+}
+
+static inline void zram_uncharge_memory(struct zram *zram, unsigned long size)
+{
+	unsigned long nr_pages = ALIGN(size, PAGE_SIZE) >> PAGE_SHIFT;
+
+	memcg_uncharge_zram(zram->memcg, nr_pages);
+}
+
+static inline struct zram_table_entry *zram_table_alloc(struct zram *zram,
+							unsigned long size)
+{
+	return vzalloc_with_memcg(size, zram->memcg);
+}
+#else
+static inline void reset_memcg(struct zram *zram)
+{
+}
+
+static inline struct zs_pool *zram_create_pool(struct zram *zram)
+{
+	return zs_create_pool(zram->disk->disk_name);
+}
+
+static inline void zram_charge_memory(struct zram *zram, unsigned long size)
+{
+}
+
+static inline void zram_uncharge_memory(struct zram *zram, unsigned long size)
+{
+}
+
+static inline struct zram_table_entry *zram_table_alloc(struct zram *zram,
+							unsigned long size)
+{
+	return vzalloc(size);
+}
+#endif
+
 static void zram_meta_free(struct zram *zram, u64 disksize)
 {
 	size_t num_pages = disksize >> PAGE_SHIFT;
+	unsigned long size = array_size(num_pages, sizeof(*zram->table));
 	size_t index;
 
 	/* Free all pages that are still in this zram device */
@@ -1276,22 +1411,25 @@ static void zram_meta_free(struct zram *zram, u64 disksize)
 
 	zs_destroy_pool(zram->mem_pool);
 	vfree(zram->table);
+	zram_uncharge_memory(zram, size);
 }
 
 static bool zram_meta_alloc(struct zram *zram, u64 disksize)
 {
-	size_t num_pages;
+	size_t num_pages = disksize >> PAGE_SHIFT;
+	unsigned long size = array_size(num_pages, sizeof(*zram->table));
 
-	num_pages = disksize >> PAGE_SHIFT;
-	zram->table = vzalloc(array_size(num_pages, sizeof(*zram->table)));
+	zram->table = zram_table_alloc(zram, size);
 	if (!zram->table)
 		return false;
 
-	zram->mem_pool = zs_create_pool(zram->disk->disk_name);
+	zram->mem_pool = zram_create_pool(zram);
 	if (!zram->mem_pool) {
 		vfree(zram->table);
 		return false;
 	}
+
+	zram_charge_memory(zram, size);
 
 	if (!huge_class_size)
 		huge_class_size = zs_huge_class_size(zram->mem_pool);
@@ -2141,6 +2279,7 @@ static void zram_reset_device(struct zram *zram)
 	zram->limit_pages = 0;
 
 	if (!init_done(zram)) {
+		reset_memcg(zram);
 		up_write(&zram->init_lock);
 		return;
 	}
@@ -2156,6 +2295,7 @@ static void zram_reset_device(struct zram *zram)
 	zram_destroy_comps(zram);
 	memset(&zram->stats, 0, sizeof(zram->stats));
 	reset_bdev(zram);
+	reset_memcg(zram);
 
 	comp_algorithm_set(zram, ZRAM_PRIMARY_COMP, default_compressor);
 	up_write(&zram->init_lock);
@@ -2338,6 +2478,9 @@ static struct attribute *zram_disk_attrs[] = {
 #ifdef CONFIG_ZRAM_MULTI_COMP
 	&dev_attr_recomp_algorithm.attr,
 	&dev_attr_recompress.attr,
+#endif
+#ifdef CONFIG_MEMCG_ZRAM
+	&dev_attr_mem_cgroup.attr,
 #endif
 	NULL,
 };

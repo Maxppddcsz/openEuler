@@ -248,6 +248,9 @@ struct obj_cgroup {
 struct swap_device {
 	unsigned long max;
 	int type;
+#ifdef CONFIG_MEMCG_ZRAM
+	atomic64_t zram_usage;
+#endif
 };
 
 /*
@@ -805,6 +808,9 @@ static inline bool mem_cgroup_below_min(struct mem_cgroup *target,
 		page_counter_read(&memcg->memory);
 }
 
+struct page *memcg_alloc_page_vma(swp_entry_t entry, gfp_t gfp_mask,
+				  struct vm_area_struct *vma, unsigned long addr);
+
 int mem_cgroup_charge(struct page *page, struct mm_struct *mm, gfp_t gfp_mask);
 
 void mem_cgroup_uncharge(struct page *page);
@@ -1325,6 +1331,11 @@ int mem_cgroup_force_empty(struct mem_cgroup *memcg);
 int memcg_get_swap_type(struct page *page);
 void memcg_remove_swapfile(int type);
 
+#ifdef CONFIG_MEMCG_ZRAM
+struct mem_cgroup *memcg_get_from_path(char *path, size_t buflen);
+void memcg_charge_zram(struct mem_cgroup *memcg, unsigned int nr_pages);
+void memcg_uncharge_zram(struct mem_cgroup *memcg, unsigned int nr_pages);
+#endif
 #else /* CONFIG_MEMCG */
 
 #define MEM_CGROUP_ID_SHIFT	0
@@ -1401,6 +1412,13 @@ static inline bool mem_cgroup_below_min(struct mem_cgroup *target,
 					struct mem_cgroup *memcg)
 {
 	return false;
+}
+
+static inline struct page *memcg_alloc_page_vma(swp_entry_t entry, gfp_t gfp_mask,
+						struct vm_area_struct *vma,
+						unsigned long addr)
+{
+	return alloc_page_vma(gfp_mask, vma, addr);
 }
 
 static inline int mem_cgroup_charge(struct page *page, struct mm_struct *mm,

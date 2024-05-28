@@ -57,6 +57,7 @@
 #include <linux/wait.h>
 #include <linux/pagemap.h>
 #include <linux/fs.h>
+#include <linux/memcontrol.h>
 
 #define ZSPAGE_MAGIC	0x58
 
@@ -273,6 +274,9 @@ struct zs_pool {
 	struct wait_queue_head migration_wait;
 	atomic_long_t isolated_pages;
 	bool destroying;
+#endif
+#ifdef CONFIG_MEMCG_ZRAM
+	struct mem_cgroup *memcg;
 #endif
 };
 
@@ -931,6 +935,55 @@ unlock:
 	return 0;
 }
 
+#ifdef CONFIG_MEMCG_ZRAM
+static inline void zs_charge_memory(struct zs_pool *pool,
+				    unsigned long nr_pages)
+{
+	/*
+	 * Since only zram configures memcg for zs_pool,
+	 * charge the memory in zram usage.
+	 */
+	memcg_charge_zram(pool->memcg, nr_pages);
+}
+
+static inline void zs_uncharge_memory(struct zs_pool *pool,
+				      unsigned long nr_pages)
+{
+	/* See zs_charge_memory() for detail */
+	memcg_uncharge_zram(pool->memcg, nr_pages);
+}
+
+static inline struct page *zs_alloc_page(struct zs_pool *pool, gfp_t gfp)
+{
+	struct mem_cgroup *memcg = pool->memcg;
+	struct page *page;
+
+	if (!memcg)
+		return alloc_page(gfp);
+
+	page = alloc_page_from_dhugetlb_pool(memcg, gfp, 0, 0);
+	if (!page)
+		page = alloc_page(gfp);
+
+	return page;
+}
+#else
+static inline void zs_charge_memory(struct zs_pool *pool,
+				    unsigned long nr_pages)
+{
+}
+
+static inline void zs_uncharge_memory(struct zs_pool *pool,
+				      unsigned long nr_pages)
+{
+}
+
+static inline struct page *zs_alloc_page(struct zs_pool *pool, gfp_t gfp)
+{
+	return alloc_page(gfp);
+}
+#endif
+
 static void __free_zspage(struct zs_pool *pool, struct size_class *class,
 				struct zspage *zspage)
 {
@@ -961,6 +1014,7 @@ static void __free_zspage(struct zs_pool *pool, struct size_class *class,
 	zs_stat_dec(class, OBJ_ALLOCATED, class->objs_per_zspage);
 	atomic_long_sub(class->pages_per_zspage,
 					&pool->pages_allocated);
+	zs_uncharge_memory(pool, class->pages_per_zspage);
 }
 
 static void free_zspage(struct zs_pool *pool, struct size_class *class,
@@ -1077,7 +1131,7 @@ static struct zspage *alloc_zspage(struct zs_pool *pool,
 	for (i = 0; i < class->pages_per_zspage; i++) {
 		struct page *page;
 
-		page = alloc_page(gfp);
+		page = zs_alloc_page(pool, gfp);
 		if (!page) {
 			while (--i >= 0) {
 				dec_zone_page_state(pages[i], NR_ZSPAGES);
@@ -1480,6 +1534,7 @@ unsigned long zs_malloc(struct zs_pool *pool, size_t size, gfp_t gfp)
 	record_obj(handle, obj);
 	atomic_long_add(class->pages_per_zspage,
 				&pool->pages_allocated);
+	zs_charge_memory(pool, class->pages_per_zspage);
 	zs_stat_inc(class, OBJ_ALLOCATED, class->objs_per_zspage);
 
 	/* We completely set up zspage so mark them as movable */
@@ -2527,10 +2582,33 @@ err:
 }
 EXPORT_SYMBOL_GPL(zs_create_pool);
 
+#ifdef CONFIG_MEMCG_ZRAM
+static inline void zs_set_memcg(struct zs_pool *pool, void *memcg)
+{
+	if (pool)
+		pool->memcg = memcg;
+}
+
+struct zs_pool *zs_create_pool_with_memcg(const char *name, void *memcg)
+{
+	struct zs_pool *pool = zs_create_pool(name);
+
+	zs_set_memcg(pool, memcg);
+
+	return pool;
+}
+EXPORT_SYMBOL_GPL(zs_create_pool_with_memcg);
+#else
+static inline void zs_set_memcg(struct zs_pool *pool, void *memcg)
+{
+}
+#endif
+
 void zs_destroy_pool(struct zs_pool *pool)
 {
 	int i;
 
+	zs_set_memcg(pool, NULL);
 	zs_unregister_shrinker(pool);
 	zs_unregister_migration(pool);
 	zs_pool_stat_destroy(pool);

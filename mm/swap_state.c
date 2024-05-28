@@ -491,7 +491,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		 * before marking swap_map SWAP_HAS_CACHE, when -EEXIST will
 		 * cause any racers to loop around until we add it to cache.
 		 */
-		page = alloc_page_vma(gfp_mask, vma, addr);
+		page = memcg_alloc_page_vma(entry, gfp_mask, vma, addr);
 		if (!page)
 			return NULL;
 

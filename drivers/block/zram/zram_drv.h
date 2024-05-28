@@ -18,6 +18,7 @@
 #include <linux/rwsem.h>
 #include <linux/zsmalloc.h>
 #include <linux/crypto.h>
+#include <linux/memcontrol.h>
 
 #include "zcomp.h"
 
@@ -141,6 +142,9 @@ struct zram {
 #endif
 #ifdef CONFIG_ZRAM_MEMORY_TRACKING
 	struct dentry *debugfs_dir;
+#endif
+#ifdef CONFIG_MEMCG_ZRAM
+	struct mem_cgroup *memcg;
 #endif
 };
 #endif

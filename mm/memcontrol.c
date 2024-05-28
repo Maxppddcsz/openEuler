@@ -3628,6 +3628,76 @@ static u64 mem_cgroup_read_u64(struct cgroup_subsys_state *css,
 	}
 }
 
+#ifdef CONFIG_MEMCG_ZRAM
+struct mem_cgroup *memcg_get_from_path(char *path, size_t buflen)
+{
+	struct mem_cgroup *memcg;
+	char *memcg_path;
+
+	if (mem_cgroup_disabled())
+		return NULL;
+
+	memcg_path = kzalloc(buflen, GFP_KERNEL);
+	if (!memcg_path)
+		return NULL;
+
+	for_each_mem_cgroup(memcg) {
+		cgroup_path(memcg->css.cgroup, memcg_path, buflen);
+		if (!strcmp(path, memcg_path) && css_tryget_online(&memcg->css)) {
+			mem_cgroup_iter_break(NULL, memcg);
+			break;
+		}
+	}
+
+	kfree(memcg_path);
+	return memcg;
+}
+EXPORT_SYMBOL(memcg_get_from_path);
+
+static inline void memcg_zram_usage_init(struct mem_cgroup *memcg)
+{
+	atomic64_set(&memcg->swap_dev->zram_usage, 0);
+}
+
+void memcg_charge_zram(struct mem_cgroup *memcg, unsigned int nr_pages)
+{
+	if (mem_cgroup_disabled() || !memcg)
+		return;
+
+	if (cgroup_subsys_on_dfl(memory_cgrp_subsys))
+		return;
+
+	page_counter_charge(&memcg->memory, nr_pages);
+	atomic_long_add(nr_pages, &memcg->swap_dev->zram_usage);
+}
+EXPORT_SYMBOL_GPL(memcg_charge_zram);
+
+void memcg_uncharge_zram(struct mem_cgroup *memcg, unsigned int nr_pages)
+{
+	if (mem_cgroup_disabled() || !memcg)
+		return;
+
+	if (cgroup_subsys_on_dfl(memory_cgrp_subsys))
+		return;
+
+	page_counter_uncharge(&memcg->memory, nr_pages);
+	atomic_long_sub(nr_pages, &memcg->swap_dev->zram_usage);
+}
+EXPORT_SYMBOL_GPL(memcg_uncharge_zram);
+
+static u64 mem_cgroup_zram_usage(struct cgroup_subsys_state *css,
+				 struct cftype *cft)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
+
+	return (u64)atomic64_read(&memcg->swap_dev->zram_usage) * PAGE_SIZE;
+}
+#else
+static inline void memcg_zram_usage_init(struct mem_cgroup *memcg)
+{
+}
+#endif
+
 #ifdef CONFIG_MEMCG_KMEM
 static int memcg_online_kmem(struct mem_cgroup *memcg)
 {
@@ -4224,6 +4294,8 @@ static void memcg_swap_device_init(struct mem_cgroup *memcg,
 		WRITE_ONCE(memcg->swap_dev->type,
 			   READ_ONCE(parent->swap_dev->type));
 	}
+
+	memcg_zram_usage_init(memcg);
 }
 
 u64 memcg_swapmax_read(struct cgroup_subsys_state *css, struct cftype *cft)
@@ -6220,6 +6292,13 @@ static struct cftype mem_cgroup_legacy_files[] = {
 		.write = memcg_swapfile_write,
 		.seq_show = memcg_swapfile_read,
 	},
+#ifdef CONFIG_MEMCG_ZRAM
+	{
+		.name = "zram_usage_in_bytes",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.read_u64 = mem_cgroup_zram_usage,
+	},
+#endif
 #endif
 	{
 		.name = "high_async_ratio",
@@ -7874,6 +7953,50 @@ void mem_cgroup_calculate_protection(struct mem_cgroup *root,
 			READ_ONCE(parent->memory.elow),
 			atomic_long_read(&parent->memory.children_low_usage)));
 }
+
+#ifdef CONFIG_DYNAMIC_HUGETLB
+static struct mem_cgroup *get_mem_cgroup_from_swap(swp_entry_t entry)
+{
+	struct mem_cgroup *memcg;
+	unsigned short id;
+
+	if (mem_cgroup_disabled())
+		return NULL;
+
+	id = lookup_swap_cgroup_id(entry);
+
+	rcu_read_lock();
+	memcg = mem_cgroup_from_id(id);
+	if (memcg && !css_tryget_online(&memcg->css))
+		memcg = NULL;
+	rcu_read_unlock();
+
+	return memcg;
+}
+
+struct page *memcg_alloc_page_vma(swp_entry_t entry, gfp_t gfp_mask,
+				  struct vm_area_struct *vma, unsigned long addr)
+{
+	struct mem_cgroup *memcg;
+	struct page *page = NULL;
+
+	memcg = get_mem_cgroup_from_swap(entry);
+	if (memcg) {
+		page = alloc_page_from_dhugetlb_pool(memcg, gfp_mask, 0, 0);
+		css_put(&memcg->css);
+	}
+	if (!page)
+		page = alloc_page_vma(gfp_mask, vma, addr);
+
+	return page;
+}
+#else
+struct page *memcg_alloc_page_vma(swp_entry_t entry, gfp_t gfp_mask,
+				  struct vm_area_struct *vma, unsigned long addr)
+{
+	return alloc_page_vma(gfp_mask, vma, addr);
+}
+#endif
 
 /**
  * mem_cgroup_charge - charge a newly allocated page to a cgroup
