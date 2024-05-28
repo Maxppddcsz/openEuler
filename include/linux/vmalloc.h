@@ -131,6 +131,9 @@ static inline unsigned long vmalloc_nr_pages(void) { return 0; }
 
 extern void *vmalloc(unsigned long size);
 extern void *vzalloc(unsigned long size);
+#ifdef CONFIG_MEMCG_ZRAM
+extern void *vzalloc_with_memcg(unsigned long size, void *memcg);
+#endif
 extern void *vmalloc_user(unsigned long size);
 extern void *vmalloc_node(unsigned long size, int node);
 extern void *vzalloc_node(unsigned long size, int node);

@@ -1368,6 +1368,12 @@ static inline void zram_uncharge_memory(struct zram *zram, unsigned long size)
 
 	memcg_uncharge_zram(zram->memcg, nr_pages);
 }
+
+static inline struct zram_table_entry *zram_table_alloc(struct zram *zram,
+							unsigned long size)
+{
+	return vzalloc_with_memcg(size, zram->memcg);
+}
 #else
 static inline void reset_memcg(struct zram *zram)
 {
@@ -1384,6 +1390,12 @@ static inline void zram_charge_memory(struct zram *zram, unsigned long size)
 
 static inline void zram_uncharge_memory(struct zram *zram, unsigned long size)
 {
+}
+
+static inline struct zram_table_entry *zram_table_alloc(struct zram *zram,
+							unsigned long size)
+{
+	return vzalloc(size);
 }
 #endif
 
@@ -1407,7 +1419,7 @@ static bool zram_meta_alloc(struct zram *zram, u64 disksize)
 	size_t num_pages = disksize >> PAGE_SHIFT;
 	unsigned long size = array_size(num_pages, sizeof(*zram->table));
 
-	zram->table = vzalloc(size);
+	zram->table = zram_table_alloc(zram, size);
 	if (!zram->table)
 		return false;
 

@@ -952,6 +952,21 @@ static inline void zs_uncharge_memory(struct zs_pool *pool,
 	/* See zs_charge_memory() for detail */
 	memcg_uncharge_zram(pool->memcg, nr_pages);
 }
+
+static inline struct page *zs_alloc_page(struct zs_pool *pool, gfp_t gfp)
+{
+	struct mem_cgroup *memcg = pool->memcg;
+	struct page *page;
+
+	if (!memcg)
+		return alloc_page(gfp);
+
+	page = alloc_page_from_dhugetlb_pool(memcg, gfp, 0, 0);
+	if (!page)
+		page = alloc_page(gfp);
+
+	return page;
+}
 #else
 static inline void zs_charge_memory(struct zs_pool *pool,
 				    unsigned long nr_pages)
@@ -961,6 +976,11 @@ static inline void zs_charge_memory(struct zs_pool *pool,
 static inline void zs_uncharge_memory(struct zs_pool *pool,
 				      unsigned long nr_pages)
 {
+}
+
+static inline struct page *zs_alloc_page(struct zs_pool *pool, gfp_t gfp)
+{
+	return alloc_page(gfp);
 }
 #endif
 
@@ -1111,7 +1131,7 @@ static struct zspage *alloc_zspage(struct zs_pool *pool,
 	for (i = 0; i < class->pages_per_zspage; i++) {
 		struct page *page;
 
-		page = alloc_page(gfp);
+		page = zs_alloc_page(pool, gfp);
 		if (!page) {
 			while (--i >= 0) {
 				dec_zone_page_state(pages[i], NR_ZSPAGES);

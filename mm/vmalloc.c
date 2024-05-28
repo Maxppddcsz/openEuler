@@ -2889,9 +2889,36 @@ void *vmap_pfn(unsigned long *pfns, unsigned int count, pgprot_t prot)
 EXPORT_SYMBOL_GPL(vmap_pfn);
 #endif /* CONFIG_VMAP_PFN */
 
+#include <linux/dynamic_hugetlb.h>
+
+#ifdef CONFIG_MEMCG_ZRAM
+static inline struct page *__vmalloc_alloc_pages(int node, gfp_t gfp_mask,
+						 unsigned int order,
+						 struct mem_cgroup *memcg)
+{
+	struct page *page;
+
+	if (!memcg)
+		return alloc_pages_node(node, gfp_mask, order);
+
+	page = alloc_page_from_dhugetlb_pool(memcg, gfp_mask, order, 0);
+	if (!page)
+		page = alloc_pages_node(node, gfp_mask, order);
+
+	return page;
+}
+#else
+static inline struct page *__vmalloc_alloc_pages(int node, gfp_t gfp_mask,
+						 unsigned int order,
+						 struct mem_cgroup *memcg)
+{
+	return alloc_pages_node(node, gfp_mask, order);
+}
+#endif
+
 static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 				 pgprot_t prot, unsigned int page_shift,
-				 int node)
+				 int node, struct mem_cgroup *memcg)
 {
 	const gfp_t nested_gfp = (gfp_mask & GFP_RECLAIM_MASK) | __GFP_ZERO;
 	unsigned long addr = (unsigned long)area->addr;
@@ -2940,7 +2967,8 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 		int p;
 
 		/* Compound pages required for remap_vmalloc_page */
-		page = alloc_pages_node(node, gfp_mask | __GFP_COMP, page_order);
+		page = __vmalloc_alloc_pages(node, gfp_mask | __GFP_COMP,
+					     page_order, memcg);
 		if (unlikely(!page)) {
 			/* Successfully allocated i pages, free them in __vfree() */
 			area->nr_pages = i;
@@ -3050,7 +3078,7 @@ again:
 		goto fail;
 	}
 
-	addr = __vmalloc_area_node(area, gfp_mask, prot, shift, node);
+	addr = __vmalloc_area_node(area, gfp_mask, prot, shift, node, NULL);
 	if (!addr)
 		goto fail;
 
@@ -3179,6 +3207,62 @@ void *vzalloc(unsigned long size)
 				__builtin_return_address(0));
 }
 EXPORT_SYMBOL(vzalloc);
+
+#ifdef CONFIG_MEMCG_ZRAM
+static void *__vmalloc_with_memcg(unsigned long size, gfp_t gfp_mask,
+				  struct mem_cgroup *memcg, const void *caller)
+{
+	struct vm_struct *area;
+	void *addr;
+
+	if (WARN_ON_ONCE(!size))
+		return NULL;
+
+	if ((size >> PAGE_SHIFT) > totalram_pages()) {
+		warn_alloc(gfp_mask, NULL,
+			   "vmalloc size %lu: exceeds total pages", size);
+		return NULL;
+	}
+
+	area = __get_vm_area_node(size, 1, PAGE_SHIFT, VM_ALLOC |
+				  VM_UNINITIALIZED, VMALLOC_START,
+				  VMALLOC_END, NUMA_NO_NODE,
+				  gfp_mask, caller);
+	if (!area) {
+		warn_alloc(gfp_mask, NULL,
+			   "vmalloc size %lu: vm_struct allocation failed", size);
+		return NULL;
+	}
+
+	addr = __vmalloc_area_node(area, gfp_mask, PAGE_KERNEL, PAGE_SHIFT,
+				   NUMA_NO_NODE, memcg);
+	if (!addr)
+		return NULL;
+
+	/*
+	 * In this function, newly allocated vm_struct has VM_UNINITIALIZED
+	 * flag. It means that vm_struct is not fully initialized.
+	 * Now, it is fully initialized, so remove this flag here.
+	 */
+	clear_vm_uninitialized_flag(area);
+
+	size = PAGE_ALIGN(size);
+	kmemleak_vmalloc(area, size, gfp_mask);
+
+	return addr;
+}
+
+void *vzalloc_with_memcg(unsigned long size, void *memcg)
+{
+	if (!memcg)
+		return vzalloc(size);
+
+	return __vmalloc_with_memcg(size, GFP_KERNEL | __GFP_ZERO,
+				    (struct mem_cgroup *)memcg,
+				    __builtin_return_address(0));
+}
+EXPORT_SYMBOL(vzalloc_with_memcg);
+#endif
 
 /**
  * vmalloc_user - allocate zeroed virtually contiguous memory for userspace

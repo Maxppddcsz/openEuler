@@ -515,8 +515,6 @@ static struct page *__alloc_page_from_dpool(struct dhugetlb_pool *hpool)
 	struct page *page = NULL;
 	unsigned long flags;
 
-	hpool = find_hpool_by_task(current);
-
 	if (!get_hpool_unless_zero(hpool))
 		return NULL;
 
@@ -596,6 +594,7 @@ alloc_page:
 
 	return page;
 }
+EXPORT_SYMBOL_GPL(alloc_page_from_dhugetlb_pool);
 
 static void __free_page_to_dhugetlb_pool(struct page *page)
 {
