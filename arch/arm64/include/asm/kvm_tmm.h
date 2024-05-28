@@ -19,8 +19,9 @@ struct cvm {
 	u32 cvm_vmid;
 	u64 rd;
 	u64 loader_start;
+	u64 image_end;
 	u64 initrd_start;
-	u64 initrd_size;
+	u64 dtb_end;
 	u64 ram_size;
 	struct kvm_numa_info numa_info;
 	struct tmi_cvm_params *params;
@@ -47,7 +48,6 @@ int handle_cvm_exit(struct kvm_vcpu *vcpu, int rec_run_status);
 int kvm_arm_create_cvm(struct kvm *kvm);
 void kvm_free_rd(struct kvm *kvm);
 int cvm_create_rd(struct kvm *kvm);
-int kvm_arm_cvm_first_run(struct kvm_vcpu *vcpu);
 int cvm_psci_complete(struct kvm_vcpu *calling, struct kvm_vcpu *target);
 int kvm_arch_tec_init(struct kvm_vcpu *vcpu);
 

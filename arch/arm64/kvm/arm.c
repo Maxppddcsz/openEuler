@@ -311,6 +311,10 @@ int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 		break;
 #ifdef CONFIG_CVM_HOST
 	case KVM_CAP_ARM_TMM:
+		if (!is_armv8_4_sel2_present()) {
+			r = -ENXIO;
+			break;
+		}
 		r = static_key_enabled(&kvm_cvm_is_available);
 		break;
 #endif
@@ -924,13 +928,6 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu)
 	ret = kvm_vcpu_first_run_init(vcpu);
 	if (ret)
 		return ret;
-#ifdef CONFIG_CVM_HOST
-	if (kvm_is_cvm(vcpu->kvm)) {
-		ret = kvm_arm_cvm_first_run(vcpu);
-		if (ret)
-			return ret;
-	}
-#endif
 	if (run->exit_reason == KVM_EXIT_MMIO) {
 		ret = kvm_handle_mmio_return(vcpu);
 		if (ret)
