@@ -43,6 +43,11 @@
 #include <asm/cpu_ops.h>
 #include <asm/kasan.h>
 #include <asm/numa.h>
+
+#ifdef CONFIG_CVM_GUEST
+#include <asm/tsi.h>
+#endif
+
 #include <asm/sections.h>
 #include <asm/setup.h>
 #include <asm/smp_plat.h>
@@ -384,6 +389,12 @@ void __init __no_sanitize_address setup_arch(char **cmdline_p)
 	 * cpufeature code and early parameters.
 	 */
 	jump_label_init();
+
+#ifdef CONFIG_CVM_GUEST
+	/* Init TSI after jump_labels are active */
+	arm64_tsi_init();
+#endif
+
 	parse_early_param();
 
 	/*
