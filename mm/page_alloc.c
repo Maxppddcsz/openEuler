@@ -5397,7 +5397,7 @@ retry:
 	alloc_flags |= alloc_flags_nofragment(ac.preferred_zoneref->zone, gfp);
 
 	/* Before alloc from buddy system, alloc from hpool firstly */
-	page = alloc_page_from_dhugetlb_pool(alloc_gfp, order, alloc_flags);
+	page = alloc_page_from_dhugetlb_pool(NULL, alloc_gfp, order, alloc_flags);
 	if (page)
 		goto out;
 

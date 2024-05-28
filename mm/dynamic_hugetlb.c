@@ -509,10 +509,9 @@ static bool should_allocate_from_dhugetlb_pool(gfp_t gfp_mask)
 	return true;
 }
 
-static struct page *__alloc_page_from_dhugetlb_pool(void)
+static struct page *__alloc_page_from_dpool(struct dhugetlb_pool *hpool)
 {
 	struct percpu_pages_pool *percpu_pool;
-	struct dhugetlb_pool *hpool;
 	struct page *page = NULL;
 	unsigned long flags;
 
@@ -563,9 +562,11 @@ out:
 	return page;
 }
 
-struct page *alloc_page_from_dhugetlb_pool(gfp_t gfp, unsigned int order,
+struct page *alloc_page_from_dhugetlb_pool(struct mem_cgroup *memcg,
+					   gfp_t gfp, unsigned int order,
 					   unsigned int flags)
 {
+	struct dhugetlb_pool *hpool;
 	struct page *page = NULL;
 
 	if (!dhugetlb_enabled)
@@ -574,11 +575,25 @@ struct page *alloc_page_from_dhugetlb_pool(gfp_t gfp, unsigned int order,
 	if (order != 0)
 		return NULL;
 
-	if (should_allocate_from_dhugetlb_pool(gfp))
-		page = __alloc_page_from_dhugetlb_pool();
+	if (memcg) {
+		hpool = memcg->hpool;
+		if (!hpool)
+			return NULL;
+		goto alloc_page;
+	}
 
+	if (!should_allocate_from_dhugetlb_pool(gfp))
+		return NULL;
+
+	hpool = find_hpool_by_task(current);
+	if (!hpool)
+		return NULL;
+
+alloc_page:
+	page = __alloc_page_from_dpool(hpool);
 	if (page)
 		prep_new_page(page, order, gfp, flags);
+
 	return page;
 }
 

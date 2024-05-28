@@ -103,7 +103,8 @@ void hugetlb_pool_inherit(struct mem_cgroup *memcg, struct mem_cgroup *parent);
 int hugetlb_pool_destroy(struct cgroup *cgrp);
 void __init dynamic_hugetlb_init(void);
 
-struct page *alloc_page_from_dhugetlb_pool(gfp_t gfp, unsigned int order,
+struct page *alloc_page_from_dhugetlb_pool(struct mem_cgroup *memcg,
+					   gfp_t gfp, unsigned int order,
 					   unsigned int flags);
 bool free_page_to_dhugetlb_pool(struct page *page);
 void free_page_list_to_dhugetlb_pool(struct list_head *list);
@@ -142,7 +143,9 @@ static inline void __init dynamic_hugetlb_init(void)
 {
 }
 
-static inline struct page *alloc_page_from_dhugetlb_pool(gfp_t gfp, unsigned int order,
+static inline struct page *alloc_page_from_dhugetlb_pool(struct mem_cgroup *memcg,
+							 gfp_t gfp,
+							 unsigned int order,
 							 unsigned int flags)
 {
 	return NULL;
