@@ -1879,6 +1879,17 @@ static struct ctl_table kern_table[] = {
 		.extra2		= SYSCTL_ONE,
 	},
 #endif /* CONFIG_MEM_SAMPLING */
+#ifdef CONFIG_NUMABALANCING_MEM_SAMPLING
+	{
+		.procname	= "numa_balancing_mem_sampling",
+		.data		= NULL, /* filled in by handler */
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= sysctl_numabalancing_mem_sampling,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_ONE,
+	},
+#endif /* CONFIG_NUMABALANCING_MEM_SAMPLING */
 	{
 		.procname	= "sched_rt_period_us",
 		.data		= &sysctl_sched_rt_period,
