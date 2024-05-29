@@ -4557,6 +4557,7 @@ void do_numa_access(struct task_struct *p, u64 laddr, u64 paddr)
 	}
 
 out:
+	trace_mm_numa_migrating(laddr, page_nid, target_nid, flags&TNF_MIGRATED);
 	if (page_nid != NUMA_NO_NODE)
 		task_numa_fault(last_cpupid, page_nid, 1, flags);
 
