@@ -104,4 +104,9 @@ static inline void set_mem_sampling_state(bool enabled)
 {
 }
 #endif /* CONFIG_MEM_SAMPLING */
+
+#ifdef CONFIG_NUMABALANCING_MEM_SAMPLING
+void numa_balancing_mem_sampling_cb_register(void);
+void numa_balancing_mem_sampling_cb_unregister(void);
+#endif /* CONFIG_NUMABALANCING_MEM_SAMPLING */
 #endif	/* __MEM_SAMPLING_H */

@@ -3541,6 +3541,7 @@ int sysctl_numa_balancing(struct ctl_table *table, int write,
 #endif
 #endif
 
+DEFINE_STATIC_KEY_FALSE(sched_numabalancing_mem_sampling);
 DEFINE_STATIC_KEY_FALSE(mem_sampling_access_hints);
 
 #ifdef CONFIG_MEM_SAMPLING

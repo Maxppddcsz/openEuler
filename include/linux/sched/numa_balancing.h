@@ -15,6 +15,15 @@
 #define TNF_FAULT_LOCAL	0x08
 #define TNF_MIGRATE_FAIL 0x10
 
+#ifdef CONFIG_NUMABALANCING_MEM_SAMPLING
+struct mem_sampling_numa_access_work {
+	struct callback_head work;
+	u64 laddr, paddr;
+	/* Test for debug : decode buffer cpu not same with handle interrupt cpu*/
+	int cpu;
+};
+#endif /* CONFIG_NUMABALANCING_MEM_SAMPLING */
+
 #ifdef CONFIG_NUMA_BALANCING
 extern void task_numa_fault(int last_node, int node, int pages, int flags);
 extern pid_t task_numa_group_id(struct task_struct *p);
@@ -43,5 +52,4 @@ static inline bool should_numa_migrate_memory(struct task_struct *p,
 	return true;
 }
 #endif
-
 #endif /* _LINUX_SCHED_NUMA_BALANCING_H */
