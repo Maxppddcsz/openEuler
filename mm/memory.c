@@ -4480,6 +4480,91 @@ out:
 	return 0;
 }
 
+#ifdef CONFIG_NUMABALANCING_MEM_SAMPLING
+
+/*
+ * Called from task_work context to act upon the page access.
+ *
+ * Physical address (provided by SPE) is used directly instead
+ * of walking the page tables to get to the PTE/page. Hence we
+ * don't check if PTE is writable for the TNF_NO_GROUP
+ * optimization, which means RO pages are considered for grouping.
+ */
+void do_numa_access(struct task_struct *p, u64 laddr, u64 paddr)
+{
+	struct mm_struct *mm = p->mm;
+	struct vm_area_struct *vma;
+	struct page *page = NULL;
+	int page_nid = NUMA_NO_NODE;
+	int last_cpupid;
+	int target_nid;
+	int flags = 0;
+
+	if (!mm)
+		return;
+
+	if (!mmap_read_trylock(mm))
+		return;
+
+	vma = find_vma(mm, laddr);
+	if (!vma)
+		goto out_unlock;
+
+	if (!vma_migratable(vma) || !vma_policy_mof(vma) ||
+		is_vm_hugetlb_page(vma) || (vma->vm_flags & VM_MIXEDMAP))
+		goto out_unlock;
+
+	if (!vma->vm_mm ||
+	    (vma->vm_file && (vma->vm_flags & (VM_READ|VM_WRITE)) == (VM_READ)))
+		goto out_unlock;
+
+	if (!vma_is_accessible(vma))
+		goto out_unlock;
+
+	page = pfn_to_online_page(PHYS_PFN(paddr));
+	if (!page || is_zone_device_page(page))
+		goto out_unlock;
+
+	if (unlikely(!PageLRU(page)))
+		goto out_unlock;
+
+	/* TODO: handle PTE-mapped THP or PMD-mapped THP*/
+	if (PageCompound(page))
+		goto out_unlock;
+
+	/*
+	 * Flag if the page is shared between multiple address spaces. This
+	 * is later used when determining whether to group tasks together
+	 */
+	if (page_mapcount(page) > 1 && (vma->vm_flags & VM_SHARED))
+		flags |= TNF_SHARED;
+
+	last_cpupid = page_cpupid_last(page);
+	page_nid = page_to_nid(page);
+
+	target_nid = numa_migrate_prep(page, vma, laddr, page_nid, &flags);
+	if (target_nid == NUMA_NO_NODE) {
+		put_page(page);
+		goto out;
+	}
+
+	/* Migrate to the requested node */
+	if (migrate_misplaced_page(page, vma, target_nid)) {
+		page_nid = target_nid;
+		flags |= TNF_MIGRATED;
+	} else {
+		flags |= TNF_MIGRATE_FAIL;
+	}
+
+out:
+	if (page_nid != NUMA_NO_NODE)
+		task_numa_fault(last_cpupid, page_nid, 1, flags);
+
+out_unlock:
+	mmap_read_unlock(mm);
+}
+#endif /* CONFIG_NUMABALANCING_MEM_SAMPLING */
+
 static inline vm_fault_t create_huge_pmd(struct vm_fault *vmf)
 {
 	if (vma_is_anonymous(vmf->vma))
