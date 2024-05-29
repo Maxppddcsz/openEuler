@@ -492,6 +492,12 @@ struct hns_roce_v2_qp_context {
 #define QPC_IRRL_BA_L_S 6
 #define QPC_IRRL_BA_H_S (32 + QPC_IRRL_BA_L_S)
 
+#define QPC_TRRL_BA_L_S 4
+#define QPC_TRRL_BA_M_S (16 + QPC_TRRL_BA_L_S)
+#define QPC_TRRL_BA_H_S (32 + QPC_TRRL_BA_M_S)
+#define QPC_IRRL_BA_L_S 6
+#define QPC_IRRL_BA_H_S (32 + QPC_IRRL_BA_L_S)
+
 #define QPC_FIELD_LOC(h, l) FIELD_LOC(struct hns_roce_v2_qp_context, h, l)
 
 #define QPC_TST QPC_FIELD_LOC(2, 0)
@@ -1451,12 +1457,12 @@ struct fmea_ram_ecc {
 };
 
 /* only for RNR timeout issue of HIP08 */
-#define HNS_ROCE_CLOCK_ADJUST	1000
-#define HNS_ROCE_MAX_CQ_PERIOD	65
-#define HNS_ROCE_MAX_EQ_PERIOD	65
-#define HNS_ROCE_RNR_TIMER_10NS	1
-#define HNS_ROCE_1US_CFG	999
-#define HNS_ROCE_1NS_CFG	0
+#define HNS_ROCE_CLOCK_ADJUST 1000
+#define HNS_ROCE_MAX_CQ_PERIOD_HIP08 65
+#define HNS_ROCE_MAX_EQ_PERIOD 65
+#define HNS_ROCE_RNR_TIMER_10NS 1
+#define HNS_ROCE_1US_CFG 999
+#define HNS_ROCE_1NS_CFG 0
 
 #define HNS_ROCE_AEQ_DEFAULT_BURST_NUM	0x0
 #define HNS_ROCE_AEQ_DEFAULT_INTERVAL	0x0
