@@ -3542,6 +3542,57 @@ int sysctl_numa_balancing(struct ctl_table *table, int write,
 #endif
 
 DEFINE_STATIC_KEY_FALSE(sched_numabalancing_mem_sampling);
+
+#ifdef CONFIG_NUMABALANCING_MEM_SAMPLING
+
+int sysctl_numa_balacing_hw_mode;
+
+static void __set_numabalancing_mem_sampling_state(bool enabled)
+{
+	if (enabled) {
+		numa_balancing_mem_sampling_cb_register();
+		static_branch_enable(&sched_numabalancing_mem_sampling);
+	} else {
+		numa_balancing_mem_sampling_cb_unregister();
+		static_branch_disable(&sched_numabalancing_mem_sampling);
+	}
+}
+
+void set_numabalancing_mem_sampling_state(bool enabled)
+{
+	if (enabled)
+		sysctl_numa_balacing_hw_mode = NUMA_BALANCING_HW_NORMAL;
+	else
+		sysctl_numa_balacing_hw_mode = NUMA_BALANCING_HW_DISABLED;
+	__set_numabalancing_mem_sampling_state(enabled);
+}
+
+#ifdef CONFIG_PROC_SYSCTL
+
+int sysctl_numabalancing_mem_sampling(struct ctl_table *table, int write,
+				void *buffer, size_t *lenp, loff_t *ppos)
+{
+	struct ctl_table t;
+	int err;
+	int state = static_branch_likely(&sched_numabalancing_mem_sampling);
+
+	if (write && !capable(CAP_SYS_ADMIN))
+		return -EPERM;
+
+	t = *table;
+	t.data = &state;
+	err = proc_dointvec_minmax(&t, write, buffer, lenp, ppos);
+	if (err < 0)
+		return err;
+
+	if (write && static_branch_likely(&mem_sampling_access_hints))
+		set_numabalancing_mem_sampling_state(state);
+
+	return err;
+}
+#endif
+#endif
+
 DEFINE_STATIC_KEY_FALSE(mem_sampling_access_hints);
 
 #ifdef CONFIG_MEM_SAMPLING
@@ -3564,6 +3615,11 @@ void set_mem_sampling_state(bool enabled)
 	else
 		sysctl_mem_sampling_mode = MEM_SAMPLING_DISABLED;
 	__set_mem_sampling_state(enabled);
+
+#ifdef CONFIG_NUMABALANCING_MEM_SAMPLING
+	if (!enabled)
+		set_numabalancing_mem_sampling_state(enabled);
+#endif
 }
 
 #ifdef CONFIG_PROC_SYSCTL
