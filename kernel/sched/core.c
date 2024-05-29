@@ -19,6 +19,7 @@
 
 #include <asm/irq_regs.h>
 #include <asm/switch_to.h>
+#include <linux/mem_sampling.h>
 #include <asm/tlb.h>
 
 #include "../workqueue_internal.h"
@@ -3535,6 +3536,53 @@ int sysctl_numa_balancing(struct ctl_table *table, int write,
 		return err;
 	if (write)
 		set_numabalancing_state(state);
+	return err;
+}
+#endif
+#endif
+
+DEFINE_STATIC_KEY_FALSE(mem_sampling_access_hints);
+
+#ifdef CONFIG_MEM_SAMPLING
+int sysctl_mem_sampling_mode;
+
+static void __set_mem_sampling_state(bool enabled)
+{
+	if (enabled)
+		static_branch_enable(&mem_sampling_access_hints);
+	else
+		static_branch_disable(&mem_sampling_access_hints);
+}
+
+void set_mem_sampling_state(bool enabled)
+{
+	if (!mem_sampling_ops.sampling_start)
+		return;
+	if (enabled)
+		sysctl_mem_sampling_mode = MEM_SAMPLING_NORMAL;
+	else
+		sysctl_mem_sampling_mode = MEM_SAMPLING_DISABLED;
+	__set_mem_sampling_state(enabled);
+}
+
+#ifdef CONFIG_PROC_SYSCTL
+int sysctl_mem_sampling_enable(struct ctl_table *table, int write,
+			  void *buffer, size_t *lenp, loff_t *ppos)
+{
+	struct ctl_table t;
+	int err;
+	int state = sysctl_mem_sampling_mode;
+
+	if (write && !capable(CAP_SYS_ADMIN))
+		return -EPERM;
+
+	t = *table;
+	t.data = &state;
+	err = proc_dointvec_minmax(&t, write, buffer, lenp, ppos);
+	if (err < 0)
+		return err;
+	if (write)
+		set_mem_sampling_state(state);
 	return err;
 }
 #endif

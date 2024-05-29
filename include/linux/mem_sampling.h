@@ -96,4 +96,12 @@ static inline int arm_spe_enabled(void)
 }
 #endif /* CONFIG_ARM_SPE */
 
+extern struct static_key_false mem_sampling_access_hints;
+#ifdef CONFIG_MEM_SAMPLING
+extern void set_mem_sampling_state(bool enabled);
+#else
+static inline void set_mem_sampling_state(bool enabled)
+{
+}
+#endif /* CONFIG_MEM_SAMPLING */
 #endif	/* __MEM_SAMPLING_H */

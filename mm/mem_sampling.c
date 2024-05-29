@@ -2,7 +2,6 @@
 
 #define pr_fmt(fmt) "mem_sampling: " fmt
 
-
 #include <linux/slab.h>
 #include <linux/sched.h>
 #include <linux/kernel.h>
@@ -13,6 +12,7 @@
 
 struct mem_sampling_ops_struct mem_sampling_ops;
 
+static int mem_sampling_override __initdata;
 struct mem_sampling_record_cb_list_entry {
 	struct list_head list;
 	mem_sampling_record_cb_type cb;
@@ -56,6 +56,8 @@ void mem_sampling_record_cb_unregister(mem_sampling_record_cb_type cb)
 
 void mem_sampling_sched_in(struct task_struct *prev, struct task_struct *curr)
 {
+	if (!static_branch_unlikely(&mem_sampling_access_hints))
+		return;
 
 	if (!mem_sampling_ops.sampling_start)
 		return;
@@ -87,7 +89,11 @@ void mem_sampling_process(struct mem_sampling_record *record_base, int nr_record
 		}
 	}
 out:
-	mem_sampling_ops.sampling_continue();
+	/* if mem_sampling_access_hints is set to false, stop sampling */
+	if (static_branch_unlikely(&mem_sampling_access_hints))
+		mem_sampling_ops.sampling_continue();
+	else
+		mem_sampling_ops.sampling_stop();
 }
 
 static inline enum mem_sampling_type_enum mem_sampling_get_type(void)
@@ -99,14 +105,27 @@ static inline enum mem_sampling_type_enum mem_sampling_get_type(void)
 #endif
 }
 
+static void __init check_mem_sampling_enable(void)
+{
+	bool mem_sampling_default = false;
+
+	/* Parsed by setup_mem_sampling. override == 1 enables, -1 disables */
+	if (mem_sampling_override)
+		set_mem_sampling_state(mem_sampling_override == 1);
+	else
+		set_mem_sampling_state(mem_sampling_default);
+}
+
 static int __init mem_sampling_init(void)
 {
 	enum mem_sampling_type_enum mem_sampling_type = mem_sampling_get_type();
 
 	switch (mem_sampling_type) {
 	case MEM_SAMPLING_ARM_SPE:
-		if (!arm_spe_enabled())
+		if (!arm_spe_enabled()) {
+			set_mem_sampling_state(false);
 			return -ENODEV;
+		}
 		mem_sampling_ops.sampling_start	= arm_spe_start,
 		mem_sampling_ops.sampling_stop	= arm_spe_stop,
 		mem_sampling_ops.sampling_continue	= arm_spe_continue,
@@ -117,8 +136,10 @@ static int __init mem_sampling_init(void)
 	default:
 		pr_info("unsupport hardware pmu type(%d), disable access hint!\n",
 			mem_sampling_type);
+		set_mem_sampling_state(false);
 		return -ENODEV;
 	}
+	check_mem_sampling_enable();
 
 	pr_info("mem_sampling layer access profiling setup for NUMA Balancing and DAMON etc.\n");
 	return 0;
