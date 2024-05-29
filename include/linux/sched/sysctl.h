@@ -126,4 +126,15 @@ int sched_cluster_handler(struct ctl_table *table, int write,
 			  void *buffer, size_t *lenp, loff_t *ppos);
 #endif
 
+#define MEM_SAMPLING_DISABLED		0x0
+#define MEM_SAMPLING_NORMAL			0x1
+
+#ifdef CONFIG_MEM_SAMPLING
+extern int sysctl_mem_sampling_mode;
+int sysctl_mem_sampling_enable(struct ctl_table *table, int write, void *buffer,
+		size_t *lenp, loff_t *ppos);
+#else
+#define sysctl_mem_sampling_mode		0
+#endif
+
 #endif /* _LINUX_SCHED_SYSCTL_H */
