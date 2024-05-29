@@ -492,6 +492,12 @@ struct hns_roce_v2_qp_context {
 #define QPC_IRRL_BA_L_S 6
 #define QPC_IRRL_BA_H_S (32 + QPC_IRRL_BA_L_S)
 
+#define QPC_TRRL_BA_L_S 4
+#define QPC_TRRL_BA_M_S (16 + QPC_TRRL_BA_L_S)
+#define QPC_TRRL_BA_H_S (32 + QPC_TRRL_BA_M_S)
+#define QPC_IRRL_BA_L_S 6
+#define QPC_IRRL_BA_H_S (32 + QPC_IRRL_BA_L_S)
+
 #define QPC_FIELD_LOC(h, l) FIELD_LOC(struct hns_roce_v2_qp_context, h, l)
 
 #define QPC_TST QPC_FIELD_LOC(2, 0)
