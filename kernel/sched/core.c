@@ -3638,8 +3638,14 @@ int sysctl_mem_sampling_enable(struct ctl_table *table, int write,
 	err = proc_dointvec_minmax(&t, write, buffer, lenp, ppos);
 	if (err < 0)
 		return err;
-	if (write)
-		set_mem_sampling_state(state);
+	if (write) {
+		if (mem_sampling_saved_state == MEM_SAMPLING_STATE_EMPTY)
+			set_mem_sampling_state(state);
+		else
+			mem_sampling_saved_state = state ? MEM_SAMPLING_STATE_ENABLE :
+						    MEM_SAMPLING_STATE_DISABLE;
+	}
+
 	return err;
 }
 #endif
