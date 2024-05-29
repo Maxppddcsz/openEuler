@@ -108,6 +108,8 @@
 #include <linux/task_work.h>
 #include <linux/mem_sampling.h>
 
+#include <trace/events/kmem.h>
+
 #include <asm/tlbflush.h>
 #include <linux/uaccess.h>
 
@@ -785,6 +787,8 @@ void numa_balancing_mem_sampling_cb(struct mem_sampling_record *record)
 	if (p->pid != record->context_id)
 		return;
 
+	trace_mm_mem_sampling_access_record(laddr, paddr, smp_processor_id(),
+					current->pid);
 	numa_create_taskwork(laddr, paddr, smp_processor_id());
 }
 
