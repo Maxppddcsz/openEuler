@@ -177,6 +177,8 @@ static int kvm_vcpu_finalize_sve(struct kvm_vcpu *vcpu)
 
 int kvm_arm_vcpu_finalize(struct kvm_vcpu *vcpu, int feature)
 {
+	int ret = 0;
+
 	switch (feature) {
 	case KVM_ARM_VCPU_SVE:
 		if (!vcpu_has_sve(vcpu))
@@ -186,9 +188,15 @@ int kvm_arm_vcpu_finalize(struct kvm_vcpu *vcpu, int feature)
 			return -EPERM;
 
 		return kvm_vcpu_finalize_sve(vcpu);
+#ifdef CONFIG_CVM_HOST
+	case KVM_ARM_VCPU_TEC:
+		if (!kvm_is_cvm(vcpu->kvm))
+			return -EINVAL;
+		ret = kvm_finalize_vcpu_tec(vcpu);
+#endif
 	}
 
-	return -EINVAL;
+	return ret;
 }
 
 bool kvm_arm_vcpu_is_finalized(struct kvm_vcpu *vcpu)
