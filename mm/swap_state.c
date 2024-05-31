@@ -971,6 +971,7 @@ static int __init swap_init_sysfs(void)
 		pr_err("failed to register swap group\n");
 		goto delete_obj;
 	}
+
 	return 0;
 
 delete_obj:

@@ -1268,6 +1268,41 @@ static void page_check_dirty_writeback(struct page *page,
 		mapping->a_ops->is_dirty_writeback(page, dirty, writeback);
 }
 
+/* functions provided for vmscan */
+static bool is_vma_noevict(struct page *page, struct vm_area_struct *vma,
+			   unsigned long addr, void *arg)
+{
+	if (test_bit(MMF_DISABLE_SWAP, &vma->vm_mm->flags)) {
+		*(bool *)arg = true;
+		return false;
+	}
+
+	return true;
+}
+
+static inline bool is_page_noevict(struct page *page)
+{
+	bool noevict = false;
+	struct rmap_walk_control rwc = {
+		.rmap_one = is_vma_noevict,
+		.arg = (void *)&noevict,
+		.anon_lock = page_lock_anon_vma_read,
+	};
+
+	rmap_walk(page, &rwc);
+
+	return noevict;
+}
+
+static bool mm_noevict_page(struct page *page)
+{
+	if (unlikely(PageKsm(page)))
+		return false;
+
+	return is_page_noevict(page);
+}
+
+
 /*
  * shrink_page_list() returns the number of reclaimed pages
  */
@@ -1308,6 +1343,9 @@ static unsigned int shrink_page_list(struct list_head *page_list,
 		sc->nr_scanned += nr_pages;
 
 		if (unlikely(!page_evictable(page)))
+			goto activate_locked;
+
+		if (mm_noevict_page(page))
 			goto activate_locked;
 
 		if (!sc->may_unmap && page_mapped(page))
