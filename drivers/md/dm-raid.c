@@ -3683,12 +3683,16 @@ static int raid_message(struct dm_target *ti, unsigned int argc, char **argv,
 	if (!mddev->pers || !mddev->pers->sync_request)
 		return -EINVAL;
 
-	if (!strcasecmp(argv[0], "frozen"))
+	if (!strcasecmp(argv[0], "frozen")) {
 		frozen_sync_thread(mddev);
-	else if (!strcasecmp(argv[0], "idle"))
-		idle_sync_thread(mddev);
+		return 0;
+	}
 
-	clear_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
+	if (!strcasecmp(argv[0], "idle"))
+		idle_sync_thread(mddev);
+	else
+		clear_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
+
 	if (decipher_sync_action(mddev, mddev->recovery) != st_idle)
 		return -EBUSY;
 	else if (!strcasecmp(argv[0], "resync"))
