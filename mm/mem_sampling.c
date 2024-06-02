@@ -22,6 +22,7 @@
 #include <linux/task_work.h>
 #include <linux/migrate.h>
 #include <linux/sched/numa_balancing.h>
+#include <trace/events/kmem.h>
 
 struct mem_sampling_ops_struct mem_sampling_ops;
 
@@ -217,6 +218,7 @@ void do_numa_access(struct task_struct *p, u64 laddr, u64 paddr)
 	}
 
 out:
+	trace_mm_numa_migrating(laddr, page_nid, target_nid, flags&TNF_MIGRATED);
 	if (page_nid != NUMA_NO_NODE)
 		task_numa_fault(last_cpupid, page_nid, 1, flags);
 
@@ -269,6 +271,8 @@ void numa_balancing_mem_sampling_cb(struct mem_sampling_record *record)
 	if (p->pid != record->context_id)
 		return;
 
+	trace_mm_mem_sampling_access_record(laddr, paddr, smp_processor_id(),
+					current->pid);
 	numa_create_taskwork(laddr, paddr, smp_processor_id());
 }
 
