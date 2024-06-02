@@ -24,6 +24,7 @@
 #define SPE_PMU_FEAT_ERND		(1UL << 5)
 #define SPE_PMU_FEAT_INV_FILT_EVT	(1UL << 6)
 #define SPE_PMU_FEAT_DEV_PROBED	(1UL << 63)
+#define ARM_SPE_BUF_PAD_BYTE		(0)
 #define PMBLIMITR_EL1_E			GENMASK(0, 0)
 #define PMBSR_EL1_S			GENMASK(17, 17)
 #define PMBSR_EL1_EC			GENMASK(31, 26)
@@ -71,11 +72,20 @@
 #define PMSIDR_EL1_FL			GENMASK(2, 2)
 #define SYS_PMSNEVFR_EL1		sys_reg(3, 0, 9, 9, 1)
 #define SPE_PMU_FEAT_INV_FILT_EVT	(1UL << 6)
+#define PMBSR_EL1_COLL_MASK		GENMASK(16, 16)
+#define PMBSR_EL1_COLL			PMBSR_EL1_COLL_MASK
+#define	PMBSR_EL1_DL_MASK		GENMASK(19, 19)
+#define PMBSR_EL1_DL			PMBSR_EL1_DL_MASK
 
 enum arm_spe_buf_fault_action {
 	SPE_PMU_BUF_FAULT_ACT_SPURIOUS,
 	SPE_PMU_BUF_FAULT_ACT_FATAL,
 	SPE_PMU_BUF_FAULT_ACT_OK,
+};
+
+enum arm_spe_user_e {
+	ARM_SPE_USER_PERF,
+	ARM_SPE_USER_MEM_SAMPLING,
 };
 
 struct arm_spe {

@@ -34,6 +34,9 @@ struct static_key_false mem_sampling_access_hints;
 #define NUMA_BALANCING_HW_NORMAL	0x1
 
 static int mem_sampling_override __initdata;
+
+enum mem_sampling_saved_state_e mem_sampling_saved_state = MEM_SAMPLING_STATE_EMPTY;
+
 struct mem_sampling_record_cb_list_entry {
 	struct list_head list;
 	mem_sampling_record_cb_type cb;
@@ -400,8 +403,14 @@ int sysctl_mem_sampling_enable(struct ctl_table *table, int write,
 	err = proc_dointvec_minmax(&t, write, buffer, lenp, ppos);
 	if (err < 0)
 		return err;
-	if (write)
-		set_mem_sampling_state(state);
+	if (write) {
+		if (mem_sampling_saved_state == MEM_SAMPLING_STATE_EMPTY)
+			set_mem_sampling_state(state);
+		else
+			mem_sampling_saved_state = state ? MEM_SAMPLING_STATE_ENABLE :
+						    MEM_SAMPLING_STATE_DISABLE;
+	}
+
 	return err;
 }
 #endif
@@ -440,6 +449,43 @@ static struct ctl_table mem_sampling_dir_table[] = {
 	{}
 };
 
+void mem_sampling_user_switch_process(enum user_switch_type type)
+{
+	bool state;
+
+	if (type > USER_SWITCH_BACK_TO_MEM_SAMPLING) {
+		pr_err("user switch type error.\n");
+		return;
+	}
+
+	if (type == USER_SWITCH_AWAY_FROM_MEM_SAMPLING) {
+		/* save state only the status when leave mem_sampling for the first time */
+		if (mem_sampling_saved_state != MEM_SAMPLING_STATE_EMPTY)
+			return;
+
+		if (static_branch_unlikely(&mem_sampling_access_hints))
+			mem_sampling_saved_state = MEM_SAMPLING_STATE_ENABLE;
+		else
+			mem_sampling_saved_state = MEM_SAMPLING_STATE_DISABLE;
+
+		pr_debug("user switch away from mem_sampling, %s is saved, set to disable.\n",
+				mem_sampling_saved_state ? "disabled" : "enabled");
+
+		set_mem_sampling_state(false);
+	} else {
+		/* If the state is not backed up, do not restore it */
+		if (mem_sampling_saved_state == MEM_SAMPLING_STATE_EMPTY)
+			return;
+
+		state = (mem_sampling_saved_state == MEM_SAMPLING_STATE_ENABLE) ? true : false;
+		set_mem_sampling_state(state);
+		mem_sampling_saved_state = MEM_SAMPLING_STATE_EMPTY;
+
+		pr_debug("user switch back to mem_sampling, set to saved %s.\n",
+				state ? "enalbe" : "disable");
+	}
+}
+
 static void __init check_mem_sampling_enable(void)
 {
 	bool mem_sampling_default = false;
@@ -466,6 +512,7 @@ static int __init mem_sampling_init(void)
 		mem_sampling_ops.sampling_continue	= arm_spe_continue,
 
 		arm_spe_record_capture_callback_register(mem_sampling_process);
+		arm_spe_user_switch_callback_register(mem_sampling_user_switch_process);
 		break;
 
 	default:

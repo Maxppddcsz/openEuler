@@ -14,6 +14,7 @@
 #include <linux/perf/arm_pmu.h>
 #include <linux/platform_device.h>
 #include <linux/mem_sampling.h>
+#include <linux/perf/arm_pmu.h>
 
 #include "spe-decoder/arm-spe-decoder.h"
 #include "spe-decoder/arm-spe-pkt-decoder.h"
@@ -30,6 +31,9 @@ static int spe_probe_status = SPE_INIT_FAIL;
 /* Keep track of our dynamic hotplug state */
 static enum cpuhp_state arm_spe_online;
 
+/* keep track of who use the SPE */
+static enum arm_spe_user_e arm_spe_user = ARM_SPE_USER_MEM_SAMPLING;
+
 DEFINE_PER_CPU(struct arm_spe_buf, per_cpu_spe_buf);
 
 mem_sampling_cb_type arm_spe_sampling_cb;
@@ -37,6 +41,31 @@ void arm_spe_record_capture_callback_register(mem_sampling_cb_type cb)
 {
 	arm_spe_sampling_cb = cb;
 }
+EXPORT_SYMBOL_GPL(arm_spe_record_capture_callback_register);
+
+/* SPE sampling callback for perf */
+perf_sampling_cb_type arm_spe_sampling_perf_cb;
+void arm_spe_sampling_for_perf_callback_register(perf_sampling_cb_type cb)
+{
+	arm_spe_sampling_perf_cb = cb;
+}
+EXPORT_SYMBOL_GPL(arm_spe_sampling_for_perf_callback_register);
+
+/*
+ * SPE can be useed by mem_sampling/perf, perf takes precedence.
+ * when perf is used, this callback is used to disable mem_sampling.
+ */
+mem_sampling_user_switch_cb_type arm_spe_user_switch_cb;
+void arm_spe_user_switch_callback_register(mem_sampling_user_switch_cb_type cb)
+{
+	arm_spe_user_switch_cb = cb;
+}
+
+struct arm_spe *arm_spe_get_desc(void)
+{
+	return spe;
+}
+EXPORT_SYMBOL_GPL(arm_spe_get_desc);
 
 static inline int arm_spe_per_buffer_alloc(int cpu)
 {
@@ -371,6 +400,10 @@ static irqreturn_t arm_spe_irq_handler(int irq, void *dev)
 
 	switch (act) {
 	case SPE_PMU_BUF_FAULT_ACT_FATAL:
+		if (unlikely(arm_spe_user == ARM_SPE_USER_PERF)) {
+			if (arm_spe_sampling_perf_cb)
+				arm_spe_sampling_perf_cb(act);
+		}
 		/*
 		 * If a fatal exception occurred then leaving the profiling
 		 * buffer enabled is a recipe waiting to happen. Since
@@ -381,18 +414,27 @@ static irqreturn_t arm_spe_irq_handler(int irq, void *dev)
 		arm_spe_disable_and_drain_local();
 		break;
 	case SPE_PMU_BUF_FAULT_ACT_OK:
-		spe_buf->nr_records = 0;
-		arm_spe_decode_buf(spe_buf->cur, spe_buf->size);
-
 		/*
 		 * Callback function processing record data.
-		 * Call one: arm_spe_sampling_cb - mem_sampling layer.
-		 * TODO: use per CPU workqueue to process data and reduce
-		 * interrupt processing time
+		 * ARM_SPE_USER_MEM_SAMPLING: arm_spe_record_captured_cb - mem_sampling layer.
+		 * ARM_SPE_USER_PERF: arm_spe_sampling_perf_cb - perf.
+		 * TODO: 1) use per CPU workqueue to process data and reduce
+		 * interrupt processing time. 2) The "register" function can be
+		 * registered in a callback structure.
 		 */
-		if (arm_spe_sampling_cb)
-			arm_spe_sampling_cb((struct mem_sampling_record *)spe_buf->record_base,
-						   spe_buf->nr_records);
+		if (likely(arm_spe_user == ARM_SPE_USER_MEM_SAMPLING)) {
+			spe_buf->nr_records = 0;
+			arm_spe_decode_buf(spe_buf->cur, spe_buf->size);
+
+			if (arm_spe_sampling_cb)
+				arm_spe_sampling_cb(
+						(struct mem_sampling_record *)spe_buf->record_base,
+						spe_buf->nr_records);
+		} else {
+			if (arm_spe_sampling_perf_cb)
+				arm_spe_sampling_perf_cb(act);
+		}
+
 		break;
 
 	case SPE_PMU_BUF_FAULT_ACT_SPURIOUS:
@@ -549,6 +591,19 @@ static void __arm_spe_stop_one(void)
 	disable_percpu_irq(spe->irq);
 	__arm_spe_reset_local();
 }
+
+void arm_spe_set_user(enum arm_spe_user_e user)
+{
+	if (user == ARM_SPE_USER_PERF)
+		arm_spe_user_switch_cb(USER_SWITCH_AWAY_FROM_MEM_SAMPLING);
+	else
+		arm_spe_user_switch_cb(USER_SWITCH_BACK_TO_MEM_SAMPLING);
+
+	__arm_spe_reset_local();
+
+	arm_spe_user = user;
+}
+EXPORT_SYMBOL_GPL(arm_spe_set_user);
 
 static int arm_spe_cpu_startup(unsigned int cpu, struct hlist_node *node)
 {
