@@ -95,4 +95,9 @@ static inline int arm_spe_enabled(void)
 	return 0;
 }
 #endif /* CONFIG_ARM_SPE */
+
+#ifdef CONFIG_NUMABALANCING_MEM_SAMPLING
+void numa_balancing_mem_sampling_cb_register(void);
+void numa_balancing_mem_sampling_cb_unregister(void);
+#endif /* CONFIG_NUMABALANCING_MEM_SAMPLING */
 #endif	/* __MEM_SAMPLING_H */
