@@ -124,7 +124,34 @@ arm_acpi_register_pmu_device(struct platform_device *pdev, u8 len,
 	return ret;
 }
 
-#if IS_ENABLED(CONFIG_ARM_SPE_PMU) || IS_ENABLED(CONFIG_ARM_SPE)
+#if IS_ENABLED(CONFIG_ARM_SPE_PMU)
+static struct resource spe_pmu_resources[] = {
+	{
+	}
+};
+
+static struct platform_device spe_pmu_dev = {
+	.name = ARMV8_SPE_PMU_PDEV_NAME,
+	.id = -1,
+	.resource = spe_pmu_resources,
+	.num_resources = ARRAY_SIZE(spe_pmu_resources)
+};
+
+static void arm_spe_pmu_acpi_register_device(void)
+{
+	int ret;
+
+	ret = platform_device_register(&spe_pmu_dev);
+	if (ret < 0)
+		pr_warn("ACPI: SPE_PMU: Unable to register device\n");
+}
+#else
+static inline void arm_spe_pmu_acpi_register_device(void)
+{
+}
+#endif
+
+#if IS_ENABLED(CONFIG_ARM_SPE)
 static struct resource spe_resources[] = {
 	{
 		/* irq */
@@ -160,7 +187,7 @@ static void arm_spe_acpi_register_device(void)
 static inline void arm_spe_acpi_register_device(void)
 {
 }
-#endif /* CONFIG_ARM_SPE_PMU */
+#endif /* CONFIG_ARM_SPE */
 
 #if IS_ENABLED(CONFIG_CORESIGHT_TRBE)
 static struct resource trbe_resources[] = {
@@ -402,6 +429,7 @@ static int arm_pmu_acpi_init(void)
 		return 0;
 
 	arm_spe_acpi_register_device();
+	arm_spe_pmu_acpi_register_device();
 	arm_trbe_acpi_register_device();
 
 	ret = arm_pmu_acpi_parse_irqs();

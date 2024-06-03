@@ -13,6 +13,7 @@
 #define __MEM_SAMPLING_H
 
 DECLARE_STATIC_KEY_FALSE(sched_numabalancing_mem_sampling);
+DECLARE_STATIC_KEY_FALSE(mem_sampling_access_hints);
 
 enum mem_sampling_sample_type {
 	MEM_SAMPLING_L1D_ACCESS	= 1 << 0,
@@ -76,16 +77,24 @@ enum mem_sampling_type_enum {
 	MEM_SAMPLING_UNSUPPORTED
 };
 
+enum user_switch_type {
+	USER_SWITCH_AWAY_FROM_MEM_SAMPLING,
+	USER_SWITCH_BACK_TO_MEM_SAMPLING,
+};
+typedef void (*mem_sampling_user_switch_cb_type)(enum user_switch_type type);
+
 #ifdef CONFIG_ARM_SPE
 int arm_spe_start(void);
 void arm_spe_stop(void);
 void arm_spe_continue(void);
 int arm_spe_enabled(void);
 void arm_spe_record_capture_callback_register(mem_sampling_cb_type cb);
+void arm_spe_user_switch_callback_register(mem_sampling_user_switch_cb_type cb);
 #else
 static inline void arm_spe_stop(void) { };
 static inline void arm_spe_continue(void) { };
 static inline void arm_spe_record_capture_callback_register(mem_sampling_cb_type cb) { };
+static inline void arm_spe_user_switch_callback_register(mem_sampling_user_switch_cb_type cb) { };
 
 static inline int arm_spe_start(void)
 {
