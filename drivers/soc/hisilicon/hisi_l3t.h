@@ -42,5 +42,4 @@ void hisi_l3t_unlock(struct hisi_l3t *l3t, int slot_idx);
 
 int l3t_shared_lock(int nid, unsigned long pfn, unsigned long size);
 int l3t_shared_unlock(int nid, unsigned long pfn, unsigned long size);
-
 #endif

@@ -1,0 +1,182 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (C) Huawei Technologies Co., Ltd. 2024. All rights reserved.
+ */
+
+#define pr_fmt(fmt) "hisi_l0: " fmt
+
+#include <linux/fs.h>
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/init.h>
+#include <linux/miscdevice.h>
+#include <linux/kallsyms.h>
+#include <linux/mm.h>
+#include <linux/gfp.h>
+#include <linux/mempolicy.h>
+#include <linux/pfn_t.h>
+
+#include "hisi_l3t.h"
+
+struct l0_vma_data {
+	struct page *page;
+	unsigned long size;
+	int nid;
+};
+
+static int get_node_node(struct vm_area_struct *vma)
+{
+	struct mempolicy *pol;
+	nodemask_t *nmask;
+	int nid;
+
+	nid = get_policy_node(vma, vma->vm_start, GFP_KERNEL, &pol, &nmask);
+	if (pol->mode == MPOL_BIND || pol->mode == MPOL_PREFERRED_MANY)
+		nid = first_node(*nmask);
+
+	return nid;
+}
+
+static vm_fault_t __l0_pmd_fault(struct vm_fault *vmf, pfn_t *pfn)
+{
+	unsigned long pmd_addr = vmf->address & PMD_MASK;
+	struct l0_vma_data *data;
+	unsigned long page_pfn;
+
+	data = vmf->vma->vm_private_data;
+	if (!data) {
+		pr_err("invalid internal data\n");
+		return VM_FAULT_SIGBUS;
+	}
+
+	if (PAGE_ALIGN(vmf->vma->vm_end - vmf->vma->vm_start) != data->size) {
+		pr_err("invalid vma size, start: %#lx, end: %#lx, size: %#lx\n",
+		       vmf->vma->vm_start, vmf->vma->vm_end, data->size);
+		return VM_FAULT_SIGBUS;
+	}
+
+	/* if we are outside of the VMA */
+	if (pmd_addr < vmf->vma->vm_start ||
+			(pmd_addr + PMD_SIZE) > vmf->vma->vm_end)
+		return VM_FAULT_SIGBUS;
+
+	page_pfn = page_to_pfn(data->page) +
+		   ((pmd_addr - vmf->vma->vm_start) >> PAGE_SHIFT);
+
+	*pfn = pfn_to_pfn_t(page_pfn);
+
+	return vmf_insert_pfn_pmd(vmf, *pfn, vmf->flags & FAULT_FLAG_WRITE);
+}
+
+static vm_fault_t l0_huge_fault(struct vm_fault *vmf,
+		enum page_entry_size pe_size)
+{
+	vm_fault_t rc;
+	pfn_t pfn;
+
+	pr_debug("%s: %s (%#lx - %#lx) size = %d\n", current->comm,
+		(vmf->flags & FAULT_FLAG_WRITE) ? "write" : "read",
+		vmf->vma->vm_start, vmf->vma->vm_end, pe_size);
+
+	switch (pe_size) {
+	case PE_SIZE_PMD:
+		rc = __l0_pmd_fault(vmf, &pfn);
+		break;
+	default:
+		pr_err("invalid fault size: %d\n", pe_size);
+		rc = VM_FAULT_SIGBUS;
+	}
+
+	return rc;
+}
+
+static void l0_vma_close(struct vm_area_struct *vma)
+{
+	struct l0_vma_data *data;
+
+	data = (struct l0_vma_data *)vma->vm_private_data;
+	if (!data) {
+		pr_err("invalid internal data\n");
+		return;
+	}
+
+	l3t_shared_unlock(data->nid, page_to_pfn(data->page), data->size);
+	free_contig_range(page_to_pfn(data->page), data->size >> PAGE_SHIFT);
+
+	kfree(data);
+}
+
+static const struct vm_operations_struct l0_vm_ops = {
+	.huge_fault = l0_huge_fault,
+	.close = l0_vma_close,
+};
+
+static int l0_mmap(struct file *filp, struct vm_area_struct *vma)
+{
+	unsigned long cont_size = PAGE_ALIGN(vma->vm_end - vma->vm_start);
+	struct l0_vma_data *data;
+	int page_cnt, nid, ret;
+	struct page *page;
+
+	pr_debug("vma_start: %#lx, vma_end: %#lx vma_flags: %pGv\n",
+		 vma->vm_start, vma->vm_end, &vma->vm_flags);
+
+	if ((vma->vm_start % PMD_SIZE) || (vma->vm_end % PMD_SIZE)) {
+		pr_err("vma addr should align PMD_SIZE\n");
+		return -EINVAL;
+	}
+
+	data = kzalloc(sizeof(struct l0_vma_data), GFP_KERNEL);
+	if (!data)
+		return -ENOMEM;
+
+	page_cnt = cont_size >> PAGE_SHIFT;
+
+	nid = get_node_node(vma);
+
+	page = alloc_contig_pages(page_cnt, GFP_KERNEL, nid, NULL);
+	if (!page) {
+		pr_err("alloc continue memory failed, size: %#lx\n", cont_size);
+		ret = -ENOMEM;
+		goto free_data;
+	}
+
+	ret = l3t_shared_lock(nid, page_to_pfn(page), cont_size);
+	if (ret) {
+		pr_err("l3t lock failed, ret: %d\n", ret);
+		ret = -ENOMEM;
+		goto free_page;
+	}
+
+	data->page = page;
+	data->size = cont_size;
+	data->nid = nid;
+
+	vma->vm_ops = &l0_vm_ops;
+	vma->vm_flags |= VM_MIXEDMAP;
+	vma->vm_flags |= VM_DONTCOPY;
+	vma->vm_flags |= VM_DONTEXPAND;
+	vma->vm_private_data = data;
+
+	return 0;
+free_page:
+	free_contig_range(page_to_pfn(page), page_cnt);
+free_data:
+	kfree(data);
+	return ret;
+}
+
+static const struct file_operations l0_fops = {
+	.mmap = l0_mmap,
+};
+
+static struct miscdevice l0_dev = {
+	.minor = MISC_DYNAMIC_MINOR,
+	.name = "hisi_l0",
+	.fops = &l0_fops,
+};
+module_misc_device(l0_dev);
+
+MODULE_DESCRIPTION("HiSilicon SoC L0 driver");
+MODULE_LICENSE("GPL v2");
+MODULE_AUTHOR("Ma Wupeng <mawupeng1@huawei.com>");
