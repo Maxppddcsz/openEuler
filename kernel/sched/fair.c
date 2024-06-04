@@ -7221,7 +7221,11 @@ static int select_idle_core(struct task_struct *p, int core, struct cpumask *cpu
 			}
 			break;
 		}
+#ifdef CONFIG_TASK_PLACEMENT_BY_CPU_RANGE
+		if (*idle_cpu == -1 && cpumask_test_cpu(cpu, p->select_cpus))
+#else
 		if (*idle_cpu == -1 && cpumask_test_cpu(cpu, p->cpus_ptr))
+#endif
 			*idle_cpu = cpu;
 	}
 
