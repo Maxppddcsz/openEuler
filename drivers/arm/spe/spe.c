@@ -767,6 +767,9 @@ static int __init arm_spe_init(void)
 {
 	int ret;
 
+	if (!mem_sampling_support())
+		return 0;
+
 	ret = cpuhp_setup_state_multi(CPUHP_AP_ONLINE_DYN, DRVNAME,
 				      arm_spe_cpu_startup,
 				      arm_spe_cpu_teardown);
@@ -784,6 +787,9 @@ static int __init arm_spe_init(void)
 
 static void __exit arm_spe_exit(void)
 {
+	if (!mem_sampling_support())
+		return;
+
 	/*
 	 * TODO: Find a clean way to disable SPE so that SPE
 	 * can be used for perf.

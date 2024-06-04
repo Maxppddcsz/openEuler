@@ -33,6 +33,7 @@
 #include <linux/slab.h>
 #include <linux/smp.h>
 #include <linux/vmalloc.h>
+#include <linux/mem_sampling.h>
 
 #include <asm/barrier.h>
 #include <asm/cpufeature.h>
@@ -1267,6 +1268,11 @@ static int __init arm_spe_pmu_init(void)
 {
 	int ret;
 
+	if (mem_sampling_support()) {
+		pr_info("Perf driver for spe is busy.");
+		return -EBUSY;
+	}
+
 	ret = cpuhp_setup_state_multi(CPUHP_AP_ONLINE_DYN, DRVNAME,
 				      arm_spe_pmu_cpu_startup,
 				      arm_spe_pmu_cpu_teardown);
@@ -1283,6 +1289,9 @@ static int __init arm_spe_pmu_init(void)
 
 static void __exit arm_spe_pmu_exit(void)
 {
+	if (mem_sampling_support())
+		return;
+
 	platform_driver_unregister(&arm_spe_pmu_driver);
 	cpuhp_remove_multi_state(arm_spe_pmu_online);
 }
