@@ -143,13 +143,20 @@ nvif_object_mthd(struct nvif_object *object, u32 mthd, void *data, u32 size)
 		struct nvif_ioctl_v0 ioctl;
 		struct nvif_ioctl_mthd_v0 mthd;
 	} *args;
+	u32 args_size;
 	u8 stack[128];
 	int ret;
 
-	if (sizeof(*args) + size > sizeof(stack)) {
-		if (!(args = kmalloc(sizeof(*args) + size, GFP_KERNEL)))
+	// if (sizeof(*args) + size > sizeof(stack)) {
+	// 	if (!(args = kmalloc(sizeof(*args) + size, GFP_KERNEL)))
+	if (check_add_overflow(sizeof(*args), size, &args_size))
 			return -ENOMEM;
-	} else {
+	if (args_size > sizeof(stack)) {
+		args = kmalloc(args_size, GFP_KERNEL);
+		if (!args)
+			return -ENOMEM;
+	}
+	else {
 		args = (void *)stack;
 	}
 	args->ioctl.version = 0;
@@ -158,7 +165,8 @@ nvif_object_mthd(struct nvif_object *object, u32 mthd, void *data, u32 size)
 	args->mthd.method = mthd;
 
 	memcpy(args->mthd.data, data, size);
-	ret = nvif_object_ioctl(object, args, sizeof(*args) + size, NULL);
+	// ret = nvif_object_ioctl(object, args, sizeof(*args) + size, NULL);
+	ret = nvif_object_ioctl(object, args, args_size, NULL);
 	memcpy(data, args->mthd.data, size);
 	if (args != (void *)stack)
 		kfree(args);
@@ -276,11 +284,18 @@ nvif_object_init(struct nvif_object *parent, u32 handle, s32 oclass,
 	object->map.size = 0;
 
 	if (parent) {
-		if (!(args = kmalloc(sizeof(*args) + size, GFP_KERNEL))) {
+		// if (!(args = kmalloc(sizeof(*args) + size, GFP_KERNEL))) {
+		u32 args_size;
+
+		if (check_add_overflow(sizeof(*args), size, &args_size)) {
 			nvif_object_fini(object);
 			return -ENOMEM;
 		}
-
+		args = kmalloc(args_size, GFP_KERNEL);
+		if (!args) {
+			nvif_object_fini(object);
+			return -ENOMEM;
+		}
 		args->ioctl.version = 0;
 		args->ioctl.type = NVIF_IOCTL_V0_NEW;
 		args->new.version = 0;
@@ -291,8 +306,9 @@ nvif_object_init(struct nvif_object *parent, u32 handle, s32 oclass,
 		args->new.oclass = oclass;
 
 		memcpy(args->new.data, data, size);
-		ret = nvif_object_ioctl(parent, args, sizeof(*args) + size,
-					&object->priv);
+		// ret = nvif_object_ioctl(parent, args, sizeof(*args) + size,
+		// 			&object->priv);
+		ret = nvif_object_ioctl(parent, args, args_size, &object->priv);
 		memcpy(data, args->new.data, size);
 		kfree(args);
 		if (ret == 0)
