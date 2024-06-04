@@ -859,7 +859,9 @@ static int arm_smmu_ecmdq_issue_cmdlist(struct arm_smmu_device *smmu,
 	} while (1);
 
 	/* 2. Write our commands into the queue */
-	arm_smmu_cmdq_write_entries(cmdq, cmds, llq.prod, n);
+	if (cmds)
+		arm_smmu_cmdq_write_entries(cmdq, cmds, llq.prod, n);
+
 	if (sync) {
 		u64 cmd_sync[CMDQ_ENT_DWORDS];
 
@@ -963,7 +965,8 @@ static int arm_smmu_cmdq_issue_cmdlist(struct arm_smmu_device *smmu,
 	 * 2. Write our commands into the queue
 	 * Dependency ordering from the cmpxchg() loop above.
 	 */
-	arm_smmu_cmdq_write_entries(cmdq, cmds, llq.prod, n);
+	if (cmds)
+		arm_smmu_cmdq_write_entries(cmdq, cmds, llq.prod, n);
 	if (sync) {
 		prod = queue_inc_prod_n(&llq, n);
 		arm_smmu_cmdq_build_sync_cmd(cmd_sync, smmu, &cmdq->q, prod);
@@ -2946,15 +2949,21 @@ static void arm_smmu_iotlb_sync_map(struct iommu_domain *domain,
 				unsigned long iova, size_t size)
 {
 	struct arm_smmu_domain *smmu_domain = to_smmu_domain(domain);
-	size_t granule_size;
+	struct arm_smmu_device *smmu = smmu_domain->smmu;
 
 	if (!(smmu_domain->smmu->options & ARM_SMMU_OPT_SYNC_MAP))
 		return;
 
-	granule_size = 1 <<  __ffs(smmu_domain->domain.pgsize_bitmap);
+	if (smmu_domain->smmu->options & ARM_SMMU_OPT_SYNC_BATCH) {
+		int pg_shift;
+
+		pg_shift = __ffs(smmu_domain->domain.pgsize_bitmap);
+		if (likely(iova % (1 << (2 * pg_shift - 3))))
+			return;
+	}
 
 	/* Add a SYNC command to sync io-pgtale to avoid errors in pgtable prefetch*/
-	arm_smmu_tlb_inv_range_domain(iova, granule_size, granule_size, true, smmu_domain);
+	arm_smmu_cmdq_issue_cmdlist(smmu, NULL, 0, true);
 }
 #endif
 
@@ -4932,6 +4941,29 @@ static void arm_smmu_get_httu(struct arm_smmu_device *smmu, u32 reg)
 			 fw_features);
 }
 
+#ifdef CONFIG_HISILICON_ERRATUM_162100602
+static void hisi_smmu_check_errata(struct arm_smmu_device *smmu)
+{
+	u32 reg, i;
+
+	/* IIDR */
+	reg = readl_relaxed(smmu->base + ARM_SMMU_IIDR);
+	if (!(FIELD_GET(IIDR_VARIANT, reg) == 0x3) ||
+	    !(FIELD_GET(IIDR_REVISON, reg) == 0x2))
+		return;
+
+	smmu->options |= ARM_SMMU_OPT_SYNC_MAP;
+
+	reg = readl_relaxed(smmu->base + ARM_SMMU_USER_CFG1);
+	reg = reg & GENMASK(15, 0);
+	for (i = 0; i < 8; i++) {
+		if (!(reg && (GENMASK(1, 0) << 2 * i)))
+			return;
+	}
+	smmu->options |= ARM_SMMU_OPT_SYNC_BATCH;
+}
+#endif
+
 static int arm_smmu_device_hw_probe(struct arm_smmu_device *smmu)
 {
 	u32 reg;
@@ -5163,11 +5195,7 @@ static int arm_smmu_device_hw_probe(struct arm_smmu_device *smmu)
 	}
 
 #ifdef CONFIG_HISILICON_ERRATUM_162100602
-	/* IIDR */
-	reg = readl_relaxed(smmu->base + ARM_SMMU_IIDR);
-	if (FIELD_GET(IIDR_VARIANT, reg) == 0x3 &&
-	    FIELD_GET(IIDR_REVISON, reg) == 0x2)
-		smmu->options |= ARM_SMMU_OPT_SYNC_MAP;
+	hisi_smmu_check_errata(smmu);
 #endif
 
 	if (arm_smmu_ops.pgsize_bitmap == -1UL)
