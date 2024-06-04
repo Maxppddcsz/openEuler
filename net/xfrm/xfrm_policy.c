@@ -2564,13 +2564,6 @@ static void xfrm_link_failure(struct sk_buff *skb)
 
 static void xfrm_negative_advice(struct sock *sk, struct dst_entry *dst)
 {
-	// if (dst) {
-	// 	if (dst->obsolete) {
-	// 		dst_release(dst);
-	// 		dst = NULL;
-	// 	}
-	// }
-	// return dst;
 	if (dst->obsolete)
 		sk_dst_reset(sk);
 }
