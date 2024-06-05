@@ -209,4 +209,8 @@ void migrate_vma_finalize(struct migrate_vma *migrate);
 
 #endif /* CONFIG_MIGRATION */
 
+#ifdef CONFIG_NUMABALANCING_MEM_SAMPLING
+void do_numa_access(struct task_struct *p, u64 laddr, u64 paddr);
+#endif /* CONFIG_NUMABALANCING_MEM_SAMPLING */
+
 #endif /* _LINUX_MIGRATE_H */
