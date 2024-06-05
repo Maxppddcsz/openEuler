@@ -19,6 +19,7 @@
 
 #include <asm/irq_regs.h>
 #include <asm/switch_to.h>
+#include <linux/mem_sampling.h>
 #include <asm/tlb.h>
 
 #include "../workqueue_internal.h"
@@ -3540,6 +3541,116 @@ int sysctl_numa_balancing(struct ctl_table *table, int write,
 #endif
 #endif
 
+DEFINE_STATIC_KEY_FALSE(sched_numabalancing_mem_sampling);
+
+#ifdef CONFIG_NUMABALANCING_MEM_SAMPLING
+
+int sysctl_numa_balacing_hw_mode;
+
+static void __set_numabalancing_mem_sampling_state(bool enabled)
+{
+	if (enabled) {
+		numa_balancing_mem_sampling_cb_register();
+		static_branch_enable(&sched_numabalancing_mem_sampling);
+	} else {
+		numa_balancing_mem_sampling_cb_unregister();
+		static_branch_disable(&sched_numabalancing_mem_sampling);
+	}
+}
+
+void set_numabalancing_mem_sampling_state(bool enabled)
+{
+	if (enabled)
+		sysctl_numa_balacing_hw_mode = NUMA_BALANCING_HW_NORMAL;
+	else
+		sysctl_numa_balacing_hw_mode = NUMA_BALANCING_HW_DISABLED;
+	__set_numabalancing_mem_sampling_state(enabled);
+}
+
+#ifdef CONFIG_PROC_SYSCTL
+
+int sysctl_numabalancing_mem_sampling(struct ctl_table *table, int write,
+				void *buffer, size_t *lenp, loff_t *ppos)
+{
+	struct ctl_table t;
+	int err;
+	int state = static_branch_likely(&sched_numabalancing_mem_sampling);
+
+	if (write && !capable(CAP_SYS_ADMIN))
+		return -EPERM;
+
+	t = *table;
+	t.data = &state;
+	err = proc_dointvec_minmax(&t, write, buffer, lenp, ppos);
+	if (err < 0)
+		return err;
+
+	if (write && static_branch_likely(&mem_sampling_access_hints))
+		set_numabalancing_mem_sampling_state(state);
+
+	return err;
+}
+#endif
+#endif
+
+DEFINE_STATIC_KEY_FALSE(mem_sampling_access_hints);
+
+#ifdef CONFIG_MEM_SAMPLING
+int sysctl_mem_sampling_mode;
+
+static void __set_mem_sampling_state(bool enabled)
+{
+	if (enabled)
+		static_branch_enable(&mem_sampling_access_hints);
+	else
+		static_branch_disable(&mem_sampling_access_hints);
+}
+
+void set_mem_sampling_state(bool enabled)
+{
+	if (!mem_sampling_ops.sampling_start)
+		return;
+	if (enabled)
+		sysctl_mem_sampling_mode = MEM_SAMPLING_NORMAL;
+	else
+		sysctl_mem_sampling_mode = MEM_SAMPLING_DISABLED;
+	__set_mem_sampling_state(enabled);
+
+#ifdef CONFIG_NUMABALANCING_MEM_SAMPLING
+	if (!enabled)
+		set_numabalancing_mem_sampling_state(enabled);
+#endif
+}
+
+#ifdef CONFIG_PROC_SYSCTL
+int sysctl_mem_sampling_enable(struct ctl_table *table, int write,
+			  void *buffer, size_t *lenp, loff_t *ppos)
+{
+	struct ctl_table t;
+	int err;
+	int state = sysctl_mem_sampling_mode;
+
+	if (write && !capable(CAP_SYS_ADMIN))
+		return -EPERM;
+
+	t = *table;
+	t.data = &state;
+	err = proc_dointvec_minmax(&t, write, buffer, lenp, ppos);
+	if (err < 0)
+		return err;
+	if (write) {
+		if (mem_sampling_saved_state == MEM_SAMPLING_STATE_EMPTY)
+			set_mem_sampling_state(state);
+		else
+			mem_sampling_saved_state = state ? MEM_SAMPLING_STATE_ENABLE :
+						    MEM_SAMPLING_STATE_DISABLE;
+	}
+
+	return err;
+}
+#endif
+#endif
+
 #ifdef CONFIG_SCHEDSTATS
 
 DEFINE_STATIC_KEY_FALSE(sched_schedstats);
@@ -4066,6 +4177,7 @@ static struct rq *finish_task_switch(struct task_struct *prev)
 	prev_state = prev->state;
 	vtime_task_switch(prev);
 	perf_event_task_sched_in(prev, current);
+	mem_sampling_sched_in(prev, current);
 	finish_task(prev);
 	tick_nohz_task_switch();
 	finish_lock_switch(rq);

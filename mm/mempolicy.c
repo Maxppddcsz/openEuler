@@ -105,6 +105,10 @@
 #include <linux/swapops.h>
 
 #include <linux/share_pool_interface.h>
+#include <linux/task_work.h>
+#include <linux/mem_sampling.h>
+
+#include <trace/events/kmem.h>
 
 #include <asm/tlbflush.h>
 #include <linux/uaccess.h>
@@ -736,6 +740,76 @@ static unsigned long change_prot_numa(struct vm_area_struct *vma,
 	return 0;
 }
 #endif /* CONFIG_NUMA_BALANCING */
+
+#ifdef CONFIG_NUMABALANCING_MEM_SAMPLING
+static void task_mem_sampling_access_work(struct callback_head *work)
+{
+	struct mem_sampling_numa_access_work *iwork =
+		container_of(work, struct mem_sampling_numa_access_work, work);
+	struct task_struct *p = current;
+	int cpu = smp_processor_id();
+	u64 laddr = iwork->laddr;
+	u64 paddr = iwork->paddr;
+
+	kfree(iwork);
+	if (iwork->cpu != cpu)
+		return;
+
+	do_numa_access(p, laddr, paddr);
+}
+
+void numa_create_taskwork(u64 laddr, u64 paddr, int cpu)
+{
+	struct mem_sampling_numa_access_work *iwork = NULL;
+
+	iwork = kzalloc(sizeof(*iwork), GFP_ATOMIC);
+	if (!iwork)
+		return;
+
+	iwork->laddr = laddr;
+	iwork->paddr = paddr;
+	iwork->cpu = smp_processor_id();
+
+	init_task_work(&iwork->work, task_mem_sampling_access_work);
+	task_work_add(current, &iwork->work, TWA_RESUME);
+}
+
+void numa_balancing_mem_sampling_cb(struct mem_sampling_record *record)
+{
+	struct task_struct *p = current;
+	u64 laddr = record->virt_addr;
+	u64 paddr = record->phys_addr;
+
+	/* Discard kernel address accesses */
+	if (laddr & (1UL << 63))
+		return;
+
+	if (p->pid != record->context_id)
+		return;
+
+	trace_mm_mem_sampling_access_record(laddr, paddr, smp_processor_id(),
+					current->pid);
+	numa_create_taskwork(laddr, paddr, smp_processor_id());
+}
+
+void numa_balancing_mem_sampling_cb_register(void)
+{
+	mem_sampling_record_cb_register(numa_balancing_mem_sampling_cb);
+}
+
+void numa_balancing_mem_sampling_cb_unregister(void)
+{
+	mem_sampling_record_cb_unregister(numa_balancing_mem_sampling_cb);
+}
+#else
+static inline void numa_balancing_mem_sampling_cb_register(void)
+{
+}
+
+static inline void numa_balancing_mem_sampling_cb_unregister(void)
+{
+}
+#endif /* CONFIG_NUMABALANCING_MEM_SAMPLING */
 
 static int queue_pages_test_walk(unsigned long start, unsigned long end,
 				struct mm_walk *walk)
