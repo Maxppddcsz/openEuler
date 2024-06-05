@@ -14,6 +14,8 @@
 #include <linux/sysfs.h>
 #include <asm/cputype.h>
 
+#include "../../../drivers/arm/spe/spe.h"
+
 #ifdef CONFIG_ARM_PMU
 
 /*
@@ -205,6 +207,12 @@ void armpmu_free_irq(int irq, int cpu);
 #endif /* CONFIG_ARM_PMU */
 
 #define ARMV8_SPE_PDEV_NAME "arm,spe-v1"
+#define ARMV8_SPE_PMU_PDEV_NAME "arm,pmu,spe-v1"
+
 #define ARMV8_TRBE_PDEV_NAME "arm,trbe"
 
+typedef void (*perf_sampling_cb_type)(enum arm_spe_buf_fault_action act);
+void arm_spe_sampling_for_perf_callback_register(perf_sampling_cb_type cb);
+struct arm_spe *arm_spe_get_desc(void);
+void arm_spe_set_user(enum arm_spe_user_e user);
 #endif /* __ARM_PMU_H__ */
