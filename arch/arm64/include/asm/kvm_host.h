@@ -625,6 +625,12 @@ struct kvm_vcpu_arch {
 #ifdef CONFIG_CVM_HOST
 	struct cvm_tec tec;
 #endif
+
+	/* HDBSS registers info */
+	struct {
+		u64 br_el2;
+		u64 prod_el2;
+	} hdbss;
 };
 
 /*
