@@ -176,6 +176,71 @@ static int __init pci_iommu_init(void)
 rootfs_initcall(pci_iommu_init);
 
 #ifdef CONFIG_PCI
+/***
+ * usage:
+ *  set "zx_p2cw_filter_state=0|1" in cmdline
+ * value description:
+ *  bit 0: enable(1) node check or not(0). default 1
+ */
+u8 zx_p2cw_patch_filter = ZX_P2CW_PARAMS_DEFAULT;
+static int __init zx_p2cw_patch_filter_setup(char *str)
+{
+	u8 filter_state = *((u8 *)str) - 0x30;
+
+	pr_info("kh-40000 p2cw patch: node check is %s\n",
+		(filter_state & 1) ? "enabled" : "disabled");
+	zx_p2cw_patch_filter = filter_state;
+
+	return 1;
+}
+__setup("zx_p2cw_filter_state=", zx_p2cw_patch_filter_setup);
+
+static struct pci_dev *kh40000_get_pci_dev(struct device *dev)
+{
+	if (dev_is_pci(dev))
+		return to_pci_dev(dev);
+
+	if (dev->parent)
+		return kh40000_get_pci_dev(dev->parent);
+
+	return NULL;
+}
+
+void kh40000_sync_single_dma_for_cpu(struct device *dev, dma_addr_t paddr,
+		enum dma_data_direction dir, bool is_iommu)
+{
+	u8 vid;
+	struct pci_dev *pci;
+	u64 dma_mask = *dev->dma_mask;
+
+	/* check direction */
+	if ((dir != DMA_FROM_DEVICE) && (dir != DMA_BIDIRECTIONAL))
+		return;
+
+	/* check dma capability */
+	if (dma_mask <= DMA_BIT_MASK(32))
+		return;
+
+	/* check device type */
+	pci = kh40000_get_pci_dev(dev);
+	if (pci == NULL)
+		return;
+
+	/* get real physical address */
+	if (is_iommu)
+		paddr = kh40000_iommu_iova_to_phys(dev, paddr);
+
+	/* check node or not */
+	if ((zx_p2cw_patch_filter & ZX_P2CW_PARAM_NODE_CHECK)) {
+		unsigned long pfn = PFN_DOWN(paddr);
+
+		if (pfn_to_nid(pfn) == dev_to_node(dev))
+			return;
+	}
+
+	pci_read_config_byte(pci, PCI_VENDOR_ID, &vid);
+}
+
 /* Many VIA bridges seem to corrupt data for DAC. Disable it here */
 
 static int via_no_dac_cb(struct pci_dev *pdev, void *data)
