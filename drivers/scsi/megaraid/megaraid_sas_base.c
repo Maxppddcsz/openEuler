@@ -5619,8 +5619,20 @@ static int megasas_init_fw(struct megasas_instance *instance)
 			instance->skip_heartbeat_timer_del = 1;
 	}
 
+	/*
+	 * Create and start watchdog thread which will monitor
+	 * controller state every 1 sec and trigger OCR when
+	 * it enters fault state
+	 */
+	if (instance->adapter_type != MFI_SERIES)
+		if (megasas_fusion_start_watchdog(instance) != SUCCESS)
+			goto fail_start_watchdog;
+
 	return 0;
 
+fail_start_watchdog:
+	if (instance->requestorId && !instance->skip_heartbeat_timer_del)
+		del_timer_sync(&instance->sriov_heartbeat_timer);
 fail_get_ld_pd_list:
 	instance->instancet->disable_intr(instance);
 	megasas_destroy_irqs(instance);
@@ -6477,12 +6489,10 @@ static inline void megasas_init_ctrl_params(struct megasas_instance *instance)
 	instance->disableOnlineCtrlReset = 1;
 	instance->UnevenSpanSupport = 0;
 
-	if (instance->adapter_type != MFI_SERIES) {
+	if (instance->adapter_type != MFI_SERIES)
 		INIT_WORK(&instance->work_init, megasas_fusion_ocr_wq);
-		INIT_WORK(&instance->crash_init, megasas_fusion_crash_dump_wq);
-	} else {
+	else
 		INIT_WORK(&instance->work_init, process_fw_state_change_wq);
-	}
 }
 
 /**
@@ -6620,10 +6630,15 @@ static int megasas_probe_one(struct pci_dev *pdev,
 	return 0;
 
 fail_start_aen:
+	instance->unload = 1;
+	scsi_remove_host(instance->host);
 fail_io_attach:
 	megasas_mgmt_info.count--;
 	megasas_mgmt_info.max_index--;
 	megasas_mgmt_info.instance[megasas_mgmt_info.max_index] = NULL;
+
+	if (instance->requestorId && !instance->skip_heartbeat_timer_del)
+		del_timer_sync(&instance->sriov_heartbeat_timer);
 
 	instance->instancet->disable_intr(instance);
 	megasas_destroy_irqs(instance);
@@ -6632,8 +6647,16 @@ fail_io_attach:
 		megasas_release_fusion(instance);
 	else
 		megasas_release_mfi(instance);
+
 	if (instance->msix_vectors)
 		pci_free_irq_vectors(instance->pdev);
+	instance->msix_vectors = 0;
+
+	if (instance->fw_crash_state != UNAVAILABLE)
+		megasas_free_host_crash_buffer(instance);
+
+	if (instance->adapter_type != MFI_SERIES)
+		megasas_fusion_stop_watchdog(instance);
 fail_init_mfi:
 	scsi_host_put(host);
 fail_alloc_instance:
@@ -6754,6 +6777,10 @@ megasas_suspend(struct pci_dev *pdev, pm_message_t state)
 	/* Shutdown SR-IOV heartbeat timer */
 	if (instance->requestorId && !instance->skip_heartbeat_timer_del)
 		del_timer_sync(&instance->sriov_heartbeat_timer);
+
+	/* Stop the FW fault detection watchdog */
+	if (instance->adapter_type != MFI_SERIES)
+		megasas_fusion_stop_watchdog(instance);
 
 	megasas_flush_cache(instance);
 	megasas_shutdown_controller(instance, MR_DCMD_HIBERNATE_SHUTDOWN);
@@ -6890,8 +6917,16 @@ megasas_resume(struct pci_dev *pdev)
 	if (megasas_start_aen(instance))
 		dev_err(&instance->pdev->dev, "Start AEN failed\n");
 
+	/* Re-launch FW fault watchdog */
+	if (instance->adapter_type != MFI_SERIES)
+		if (megasas_fusion_start_watchdog(instance) != SUCCESS)
+			goto fail_start_watchdog;
+
 	return 0;
 
+fail_start_watchdog:
+	if (instance->requestorId && !instance->skip_heartbeat_timer_del)
+		del_timer_sync(&instance->sriov_heartbeat_timer);
 fail_init_mfi:
 	megasas_free_ctrl_dma_buffers(instance);
 	megasas_free_ctrl_mem(instance);
@@ -6958,6 +6993,10 @@ static void megasas_detach_one(struct pci_dev *pdev)
 	/* Shutdown SR-IOV heartbeat timer */
 	if (instance->requestorId && !instance->skip_heartbeat_timer_del)
 		del_timer_sync(&instance->sriov_heartbeat_timer);
+
+	/* Stop the FW fault detection watchdog */
+	if (instance->adapter_type != MFI_SERIES)
+		megasas_fusion_stop_watchdog(instance);
 
 	if (instance->fw_crash_state != UNAVAILABLE)
 		megasas_free_host_crash_buffer(instance);
