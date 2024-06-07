@@ -1950,6 +1950,7 @@ static int azx_first_init(struct azx *chip)
 	if (chip->driver_type == AZX_DRIVER_LOONGSON) {
 		bus->polling_mode = 1;
 		bus->not_use_interrupts = 1;
+		bus->access_sdnctl_in_dword = 1;
 	}
 
 	chip->remap_diu_addr = NULL;
