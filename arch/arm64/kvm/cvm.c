@@ -181,8 +181,9 @@ int kvm_arm_create_cvm(struct kvm *kvm)
 	memcpy(cvm->params->rpv, &cvm->cvm_vmid, sizeof(cvm->cvm_vmid));
 	cvm->rd = tmi_cvm_create(__pa(cvm->params), numa_set);
 	if (!cvm->rd) {
-		kvm_err("KVM creates cVM: %d\n", cvm->cvm_vmid);
+		kvm_err("KVM creates cVM failed: %d\n", cvm->cvm_vmid);
 		ret = -ENOMEM;
+		goto out;
 	}
 
 	WRITE_ONCE(cvm->state, CVM_STATE_NEW);
@@ -341,7 +342,7 @@ int kvm_cvm_populate_par_region(struct kvm *kvm, u64 numa_set,
 		 */
 		ipa = ALIGN_DOWN(ipa, map_size);
 
-		if (is_data_create_region(ipa_base, args)) {
+		if (is_data_create_region(ipa, args)) {
 			pfn = gfn_to_pfn_memslot(memslot, gpa_to_gfn(ipa));
 			if (is_error_pfn(pfn)) {
 				ret = -EFAULT;
@@ -602,6 +603,7 @@ static int kvm_populate_ram_region(struct kvm *kvm, u64 map_size,
 static int kvm_populate_ipa_cvm_range(struct kvm *kvm,
 				struct kvm_cap_arm_tmm_populate_region_args *args)
 {
+	struct cvm *cvm = (struct cvm *)kvm->arch.cvm;
 	u64 l2_granule = cvm_granule_size(TMM_TTT_LEVEL_2);
 	phys_addr_t ipa_base1, ipa_end2;
 
@@ -612,7 +614,10 @@ static int kvm_populate_ipa_cvm_range(struct kvm *kvm,
 		!IS_ALIGNED(args->populate_ipa_base2, PAGE_SIZE) ||
 		!IS_ALIGNED(args->populate_ipa_size2, PAGE_SIZE))
 		return -EINVAL;
-	if (args->populate_ipa_base2 < args->populate_ipa_base1 + args->populate_ipa_size1)
+
+	if (args->populate_ipa_base1 < cvm->loader_start ||
+		args->populate_ipa_base2 < args->populate_ipa_base1 + args->populate_ipa_size1 ||
+		cvm->dtb_end < args->populate_ipa_base2 + args->populate_ipa_size2)
 		return -EINVAL;
 
 	if (args->flags & ~TMI_MEASURE_CONTENT)
@@ -871,6 +876,7 @@ int kvm_init_cvm_vm(struct kvm *kvm)
 		return -ENOMEM;
 
 	cvm->params = params;
+	WRITE_ONCE(cvm->state, CVM_STATE_NONE);
 
 	return 0;
 }
