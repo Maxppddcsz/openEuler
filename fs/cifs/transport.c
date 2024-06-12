@@ -1017,19 +1017,25 @@ cifs_cancelled_callback(struct mid_q_entry *mid)
 struct TCP_Server_Info *cifs_pick_channel(struct cifs_ses *ses)
 {
 	uint index = 0;
+	struct TCP_Server_Info *server = NULL;
 
 	if (!ses)
 		return NULL;
 
+	spin_lock(&ses->chan_lock);
 	if (!ses->binding) {
 		/* round robin */
 		if (ses->chan_count > 1) {
 			index = (uint)atomic_inc_return(&ses->chan_seq);
 			index %= ses->chan_count;
 		}
-		return ses->chans[index].server;
+		server = ses->chans[index].server;
+		spin_unlock(&ses->chan_lock);
+		return server;
 	} else {
-		return cifs_ses_server(ses);
+		server = cifs_ses_server(ses);
+		spin_unlock(&ses->chan_lock);
+		return server;
 	}
 }
 
