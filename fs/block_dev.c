@@ -561,6 +561,38 @@ int sync_blockdev(struct block_device *bdev)
 EXPORT_SYMBOL(sync_blockdev);
 
 /*
+ * Handle STATX_WRITE_ATOMIC for block devices.
+ */
+void bdev_statx(struct inode *backing_inode, struct kstat *stat,
+		u32 request_mask)
+{
+	struct block_device *bdev;
+
+	if (!(request_mask & STATX_WRITE_ATOMIC))
+		return;
+
+	/*
+	 * Note that backing_inode is the inode of a block device node file,
+	 * not the block device's internal inode.  Therefore it is *not* valid
+	 * to use I_BDEV() here; the block device has to be looked up by i_rdev
+	 * instead.
+	 */
+	bdev = blkdev_get_by_dev(backing_inode->i_rdev, FMODE_READ, NULL);
+	if (!bdev)
+		return;
+
+	if (request_mask & STATX_WRITE_ATOMIC && bdev_can_atomic_write(bdev)) {
+		struct request_queue *bd_queue = bdev_get_queue(bdev);;
+
+		generic_fill_statx_atomic_writes(stat,
+				queue_atomic_write_unit_min_bytes(bd_queue),
+				queue_atomic_write_unit_max_bytes(bd_queue));
+	}
+
+	blkdev_put(bdev, FMODE_READ);
+}
+
+/*
  * Write out and wait upon all dirty data associated with this
  * device.   Filesystem data as well as the underlying block
  * device.  Takes the superblock lock.

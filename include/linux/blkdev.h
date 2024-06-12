@@ -2128,6 +2128,8 @@ void invalidate_bdev(struct block_device *bdev);
 int truncate_bdev_range(struct block_device *bdev, fmode_t mode, loff_t lstart,
 			loff_t lend);
 int sync_blockdev(struct block_device *bdev);
+void bdev_statx(struct inode *backing_inode, struct kstat *stat,
+		u32 request_mask);
 #else
 static inline void invalidate_bdev(struct block_device *bdev)
 {
@@ -2140,6 +2142,11 @@ static inline int truncate_bdev_range(struct block_device *bdev, fmode_t mode,
 static inline int sync_blockdev(struct block_device *bdev)
 {
 	return 0;
+}
+
+static inline void bdev_statx(struct inode *backing_inode, struct kstat *stat,
+				u32 request_mask)
+{
 }
 #endif
 int fsync_bdev(struct block_device *bdev);
