@@ -848,7 +848,7 @@ xfs_setattr_size(
 
 	write_back = newsize > ip->i_d.di_size && oldsize != ip->i_d.di_size;
 	if (newsize < oldsize) {
-		unsigned int	blocksize = i_blocksize(inode);
+		unsigned int	blocksize = xfs_inode_alloc_unitsize(ip);
 
 		/*
 		 * iomap won't detect a dirty page over an unwritten block (or a
