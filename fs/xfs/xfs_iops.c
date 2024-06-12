@@ -507,6 +507,37 @@ xfs_stat_blksize(
 	return PAGE_SIZE;
 }
 
+static void
+xfs_get_atomic_write_attr(
+	struct xfs_inode	*ip,
+	unsigned int		*unit_min,
+	unsigned int		*unit_max)
+{
+	xfs_extlen_t		extsz = xfs_get_extsz(ip);
+	struct xfs_buftarg	*target = xfs_inode_buftarg(ip);
+	struct block_device	*bdev = target->bt_bdev;
+	struct request_queue	*q = bdev_get_queue(bdev);
+	struct xfs_mount	*mp = ip->i_mount;
+	struct xfs_sb		*sbp = &mp->m_sb;
+	unsigned int		awu_min, awu_max;
+	unsigned int		extsz_bytes = XFS_FSB_TO_B(mp, extsz);
+
+	awu_min = queue_atomic_write_unit_min_bytes(q);
+	awu_max = queue_atomic_write_unit_max_bytes(q);
+
+	if (sbp->sb_blocksize > awu_max || awu_min > sbp->sb_blocksize ||
+	    !xfs_inode_atomicwrites(ip)) {
+		*unit_min = 0;
+		*unit_max = 0;
+		return;
+	}
+
+	/* Floor at FS block size */
+	*unit_min = max(sbp->sb_blocksize, awu_min);
+
+	*unit_max = min(extsz_bytes, awu_max);
+}
+
 STATIC int
 xfs_vn_getattr(
 	const struct path	*path,
@@ -564,6 +595,15 @@ xfs_vn_getattr(
 		stat->blksize = BLKDEV_IOSIZE;
 		stat->rdev = inode->i_rdev;
 		break;
+	case S_IFREG:
+		if (request_mask & STATX_WRITE_ATOMIC) {
+			unsigned int unit_min, unit_max;
+
+			xfs_get_atomic_write_attr(ip, &unit_min, &unit_max);
+			generic_fill_statx_atomic_writes(stat,
+				unit_min, unit_max);
+		}
+		fallthrough;
 	default:
 		stat->blksize = xfs_stat_blksize(ip);
 		stat->rdev = 0;
