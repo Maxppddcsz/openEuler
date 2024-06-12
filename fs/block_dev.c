@@ -272,6 +272,9 @@ __blkdev_direct_IO_simple(struct kiocb *iocb, struct iov_iter *iter,
 	bio.bi_end_io = blkdev_bio_end_io_simple;
 	bio.bi_ioprio = iocb->ki_ioprio;
 
+	if (iocb->ki_flags & IOCB_ATOMIC)
+		bio.bi_opf |= REQ_ATOMIC;
+
 	ret = bio_iov_iter_get_pages(&bio, iter);
 	if (unlikely(ret))
 		goto out;
@@ -452,6 +455,10 @@ __blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter, int nr_pages)
 			bio->bi_opf = dio_bio_write_op(iocb);
 			task_io_account_write(bio->bi_iter.bi_size);
 		}
+
+		if (iocb->ki_flags & IOCB_ATOMIC)
+			bio->bi_opf |= REQ_ATOMIC;
+
 		if (iocb->ki_flags & IOCB_NOWAIT)
 			bio->bi_opf |= REQ_NOWAIT;
 
@@ -521,14 +528,30 @@ __blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter, int nr_pages)
 	return ret;
 }
 
+static bool blkdev_atomic_write_valid(struct block_device *bdev, loff_t pos,
+				      struct iov_iter *iter)
+{
+	struct request_queue *q = bdev_get_queue(bdev);
+	unsigned int min_bytes = queue_atomic_write_unit_min_bytes(q);
+	unsigned int max_bytes = queue_atomic_write_unit_max_bytes(q);
+
+	return generic_atomic_write_valid(pos, iter, min_bytes, max_bytes);
+}
+
 static ssize_t
 blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 {
 	int nr_pages;
+	bool is_atomic = iocb->ki_flags & IOCB_ATOMIC;
+	struct block_device *bdev = I_BDEV(iocb->ki_filp->f_mapping->host);
 
 	nr_pages = iov_iter_npages(iter, BIO_MAX_PAGES + 1);
 	if (!nr_pages)
 		return 0;
+
+	if (is_atomic && !blkdev_atomic_write_valid(bdev, iocb->ki_pos, iter))
+		return -EINVAL;
+
 	if (is_sync_kiocb(iocb) && nr_pages <= BIO_MAX_PAGES)
 		return __blkdev_direct_IO_simple(iocb, iter, nr_pages);
 
@@ -1895,6 +1918,7 @@ EXPORT_SYMBOL(blkdev_get_by_dev);
 static int blkdev_open(struct inode * inode, struct file * filp)
 {
 	struct block_device *bdev;
+	int err;
 
 	/*
 	 * Preserve backwards compatibility and allow large file access
@@ -1920,7 +1944,11 @@ static int blkdev_open(struct inode * inode, struct file * filp)
 	filp->f_mapping = bdev->bd_inode->i_mapping;
 	filp->f_wb_err = filemap_sample_wb_err(filp->f_mapping);
 
-	return blkdev_get(bdev, filp->f_mode, filp);
+	err = blkdev_get(bdev, filp->f_mode, filp);
+	if (!err && bdev_can_atomic_write(bdev) && filp->f_flags & O_DIRECT)
+		filp->f_mode |= FMODE_CAN_ATOMIC_WRITE;
+
+	return err;
 }
 
 static void __blkdev_put(struct block_device *bdev, fmode_t mode, int for_part)
