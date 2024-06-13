@@ -346,6 +346,16 @@ struct queue_limits {
 	unsigned int		discard_granularity;
 	unsigned int		discard_alignment;
 
+	/* atomic write limits */
+	unsigned int		atomic_write_hw_max;
+	unsigned int		atomic_write_max_sectors;
+	unsigned int		atomic_write_hw_boundary;
+	unsigned int		atomic_write_hw_unit_min;
+	unsigned int		atomic_write_unit_min;
+	unsigned int		atomic_write_hw_unit_max;
+	unsigned int		atomic_write_unit_max;
+
+
 	unsigned short		max_segments;
 	unsigned short		max_integrity_segments;
 	unsigned short		max_discard_segments;
@@ -1097,6 +1107,9 @@ static inline unsigned int blk_queue_get_max_sectors(struct request *rq)
 	if (unlikely(op == REQ_OP_WRITE_ZEROES))
 		return q->limits.max_write_zeroes_sectors;
 
+	if (rq->cmd_flags & REQ_ATOMIC)
+		return q->limits.atomic_write_max_sectors;
+
 	return q->limits.max_sectors;
 }
 
@@ -1187,6 +1200,14 @@ extern void blk_queue_max_zone_append_sectors(struct request_queue *q,
 extern void blk_queue_physical_block_size(struct request_queue *, unsigned int);
 extern void blk_queue_alignment_offset(struct request_queue *q,
 				       unsigned int alignment);
+void blk_queue_atomic_write_max_bytes(struct request_queue *q,
+				unsigned int bytes);
+void blk_queue_atomic_write_boundary_bytes(struct request_queue *q,
+				unsigned int bytes);
+void blk_queue_atomic_write_unit_max_bytes(struct request_queue *q,
+				unsigned int bytes);
+void blk_queue_atomic_write_unit_min_bytes(struct request_queue *q,
+				unsigned int bytes);
 void blk_queue_update_readahead(struct request_queue *q);
 extern void blk_limits_io_min(struct queue_limits *limits, unsigned int min);
 extern void blk_queue_io_min(struct request_queue *q, unsigned int min);
@@ -1649,6 +1670,30 @@ static inline unsigned int bdev_max_active_zones(struct block_device *bdev)
 	return 0;
 }
 
+static inline unsigned int
+queue_atomic_write_unit_max_bytes(const struct request_queue *q)
+{
+	return q->limits.atomic_write_unit_max;
+}
+
+static inline unsigned int
+queue_atomic_write_unit_min_bytes(const struct request_queue *q)
+{
+	return q->limits.atomic_write_unit_min;
+}
+
+static inline unsigned int
+queue_atomic_write_boundary_bytes(const struct request_queue *q)
+{
+	return q->limits.atomic_write_hw_boundary;
+}
+
+static inline unsigned int
+queue_atomic_write_max_bytes(const struct request_queue *q)
+{
+	return q->limits.atomic_write_max_sectors << SECTOR_SHIFT;
+}
+
 static inline int queue_dma_alignment(const struct request_queue *q)
 {
 	return q ? q->dma_alignment : 511;
@@ -2101,5 +2146,25 @@ int fsync_bdev(struct block_device *bdev);
 
 struct super_block *freeze_bdev(struct block_device *bdev);
 int thaw_bdev(struct block_device *bdev, struct super_block *sb);
+
+static inline bool bdev_can_atomic_write(struct block_device *bdev)
+{
+	struct request_queue *bd_queue = bdev_get_queue(bdev);
+	struct queue_limits *limits = &bd_queue->limits;
+
+	if (!limits->atomic_write_unit_min)
+		return false;
+
+	if (bdev_is_partition(bdev)) {
+		sector_t bd_start_sect = bdev->bd_part->start_sect;
+		unsigned int alignment =
+			max(limits->atomic_write_unit_min,
+			    limits->atomic_write_hw_boundary);
+		if (!IS_ALIGNED(bd_start_sect, alignment))
+			return false;
+	}
+
+	return true;
+}
 
 #endif /* _LINUX_BLKDEV_H */
