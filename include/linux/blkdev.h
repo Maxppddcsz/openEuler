@@ -323,6 +323,17 @@ enum blk_zoned_model {
 	BLK_ZONED_HM,		/* Host-managed zoned block device */
 };
 
+struct queue_atomic_write_limits {
+	/* atomic write limits */
+	unsigned int		atomic_write_hw_max;
+	unsigned int		atomic_write_max_sectors;
+	unsigned int		atomic_write_hw_boundary;
+	unsigned int		atomic_write_hw_unit_min;
+	unsigned int		atomic_write_unit_min;
+	unsigned int		atomic_write_hw_unit_max;
+	unsigned int		atomic_write_unit_max;
+};
+
 struct queue_limits {
 	unsigned long		bounce_pfn;
 	unsigned long		seg_boundary_mask;
@@ -346,16 +357,6 @@ struct queue_limits {
 	unsigned int		discard_granularity;
 	unsigned int		discard_alignment;
 
-	/* atomic write limits */
-	unsigned int		atomic_write_hw_max;
-	unsigned int		atomic_write_max_sectors;
-	unsigned int		atomic_write_hw_boundary;
-	unsigned int		atomic_write_hw_unit_min;
-	unsigned int		atomic_write_unit_min;
-	unsigned int		atomic_write_hw_unit_max;
-	unsigned int		atomic_write_unit_max;
-
-
 	unsigned short		max_segments;
 	unsigned short		max_integrity_segments;
 	unsigned short		max_discard_segments;
@@ -365,7 +366,11 @@ struct queue_limits {
 	unsigned char		raid_partial_stripes_expensive;
 	enum blk_zoned_model	zoned;
 
+#ifndef __GENKSYMS__
+	struct queue_atomic_write_limits *aw_limits;
+#else
 	KABI_RESERVE(1)
+#endif
 };
 
 typedef int (*report_zones_cb)(struct blk_zone *zone, unsigned int idx,
@@ -1108,7 +1113,7 @@ static inline unsigned int blk_queue_get_max_sectors(struct request *rq)
 		return q->limits.max_write_zeroes_sectors;
 
 	if (rq->cmd_flags & REQ_ATOMIC)
-		return q->limits.atomic_write_max_sectors;
+		return q->limits.aw_limits->atomic_write_max_sectors;
 
 	return q->limits.max_sectors;
 }
@@ -1215,6 +1220,7 @@ extern void blk_limits_io_opt(struct queue_limits *limits, unsigned int opt);
 extern void blk_queue_io_opt(struct request_queue *q, unsigned int opt);
 extern void blk_set_queue_depth(struct request_queue *q, unsigned int depth);
 extern void blk_set_default_limits(struct queue_limits *lim);
+extern void blk_set_default_atomic_write_limits(struct queue_limits *lim);
 extern void blk_set_stacking_limits(struct queue_limits *lim);
 extern int blk_stack_limits(struct queue_limits *t, struct queue_limits *b,
 			    sector_t offset);
@@ -1673,25 +1679,25 @@ static inline unsigned int bdev_max_active_zones(struct block_device *bdev)
 static inline unsigned int
 queue_atomic_write_unit_max_bytes(const struct request_queue *q)
 {
-	return q->limits.atomic_write_unit_max;
+	return q->limits.aw_limits->atomic_write_unit_max;
 }
 
 static inline unsigned int
 queue_atomic_write_unit_min_bytes(const struct request_queue *q)
 {
-	return q->limits.atomic_write_unit_min;
+	return q->limits.aw_limits->atomic_write_unit_min;
 }
 
 static inline unsigned int
 queue_atomic_write_boundary_bytes(const struct request_queue *q)
 {
-	return q->limits.atomic_write_hw_boundary;
+	return q->limits.aw_limits->atomic_write_hw_boundary;
 }
 
 static inline unsigned int
 queue_atomic_write_max_bytes(const struct request_queue *q)
 {
-	return q->limits.atomic_write_max_sectors << SECTOR_SHIFT;
+	return q->limits.aw_limits->atomic_write_max_sectors << SECTOR_SHIFT;
 }
 
 static inline int queue_dma_alignment(const struct request_queue *q)
@@ -2152,14 +2158,14 @@ static inline bool bdev_can_atomic_write(struct block_device *bdev)
 	struct request_queue *bd_queue = bdev_get_queue(bdev);
 	struct queue_limits *limits = &bd_queue->limits;
 
-	if (!limits->atomic_write_unit_min)
+	if (!limits->aw_limits->atomic_write_unit_min)
 		return false;
 
 	if (bdev_is_partition(bdev)) {
 		sector_t bd_start_sect = bdev->bd_part->start_sect;
 		unsigned int alignment =
-			max(limits->atomic_write_unit_min,
-			    limits->atomic_write_hw_boundary);
+			max(limits->aw_limits->atomic_write_unit_min,
+			    limits->aw_limits->atomic_write_hw_boundary);
 		if (!IS_ALIGNED(bd_start_sect, alignment))
 			return false;
 	}
