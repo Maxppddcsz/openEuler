@@ -81,6 +81,7 @@ __setup("precise_iostat=", precise_iostat_setup);
  * For queue allocation
  */
 struct kmem_cache *blk_requestq_cachep;
+struct kmem_cache *queue_atomic_write_cachep;
 
 /*
  * Controlling structure to kblockd
@@ -532,6 +533,7 @@ static void blk_timeout_work(struct work_struct *work)
 struct request_queue *blk_alloc_queue(int node_id)
 {
 	struct request_queue *q;
+	struct queue_atomic_write_limits *aw_limits;
 	int ret;
 
 	q = kmem_cache_alloc_node(blk_requestq_cachep,
@@ -539,11 +541,18 @@ struct request_queue *blk_alloc_queue(int node_id)
 	if (!q)
 		return NULL;
 
+	aw_limits = kmem_cache_alloc_node(queue_atomic_write_cachep,
+				GFP_KERNEL | __GFP_ZERO, node_id);
+	if (!aw_limits)
+		goto fail_q;
+
+	q->limits.aw_limits = aw_limits;
+
 	q->last_merge = NULL;
 
 	q->id = ida_simple_get(&blk_queue_ida, 0, 0, GFP_KERNEL);
 	if (q->id < 0)
-		goto fail_q;
+		goto fail_aw;
 
 	ret = bioset_init(&q->bio_split, BIO_POOL_SIZE, 0, BIOSET_NEED_BVECS);
 	if (ret)
@@ -594,6 +603,7 @@ struct request_queue *blk_alloc_queue(int node_id)
 
 	blk_queue_dma_alignment(q, 511);
 	blk_set_default_limits(&q->limits);
+	blk_set_default_atomic_write_limits(&q->limits);
 	q->nr_requests = BLKDEV_MAX_RQ;
 
 	return q;
@@ -608,6 +618,8 @@ fail_split:
 	bioset_exit(&q->bio_split);
 fail_id:
 	ida_simple_remove(&blk_queue_ida, q->id);
+fail_aw:
+	kmem_cache_free(queue_atomic_write_cachep, aw_limits);
 fail_q:
 	kmem_cache_free(blk_requestq_cachep, q);
 	return NULL;
@@ -1923,6 +1935,8 @@ int __init blk_dev_init(void)
 
 	blk_requestq_cachep = kmem_cache_create("request_queue",
 			sizeof(struct request_queue), 0, SLAB_PANIC, NULL);
+	queue_atomic_write_cachep = kmem_cache_create("queue_atomic_write",
+			sizeof(struct queue_atomic_write_limits), 0, SLAB_PANIC, NULL);
 
 	blk_debugfs_root = debugfs_create_dir("block", NULL);
 

@@ -1816,6 +1816,7 @@ void dm_table_set_restrictions(struct dm_table *t, struct request_queue *q,
 	/*
 	 * Copy table's limits to the DM device's request_queue
 	 */
+	limits->aw_limits = q->limits.aw_limits;
 	q->limits = *limits;
 
 	if (dm_table_supports_nowait(t))
