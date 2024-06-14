@@ -540,6 +540,9 @@ struct request_queue {
 	unsigned int		sg_timeout;
 	unsigned int		sg_reserved_size;
 	int			node;
+	/*
+	 * Serializes all debugfs metadata operations using the above dentries.
+	 */
 	struct mutex		debugfs_mutex;
 #ifdef CONFIG_BLK_DEV_IO_TRACE
 	struct blk_trace __rcu	*blk_trace;
@@ -588,7 +591,6 @@ struct request_queue {
 	struct bio_set		bio_split;
 
 	struct dentry		*debugfs_dir;
-
 #ifdef CONFIG_BLK_DEBUG_FS
 	struct dentry		*sched_debugfs_dir;
 	struct dentry		*rqos_debugfs_dir;
@@ -643,10 +645,12 @@ struct request_queue {
 #define QUEUE_FLAG_NOWAIT       29	/* device supports NOWAIT */
 /*at least one blk-mq hctx can't get driver tag */
 #define QUEUE_FLAG_HCTX_WAIT	30
+#define QUEUE_FLAG_DEBUGFS	31	/* supports debugfs */
 
 #define QUEUE_FLAG_MQ_DEFAULT	((1 << QUEUE_FLAG_IO_STAT) |		\
 				 (1 << QUEUE_FLAG_SAME_COMP) |		\
-				 (1 << QUEUE_FLAG_NOWAIT))
+				 (1 << QUEUE_FLAG_NOWAIT) |             \
+				 (1 << QUEUE_FLAG_DEBUGFS))
 
 void blk_queue_flag_set(unsigned int flag, struct request_queue *q);
 void blk_queue_flag_clear(unsigned int flag, struct request_queue *q);
