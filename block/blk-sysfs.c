@@ -619,6 +619,57 @@ QUEUE_RW_ENTRY(queue_iostats, "iostats");
 QUEUE_RW_ENTRY(queue_random, "add_random");
 QUEUE_RW_ENTRY(queue_stable_writes, "stable_writes");
 
+#ifdef CONFIG_BLK_DEBUG_FS
+static ssize_t queue_debugfs_show(struct request_queue *q, char *page)
+{
+	return queue_var_show(test_bit(QUEUE_FLAG_DEBUGFS, &q->queue_flags),
+			      page);
+}
+
+static ssize_t queue_debugfs_store(struct request_queue *q, const char *page,
+				   size_t count)
+{
+	unsigned long val;
+	ssize_t ret;
+	bool enabled;
+	int err;
+
+	if (!queue_is_mq(q))
+		return count;
+
+	if (!blk_queue_registered(q))
+		return -ENODEV;
+
+	ret = queue_var_store(&val, page, count);
+	if (ret < 0)
+		return ret;
+
+	err = blk_queue_enter(q, 0);
+	if (err)
+		return err;
+
+	mutex_lock(&q->debugfs_mutex);
+	enabled = test_bit(QUEUE_FLAG_DEBUGFS, &q->queue_flags);
+	if (!!val == enabled)
+		goto unlock;
+
+	if (val) {
+		blk_queue_flag_set(QUEUE_FLAG_DEBUGFS, q);
+		blk_mq_debugfs_register(q);
+	} else {
+		blk_mq_debugfs_unregister(q);
+		blk_queue_flag_clear(QUEUE_FLAG_DEBUGFS, q);
+	}
+
+unlock:
+	mutex_unlock(&q->debugfs_mutex);
+	blk_queue_exit(q);
+	return ret;
+}
+
+QUEUE_RW_ENTRY(queue_debugfs, "debugfs");
+#endif
+
 static struct attribute *queue_attrs[] = {
 	&queue_requests_entry.attr,
 	&queue_ra_entry.attr,
@@ -661,6 +712,9 @@ static struct attribute *queue_attrs[] = {
 	&queue_io_timeout_entry.attr,
 #ifdef CONFIG_BLK_DEV_THROTTLING_LOW
 	&blk_throtl_sample_time_entry.attr,
+#endif
+#ifdef CONFIG_BLK_DEBUG_FS
+	&queue_debugfs_entry.attr,
 #endif
 	NULL,
 };
@@ -804,13 +858,9 @@ static void blk_release_queue(struct kobject *kobj)
 	if (queue_is_mq(q))
 		blk_mq_release(q);
 
-	blk_trace_shutdown(q);
 	mutex_lock(&q->debugfs_mutex);
-	debugfs_remove_recursive(q->debugfs_dir);
+	blk_trace_shutdown(q);
 	mutex_unlock(&q->debugfs_mutex);
-
-	if (queue_is_mq(q))
-		blk_mq_debugfs_unregister(q);
 
 	bioset_exit(&q->bio_split);
 
@@ -881,17 +931,18 @@ int blk_register_queue(struct gendisk *disk)
 		goto unlock;
 	}
 
+	if (queue_is_mq(q))
+		__blk_mq_register_dev(dev, q);
+	mutex_lock(&q->sysfs_lock);
+
 	mutex_lock(&q->debugfs_mutex);
 	q->debugfs_dir = debugfs_create_dir(kobject_name(q->kobj.parent),
 					    blk_debugfs_root);
+	if (queue_is_mq(q))
+		blk_mq_debugfs_register(q);
+
 	mutex_unlock(&q->debugfs_mutex);
 
-	if (queue_is_mq(q)) {
-		__blk_mq_register_dev(dev, q);
-		blk_mq_debugfs_register(q);
-	}
-
-	mutex_lock(&q->sysfs_lock);
 	if (q->elevator) {
 		ret = elv_register_queue(q, false);
 		if (ret) {
@@ -973,8 +1024,15 @@ void blk_unregister_queue(struct gendisk *disk)
 	/* Now that we've deleted all child objects, we can delete the queue. */
 	kobject_uevent(&q->kobj, KOBJ_REMOVE);
 	kobject_del(&q->kobj);
-
 	mutex_unlock(&q->sysfs_dir_lock);
+
+	mutex_lock(&q->debugfs_mutex);
+	blk_trace_shutdown(q);
+	if (queue_is_mq(q))
+		blk_mq_debugfs_unregister(q);
+	debugfs_remove_recursive(q->debugfs_dir);
+	q->debugfs_dir = NULL;
+	mutex_unlock(&q->debugfs_mutex);
 
 	kobject_put(&disk_to_dev(disk)->kobj);
 }
