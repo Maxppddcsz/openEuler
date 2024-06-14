@@ -209,6 +209,18 @@ config BLK_DEV_DUMPINFO
 	  Dump info when open an write opened block device exclusively
 	  or open an exclusive opened device for write
 
+config BLK_BIO_DISPATCH_ASYNC
+	bool "Dispatch bios asynchronously on specific cpus"
+	default n
+	help
+	If there are multiple nodes, memory access across nodes is rather bad
+	compare to local node. And if some drivers are using internal spin
+	locks, io performance will be bad if bios are issued concurrently from
+	different nodes. This feature will dispatch bio asynchronously to the
+	specific CPUs to avoid across nodes memory access in driver, noted this
+	feature will require special care in the driver to work. If unsure,
+	say N here.
+
 menu "Partition Types"
 
 source "block/partitions/Kconfig"
