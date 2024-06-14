@@ -126,7 +126,12 @@ struct statx {
 	__u64	stx_mnt_id;
 	__u64	__spare2;
 	/* 0xa0 */
-	__u64	__spare3[12];	/* Spare space for future expansion */
+	__u32	stx_atomic_write_unit_min; /* Min atomic write unit in bytes */
+	__u32	stx_atomic_write_unit_max; /* Max atomic write unit in bytes */
+	__u32   stx_atomic_write_segments_max; /* Max atomic write segment count */
+	__u32   __spare3[1];
+	/* 0xb0 */
+	__u64	__spare4[10];	/* Spare space for future expansion */
 	/* 0x100 */
 };
 
@@ -152,6 +157,8 @@ struct statx {
 #define STATX_BASIC_STATS	0x000007ffU	/* The stuff in the normal stat struct */
 #define STATX_BTIME		0x00000800U	/* Want/got stx_btime */
 #define STATX_MNT_ID		0x00001000U	/* Got stx_mnt_id */
+#define STATX_WRITE_ATOMIC	0x00008000U	/* Want/got atomic_write_* fields */
+
 
 #define STATX__RESERVED		0x80000000U	/* Reserved for future struct statx expansion */
 
@@ -187,6 +194,7 @@ struct statx {
 #define STATX_ATTR_MOUNT_ROOT		0x00002000 /* Root of a mount */
 #define STATX_ATTR_VERITY		0x00100000 /* [I] Verity protected file */
 #define STATX_ATTR_DAX			0x00200000 /* File is currently in DAX state */
+#define STATX_ATTR_WRITE_ATOMIC		0x00400000 /* File supports atomic write operations */
 
 
 #endif /* _UAPI_LINUX_STAT_H */
