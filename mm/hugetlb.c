@@ -3360,6 +3360,7 @@ void dhugetlb_pool_put(struct dhugetlb_pool *hpool)
 
 	if (atomic_dec_and_test(&hpool->refcnt)) {
 		css_put(&hpool->attach_memcg->css);
+		synchronize_rcu();
 		kfree(hpool);
 	}
 }
