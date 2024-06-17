@@ -663,6 +663,9 @@ struct request_queue {
 #define QUEUE_FLAG_HCTX_WAIT	30
 /* support to dispatch bio asynchronously */
 #define QUEUE_FLAG_DISPATCH_ASYNC 31
+#ifdef CONFIG_BLK_DEBUG_FS_SWITCH
+#define QUEUE_FLAG_DEBUGFS     32      /* supports debugfs */
+#endif
 
 #define QUEUE_FLAG_MQ_DEFAULT	((1 << QUEUE_FLAG_IO_STAT) |		\
 				 (1 << QUEUE_FLAG_SAME_COMP) |		\

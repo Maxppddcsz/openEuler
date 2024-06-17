@@ -189,6 +189,21 @@ config BLK_DEBUG_FS_ZONED
        bool
        default BLK_DEBUG_FS && BLK_DEV_ZONED
 
+config BLK_DEBUG_FS_SWITCH
+	bool "Disk level switch to enable/disable debugfs dynamically"
+	depends on BLK_DEBUG_FS
+	depends on 64BIT
+	default y
+	help
+	After a disk is created, debugfs inode and dentry will be created
+	together, and the memory used for debugfs can't be freed until disk
+	removal.
+
+	Enabling this will add a disk level switch that can enable/disable
+	debugfs dynamically, so that user can disable debugfs if they care
+	about the memory overhead, in the meantime, debugfs can be enabled
+	again in demand.
+
 config BLK_SED_OPAL
 	bool "Logic for interfacing with Opal enabled SEDs"
 	help

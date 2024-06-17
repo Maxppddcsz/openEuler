@@ -702,6 +702,57 @@ static struct queue_sysfs_entry queue_dispatch_async_cpus_entry = {
 QUEUE_RW_ENTRY(queue_dispatch_async, "dispatch_async");
 #endif
 
+#ifdef CONFIG_BLK_DEBUG_FS_SWITCH
+static ssize_t queue_debugfs_show(struct request_queue *q, char *page)
+{
+	return queue_var_show(test_bit(QUEUE_FLAG_DEBUGFS, &q->queue_flags),
+			      page);
+}
+
+static ssize_t queue_debugfs_store(struct request_queue *q, const char *page,
+				   size_t count)
+{
+	unsigned long val;
+	ssize_t ret;
+	bool enabled;
+	int err;
+
+	if (!queue_is_mq(q))
+		return count;
+
+	if (!blk_queue_registered(q))
+		return -ENODEV;
+
+	ret = queue_var_store(&val, page, count);
+	if (ret < 0)
+		return ret;
+
+	err = blk_queue_enter(q, 0);
+	if (err)
+		return err;
+
+	mutex_lock(&q->debugfs_mutex);
+	enabled = test_bit(QUEUE_FLAG_DEBUGFS, &q->queue_flags);
+	if (!!val == enabled)
+		goto unlock;
+
+	if (val) {
+		blk_queue_flag_set(QUEUE_FLAG_DEBUGFS, q);
+		blk_mq_debugfs_register(q);
+	} else {
+		blk_mq_debugfs_unregister(q);
+		blk_queue_flag_clear(QUEUE_FLAG_DEBUGFS, q);
+	}
+
+unlock:
+	mutex_unlock(&q->debugfs_mutex);
+	blk_queue_exit(q);
+	return ret;
+}
+
+QUEUE_RW_ENTRY(queue_debugfs, "debugfs");
+#endif
+
 static struct attribute *queue_attrs[] = {
 	&queue_requests_entry.attr,
 	&queue_ra_entry.attr,
@@ -752,6 +803,9 @@ static struct attribute *queue_attrs[] = {
 #endif
 #ifdef CONFIG_BLK_DEV_THROTTLING_LOW
 	&blk_throtl_sample_time_entry.attr,
+#endif
+#ifdef CONFIG_BLK_DEBUG_FS_SWITCH
+	&queue_debugfs_entry.attr,
 #endif
 	NULL,
 };

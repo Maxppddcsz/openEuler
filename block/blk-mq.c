@@ -47,6 +47,11 @@
 bool mq_unfair_dtag = true;
 module_param_named(unfair_dtag, mq_unfair_dtag, bool, 0444);
 
+#ifdef CONFIG_BLK_DEBUG_FS_SWITCH
+bool enable_debugfs = true;
+module_param_named(enable_debugfs, enable_debugfs, bool, 0444);
+#endif
+
 static DEFINE_PER_CPU(struct list_head, blk_cpu_done);
 
 static void blk_mq_poll_stats_start(struct request_queue *q);
@@ -3540,6 +3545,10 @@ struct request_queue *blk_mq_init_allocated_queue(struct blk_mq_tag_set *set,
 	q->tag_set = set;
 
 	q->queue_flags |= QUEUE_FLAG_MQ_DEFAULT;
+#ifdef CONFIG_BLK_DEBUG_FS_SWITCH
+	if (enable_debugfs)
+		blk_queue_flag_set(QUEUE_FLAG_DEBUGFS, q);
+#endif
 	if (set->nr_maps > HCTX_TYPE_POLL &&
 	    set->map[HCTX_TYPE_POLL].nr_queues)
 		blk_queue_flag_set(QUEUE_FLAG_POLL, q);
