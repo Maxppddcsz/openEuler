@@ -94,6 +94,9 @@ nhpoly1305-avx2-y := nh-avx2-x86_64.o nhpoly1305-avx2-glue.o
 
 obj-$(CONFIG_CRYPTO_CURVE25519_X86) += curve25519-x86_64.o
 
+obj-$(CONFIG_CRYPTO_ZHAOXIN_GMI_SM2) += zhaoxin-gmi-sm2.o
+zhaoxin-gmi-sm2-y := zhaoxin-gmi-sm2_asm.o zhaoxin-gmi-sm2_glue.o
+
 obj-$(CONFIG_CRYPTO_SM3_AVX_X86_64) += sm3-avx-x86_64.o
 sm3-avx-x86_64-y := sm3-avx-asm_64.o sm3_avx_glue.o
 
