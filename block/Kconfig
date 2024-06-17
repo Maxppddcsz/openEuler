@@ -220,6 +220,17 @@ config BLK_BIO_DISPATCH_ASYNC
 	the pressure on the busy CPUs.
 	If unsure, say N.
 
+config BLK_IO_HUNG_TASK_CHECK
+	bool "Enable io hung task check"
+	default n
+	depends on DETECT_HUNG_TASK
+	help
+	Enabling this lets the block layer detect hungtask for io, noted
+	if this is set, hungtask will complain about slow io even if such
+	io is not hanged. Be careful to enable hungtask panic in this case.
+
+	If unsure, say N.
+
 menu "Partition Types"
 
 source "block/partitions/Kconfig"
