@@ -27,7 +27,7 @@ int __blkdev_issue_discard(struct block_device *bdev, sector_t sector,
 		struct bio **biop)
 {
 	struct request_queue *q = bdev_get_queue(bdev);
-	struct bio *bio = *biop;
+	struct bio *bio = NULL;
 	unsigned int op;
 	sector_t bs_mask, part_offset = 0;
 
@@ -91,6 +91,17 @@ int __blkdev_issue_discard(struct block_device *bdev, sector_t sector,
 		else
 			req_sects = min_t(sector_t, nr_sects,
 					  granularity_aligned_lba - sector_mapped);
+
+		if (!req_sects) {
+			/* just put the bio allocated in this function */
+			if (bio) {
+				bio_io_error(bio);
+				bio_put(bio);
+			}
+			return -EOPNOTSUPP;
+		}
+		if (!bio)
+			bio = *biop;
 
 		WARN_ON_ONCE((req_sects << 9) > UINT_MAX);
 
