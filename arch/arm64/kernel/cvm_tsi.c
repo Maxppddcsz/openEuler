@@ -8,8 +8,6 @@
 #include <asm/cvm_smc.h>
 #include <asm/cvm_tsi.h>
 
-#define GRANULE_SIZE PAGE_SIZE
-
 struct attestation_token {
 	void *buf;
 	unsigned long size;
@@ -20,8 +18,6 @@ static struct attestation_token token;
 static DEFINE_MUTEX(token_lock);
 
 static long tmm_tsi_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
-static ssize_t tmm_token_read(struct file *file, char __user *user_buffer,
-	size_t size, loff_t *offset);
 
 static int tmm_get_tsi_version(struct cvm_tsi_version __user *arg);
 static int tmm_get_attestation_token(struct cvm_attestation_cmd __user *arg);
@@ -29,7 +25,6 @@ static int tmm_get_device_cert(struct cca_device_cert __user *arg);
 
 static const struct file_operations tmm_tsi_fops = {
 	.owner          = THIS_MODULE,
-	.read           = tmm_token_read,
 	.unlocked_ioctl = tmm_tsi_ioctl
 };
 
@@ -97,32 +92,6 @@ static long tmm_tsi_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 	return ret;
 }
 
-static ssize_t tmm_token_read(struct file *file, char __user *user_buffer,
-	size_t size, loff_t *offset)
-{
-	int ret;
-	int to_copy;
-
-	mutex_lock(&token_lock);
-	if (*offset >= token.size) {
-		mutex_unlock(&token_lock);
-		return 0;
-	}
-
-	to_copy = min((int)size, (int)(token.size - *offset));
-	ret = copy_to_user(user_buffer, token.buf + *offset, to_copy);
-	if (ret) {
-		pr_err("tmm_tsi: copy token to user failed (%d)!\n", ret);
-		mutex_unlock(&token_lock);
-		return -1;
-	}
-
-	*offset += to_copy;
-	mutex_unlock(&token_lock);
-	return to_copy;
-}
-
-
 static int tmm_get_tsi_version(struct cvm_tsi_version __user *arg)
 {
 	struct cvm_tsi_version ver_measured = {0};
@@ -150,7 +119,7 @@ static int tmm_get_attestation_token(struct cvm_attestation_cmd __user *arg)
 
 	ret = copy_from_user(challenge, &(arg->challenge), CHALLENGE_SIZE);
 	if (ret) {
-		pr_err("tmm_tsi: copy data from user failed (%lu)!\n", ret);
+		pr_err("tmm_tsi: copy challenge from user failed (%lu)!\n", ret);
 		return -EFAULT;
 	}
 
@@ -192,7 +161,14 @@ static int tmm_get_attestation_token(struct cvm_attestation_cmd __user *arg)
 
 	ret = copy_to_user(&(arg->token_size), &(token.size), sizeof(token.size));
 	if (ret) {
-		pr_err("tmm_tsi: copy data to user failed (%lu)!\n", ret);
+		pr_err("tmm_tsi: copy token_size to user failed (%lu)!\n", ret);
+		mutex_unlock(&token_lock);
+		return -EFAULT;
+	}
+
+	ret = copy_to_user(arg->token, token.buf, token.size);
+	if (ret) {
+		pr_err("tmm_tsi: copy token to user failed (%lu)!\n", ret);
 		mutex_unlock(&token_lock);
 		return -EFAULT;
 	}
