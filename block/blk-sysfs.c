@@ -1121,10 +1121,10 @@ void blk_unregister_queue(struct gendisk *disk)
 
 	mutex_lock(&q->debugfs_mutex);
 	blk_trace_shutdown(q);
+	if (queue_is_mq(q))
+		blk_mq_debugfs_unregister(q);
 	debugfs_remove_recursive(q->debugfs_dir);
 	q->debugfs_dir = NULL;
-	q->sched_debugfs_dir = NULL;
-	q->rqos_debugfs_dir = NULL;
 	mutex_unlock(&q->debugfs_mutex);
 
 	kobject_put(&disk_to_dev(disk)->kobj);
