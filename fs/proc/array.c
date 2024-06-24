@@ -386,16 +386,6 @@ static void task_cpus_allowed(struct seq_file *m, struct task_struct *task)
 		   cpumask_pr_args(&task->cpus_allowed));
 }
 
-#ifdef CONFIG_QOS_SCHED_DYNAMIC_AFFINITY
-static void task_cpus_preferred(struct seq_file *m, struct task_struct *task)
-{
-	seq_printf(m, "Cpus_preferred:\t%*pb\n",
-		   cpumask_pr_args(task->prefer_cpus));
-	seq_printf(m, "Cpus_preferred_list:\t%*pbl\n",
-		   cpumask_pr_args(task->prefer_cpus));
-}
-#endif
-
 static inline void task_core_dumping(struct seq_file *m, struct mm_struct *mm)
 {
 	seq_put_decimal_ull(m, "CoreDumping:\t", !!mm->core_state);

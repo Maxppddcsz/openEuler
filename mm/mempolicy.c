@@ -2179,6 +2179,7 @@ alloc_pages_vma(gfp_t gfp, int order, struct vm_area_struct *vma,
 	if (pol->mode == MPOL_INTERLEAVE) {
 		unsigned nid;
 
+#ifdef CONFIG_QOS_SCHED_SMART_GRID
 		if (smart_grid_used()) {
 			nid = sched_grid_preferred_interleave_nid(pol);
 			nid = (nid == NUMA_NO_NODE) ?
@@ -2186,6 +2187,9 @@ alloc_pages_vma(gfp_t gfp, int order, struct vm_area_struct *vma,
 		} else {
 			nid = interleave_nid(pol, vma, addr, PAGE_SHIFT + order);
 		}
+#else
+		nid = interleave_nid(pol, vma, addr, PAGE_SHIFT + order);
+#endif
 
 		mpol_cond_put(pol);
 		page = alloc_page_interleave(gfp, order, nid);
@@ -2248,8 +2252,10 @@ alloc_pages_vma(gfp_t gfp, int order, struct vm_area_struct *vma,
 
 	nmask = policy_nodemask(gfp, pol);
 	preferred_nid = policy_node(gfp, pol, node);
+#ifdef CONFIG_QOS_SCHED_SMART_GRID
 	if (smart_grid_used())
 		preferred_nid = sched_grid_preferred_nid(preferred_nid, nmask);
+#endif
 	page = __alloc_pages_nodemask(gfp, order, preferred_nid, nmask);
 	mark_vma_cdm(nmask, page, vma);
 	mpol_cond_put(pol);
