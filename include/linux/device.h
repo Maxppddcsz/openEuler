@@ -1078,7 +1078,15 @@ struct device {
 #else
 	KABI_RESERVE(1)
 #endif
+#ifdef CONFIG_SPI_MASTER
+	/*
+	 * Reserved for struct spi_controller.
+	 * Used to avoid adding the same CS twice.
+	 */
+	KABI_USE(2, struct mutex *add_lock)
+#else
 	KABI_RESERVE(2)
+#endif
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
 	KABI_RESERVE(5)
