@@ -21,4 +21,10 @@ static inline const struct dma_map_ops *get_arch_dma_ops(struct bus_type *bus)
 	return dma_ops;
 }
 
+#ifdef CONFIG_INTEL_IOMMU
+
+bool is_zhaoxin_kh40000(void);
+
+#endif
+
 #endif
