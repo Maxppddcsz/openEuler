@@ -477,6 +477,7 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
 	submit = submit_create(dev, gpu, queue, args->nr_bos, args->nr_cmds);
 	if (!submit) {
 		ret = -ENOMEM;
+		submit = NULL;
 		goto out_unlock;
 	}
 
