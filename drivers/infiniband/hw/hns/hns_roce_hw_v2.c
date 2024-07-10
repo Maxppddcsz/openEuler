@@ -6479,6 +6479,7 @@ static struct hns_roce_ceqe *next_ceqe_sw_v2(struct hns_roce_eq *eq)
 static irqreturn_t hns_roce_v2_ceq_int(struct hns_roce_eq *eq)
 {
 	tasklet_schedule(&eq->tasklet);
+	queue_work(system_bh_wq, &eq->work);
 
 	return IRQ_HANDLED;
 }
@@ -6887,6 +6888,34 @@ static void hns_roce_ceq_task(struct tasklet_struct *task)
 	update_eq_db(eq);
 }
 
+
+static void hns_roce_ceq_work(struct work_struct *work)
+{
+	struct hns_roce_eq *eq = from_work(eq, work, work);
+	struct hns_roce_ceqe *ceqe = next_ceqe_sw_v2(eq);
+	struct hns_roce_dev *hr_dev = eq->hr_dev;
+	int ceqe_num = 0;
+	u32 cqn;
+
+	while (ceqe && ceqe_num < hr_dev->caps.ceqe_depth) {
+		/* Make sure we read CEQ entry after we have checked the
+		 * ownership bit
+		 */
+		dma_rmb();
+
+		cqn = hr_reg_read(ceqe, CEQE_CQN);
+
+		hns_roce_cq_completion(hr_dev, cqn);
+
+		++eq->cons_index;
+		++ceqe_num;
+		atomic64_inc(&hr_dev->dfx_cnt[HNS_ROCE_DFX_CEQE_CNT]);
+		ceqe = next_ceqe_sw_v2(eq);
+	}
+
+	update_eq_db(eq);
+}
+
 static int __hns_roce_request_irq(struct hns_roce_dev *hr_dev, int irq_num,
 				  int comp_num, int aeq_num, int other_num)
 {
@@ -6923,6 +6952,8 @@ static int __hns_roce_request_irq(struct hns_roce_dev *hr_dev, int irq_num,
 					  hns_roce_v2_msix_interrupt_abn,
 					  0, hr_dev->irq_names[j], hr_dev);
 		} else if (j < (other_num + comp_num)) {
+			INIT_WORK(&eq_table->eq[j - other_num].work,
+					hns_roce_ceq_work);
 			tasklet_setup(&eq_table->eq[j - other_num].tasklet,
 				      hns_roce_ceq_task);
 			ret = request_irq(eq_table->eq[j - other_num].irq,
@@ -6945,14 +6976,15 @@ static int __hns_roce_request_irq(struct hns_roce_dev *hr_dev, int irq_num,
 	return 0;
 
 err_request_failed:
-	for (j -= 1; j >= 0; j--)
+	for (j -= 1; j >= 0; j--) {
 		if (j < other_num) {
 			free_irq(hr_dev->irq[j], hr_dev);
-		} else {
-			free_irq(eq_table->eq[j - other_num].irq,
-				 &eq_table->eq[j - other_num]);
-			tasklet_kill(&eq_table->eq[j - other_num].tasklet);
+			continue;
 		}
+		free_irq(eq_table->eq[j - other_num].irq,
+			 &eq_table->eq[j - other_num]);
+		tasklet_kill(&eq_table->eq[j - other_num].tasklet);
+	}
 
 err_kzalloc_failed:
 	for (i -= 1; i >= 0; i--)
@@ -6975,8 +7007,10 @@ static void __hns_roce_free_irq(struct hns_roce_dev *hr_dev)
 
 	for (i = 0; i < eq_num; i++) {
 		free_irq(hr_dev->eq_table.eq[i].irq, &hr_dev->eq_table.eq[i]);
-		if (i < hr_dev->caps.num_comp_vectors)
+		if (i < hr_dev->caps.num_comp_vectors) {
 			tasklet_kill(&hr_dev->eq_table.eq[i].tasklet);
+			cancel_work_sync(&hr_dev->eq_table.eq[i].work);
+		}
 	}
 
 	for (i = 0; i < irq_num; i++)
