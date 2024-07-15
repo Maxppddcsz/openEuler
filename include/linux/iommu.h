@@ -635,7 +635,9 @@ struct iommu_ops {
 	struct iommu_domain *blocked_domain;
 	struct iommu_domain *default_domain;
 
-	KABI_RESERVE(1)
+#ifdef CONFIG_CVM_HOST
+	int (*iommu_enable_secure)(struct iommu_domain *domain);
+#endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
