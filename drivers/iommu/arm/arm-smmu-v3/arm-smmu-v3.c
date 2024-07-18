@@ -3319,6 +3319,9 @@ static struct iommu_ops arm_smmu_ops = {
 #endif
 		.free			= arm_smmu_domain_free,
 	}
+#ifdef CONFIG_CVM_HOST
+	.iommu_enable_secure = NULL,
+#endif
 };
 
 /* Probing and initialisation functions */
