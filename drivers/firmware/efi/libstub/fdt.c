@@ -44,6 +44,7 @@ static efi_status_t fdt_init_hbm_mode(void *fdt, int node)
 	if (!efi_pbha)
 		goto out;
 
+	size = sizeof(hbm_mode);
 	efi_status = get_efi_var(L"HBMMode", &oem_config_guid, NULL, &size,
 				 &hbm_mode);
 	if (efi_status != EFI_SUCCESS)
@@ -52,17 +53,16 @@ static efi_status_t fdt_init_hbm_mode(void *fdt, int node)
 	if (hbm_mode != HBM_MODE_CACHE)
 		goto out;
 
+	node = fdt_subnode_offset(fdt, 0, "chosen");
+	if (node < 0) {
+		efi_err("find sub node chosen failed. node: %d\n", node);
+		return EFI_LOAD_ERROR
+	}
+
 	fdt_val32 = 1;
 	status = fdt_setprop_var(fdt, node, "linux,pbha-bit0", fdt_val32);
 	if (status)
 		return EFI_LOAD_ERROR;
-
-	node = fdt_subnode_offset(fdt, 0, "cpus");
-	if (node < 0) {
-		node = fdt_add_subnode(fdt, 0, "cpus");
-		if (node < 0)
-			return EFI_LOAD_ERROR;
-	}
 
 	/* Current PBHA bit59 is need to enable PBHA bit0 mode. */
 	status = fdt_setprop_var(fdt, node, "arm,pbha-performance-only", arr);

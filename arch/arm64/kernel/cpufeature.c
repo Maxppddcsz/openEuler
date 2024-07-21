@@ -1802,7 +1802,7 @@ void __init early_pbha_init(void)
 	if (!fdt)
 		goto unlock;
 
-	node = fdt_path_offset(fdt, "/cpus");
+	node = fdt_path_offset(fdt, "/chosen");
 	if (node < 0)
 		goto unlock;
 
