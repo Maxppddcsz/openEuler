@@ -33,6 +33,9 @@
 
 #include "trace.h"
 
+static int set_id_reg(struct kvm_vcpu *vcpu, const struct sys_reg_desc *rd,
+			const struct kvm_one_reg *reg, void __user *uaddr);
+
 /*
  * All of this file is extremely similar to the ARM coproc.c, but the
  * types are different. My gut feeling is that it should be pretty
@@ -335,6 +338,432 @@ static bool trap_raz_wi(struct kvm_vcpu *vcpu,
 		return read_zero(vcpu, p);
 }
 
+#ifdef CONFIG_ARCH_PHYTIUM
+struct id_reg_info_ft {
+	/* reg name for debug */
+	const char *name;
+
+	/* Register ID */
+	u32 sys_reg;
+
+	/*
+	 * Limit value of the register for a vcpu. The value is the sanitized
+	 * system value with bits set/cleared for unsupported features for the
+	 * guest.
+	 */
+	u64 vcpu_limit_val;
+
+	/* Fields that are not validated by arm64_check_features_kvm. */
+	u64 ignore_mask;
+
+	/* An optional initialization function of the id_reg_info_ft */
+	void (*init)(struct id_reg_info_ft *id_reg);
+
+	/*
+	 * This is an optional ID register specific validation function. When
+	 * userspace tries to set the ID register, arm64_check_features_kvm()
+	 * will check if the requested value indicates any features that cannot
+	 * be supported by KVM on the host.  But, some ID register fields need
+	 * a special checking, and this function can be used for such fields.
+	 * e.g. When SVE is configured for a vCPU by KVM_ARM_VCPU_INIT,
+	 * ID_AA64PFR0_EL1.SVE shouldn't be set to 0 for the vCPU.
+	 * The validation function for ID_AA64PFR0_EL1 could be used to check
+	 * the field is consistent with SVE configuration.
+	 */
+	int (*validate)(const struct kvm_vcpu *vcpu, const struct id_reg_info_ft *id_reg,
+			u64 val);
+
+	/*
+	 * Return a bitmask of the vCPU's ID register fields that are not
+	 * synced with saved (per VM) ID register value, which usually
+	 * indicates opt-in CPU features that are not configured for the vCPU.
+	 * ID registers are saved per VM, but some opt-in CPU features can
+	 * be configured per vCPU.  The saved (per VM) values for such
+	 * features are for vCPUs with the features (and zero for
+	 * vCPUs without the features).
+	 * Return value of this function is used to handle such fields
+	 * for per vCPU ID register read/write request with saved per VM
+	 * ID register.  See the __write_id_reg's comment for more detail.
+	 */
+	u64 (*vcpu_mask)(const struct kvm_vcpu *vcpu,
+			const struct id_reg_info_ft *id_reg);
+};
+
+static void id_reg_info_init(struct id_reg_info_ft *id_reg)
+{
+	u64 val = read_sanitised_ftr_reg(id_reg->sys_reg);
+
+	id_reg->vcpu_limit_val = val;
+	if (id_reg->init)
+		id_reg->init(id_reg);
+
+	/*
+	 * id_reg->init() might update id_reg->vcpu_limit_val.
+	 * Make sure that id_reg->vcpu_limit_val, which will be the default
+	 * register value for guests, is a safe value to use for guests
+	 * on the host.
+	 */
+	WARN_ON_ONCE(arm64_check_features_kvm(id_reg->sys_reg,
+				id_reg->vcpu_limit_val, val));
+}
+
+static int validate_id(const struct kvm_vcpu *vcpu,
+		const struct id_reg_info_ft *id_reg, u64 val)
+{
+	return 0;
+}
+
+static struct id_reg_info_ft id_pfr0_el1_info = {
+	.name = "SYS_ID_PFR0_EL1",
+	.sys_reg = SYS_ID_PFR0_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_pfr1_el1_info = {
+	.name = "SYS_ID_PFR1_EL1",
+	.sys_reg = SYS_ID_PFR1_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_pfr2_el1_info = {
+	.name = "SYS_ID_PFR2_EL1",
+	.sys_reg = SYS_ID_PFR2_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_dfr0_el1_info = {
+	.name = "SYS_ID_DFR0_EL1",
+	.sys_reg = SYS_ID_DFR0_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_mmfr0_el1_info = {
+	.name = "SYS_ID_MMFR0_EL1",
+	.sys_reg = SYS_ID_MMFR0_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_mmfr1_el1_info = {
+	.name = "SYS_ID_MMFR1_EL1",
+	.sys_reg = SYS_ID_MMFR1_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_mmfr2_el1_info = {
+	.name = "SYS_ID_MMFR2_EL1",
+	.sys_reg = SYS_ID_MMFR2_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_mmfr3_el1_info = {
+	.name = "SYS_ID_MMFR3_EL1",
+	.sys_reg = SYS_ID_MMFR3_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_mmfr4_el1_info = {
+	.name = "SYS_ID_MMFR4_EL1",
+	.sys_reg = SYS_ID_MMFR4_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_isar0_el1_info = {
+	.name = "SYS_ID_ISAR0_EL1",
+	.sys_reg = SYS_ID_ISAR0_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_isar1_el1_info = {
+	.name = "SYS_ID_ISAR1_EL1",
+	.sys_reg = SYS_ID_ISAR1_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_isar2_el1_info = {
+	.name = "SYS_ID_ISAR2_EL1",
+	.sys_reg = SYS_ID_ISAR2_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_isar3_el1_info = {
+	.name = "SYS_ID_ISAR3_EL1",
+	.sys_reg = SYS_ID_ISAR3_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_isar4_el1_info = {
+	.name = "SYS_ID_ISAR4_EL1",
+	.sys_reg = SYS_ID_ISAR4_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_isar5_el1_info = {
+	.name = "SYS_ID_ISAR5_EL1",
+	.sys_reg = SYS_ID_ISAR5_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_isar6_el1_info = {
+	.name = "SYS_ID_ISAR6_EL1",
+	.sys_reg = SYS_ID_ISAR6_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_mvfr0_el1_info = {
+	.name = "SYS_MVFR0_EL1",
+	.sys_reg = SYS_MVFR0_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_mvfr1_el1_info = {
+	.name = "SYS_MVFR1_EL1",
+	.sys_reg = SYS_MVFR1_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_mvfr2_el1_info = {
+	.name = "SYS_MVFR2_EL1",
+	.sys_reg = SYS_MVFR2_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_aa64pfr0_el1_info = {
+	.name = "SYS_ID_AA64PFR0_EL1",
+	.sys_reg = SYS_ID_AA64PFR0_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_aa64pfr1_el1_info = {
+	.name = "SYS_ID_AA64PFR1_EL1",
+	.sys_reg = SYS_ID_AA64PFR1_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_aa64dfr0_el1_info = {
+	.name = "SYS_ID_AA64DFR0_EL1",
+	.sys_reg = SYS_ID_AA64DFR0_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_aa64isar0_el1_info = {
+	.name = "SYS_ID_AA64ISAR0_EL1",
+	.sys_reg = SYS_ID_AA64ISAR0_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_aa64isar1_el1_info = {
+	.name = "SYS_ID_AA64ISAR1_EL1",
+	.sys_reg = SYS_ID_AA64ISAR1_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_aa64mmfr0_el1_info = {
+	.name = "SYS_ID_AA64MMFR0_EL1",
+	.sys_reg = SYS_ID_AA64MMFR0_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_aa64mmfr1_el1_info = {
+	.name = "SYS_ID_AA64MMFR1_EL1",
+	.sys_reg = SYS_ID_AA64MMFR1_EL1,
+	.validate = validate_id,
+};
+
+static struct id_reg_info_ft id_aa64mmfr2_el1_info = {
+	.name = "SYS_ID_AA64MMFR2_EL1",
+	.sys_reg = SYS_ID_AA64MMFR2_EL1,
+	.validate = validate_id,
+};
+
+/*
+ * An ID register that needs special handling to control the value for the
+ * guest must have its own id_reg_info_ft in id_reg_info_table.
+ * (i.e. the reset value is different from the host's sanitized value,
+ * the value is affected by opt-in features, some fields need specific
+ * validation, etc.)
+ */
+#define    GET_ID_REG_INFO(id) (id_reg_info_table[IDREG_IDX(id)])
+
+static struct id_reg_info_ft *id_reg_info_table[KVM_ARM_ID_REG_NUM] = {
+	[IDREG_IDX(SYS_ID_PFR0_EL1)] = &id_pfr0_el1_info,
+	[IDREG_IDX(SYS_ID_PFR1_EL1)] = &id_pfr1_el1_info,
+	[IDREG_IDX(SYS_ID_PFR2_EL1)] = &id_pfr2_el1_info,
+	[IDREG_IDX(SYS_ID_DFR0_EL1)] = &id_dfr0_el1_info,
+	[IDREG_IDX(SYS_ID_MMFR0_EL1)] = &id_mmfr0_el1_info,
+	[IDREG_IDX(SYS_ID_MMFR1_EL1)] = &id_mmfr1_el1_info,
+	[IDREG_IDX(SYS_ID_MMFR2_EL1)] = &id_mmfr2_el1_info,
+	[IDREG_IDX(SYS_ID_MMFR3_EL1)] = &id_mmfr3_el1_info,
+	[IDREG_IDX(SYS_ID_MMFR4_EL1)] = &id_mmfr4_el1_info,
+	[IDREG_IDX(SYS_ID_ISAR0_EL1)] = &id_isar0_el1_info,
+	[IDREG_IDX(SYS_ID_ISAR1_EL1)] = &id_isar1_el1_info,
+	[IDREG_IDX(SYS_ID_ISAR2_EL1)] = &id_isar2_el1_info,
+	[IDREG_IDX(SYS_ID_ISAR3_EL1)] = &id_isar3_el1_info,
+	[IDREG_IDX(SYS_ID_ISAR4_EL1)] = &id_isar4_el1_info,
+	[IDREG_IDX(SYS_ID_ISAR5_EL1)] = &id_isar5_el1_info,
+	[IDREG_IDX(SYS_ID_ISAR6_EL1)] = &id_isar6_el1_info,
+	[IDREG_IDX(SYS_MVFR0_EL1)] = &id_mvfr0_el1_info,
+	[IDREG_IDX(SYS_MVFR1_EL1)] = &id_mvfr1_el1_info,
+	[IDREG_IDX(SYS_MVFR2_EL1)] = &id_mvfr2_el1_info,
+	[IDREG_IDX(SYS_ID_AA64PFR0_EL1)] = &id_aa64pfr0_el1_info,
+	[IDREG_IDX(SYS_ID_AA64PFR1_EL1)] = &id_aa64pfr1_el1_info,
+	[IDREG_IDX(SYS_ID_AA64DFR0_EL1)] = &id_aa64dfr0_el1_info,
+	[IDREG_IDX(SYS_ID_AA64ISAR0_EL1)] = &id_aa64isar0_el1_info,
+	[IDREG_IDX(SYS_ID_AA64ISAR1_EL1)] = &id_aa64isar1_el1_info,
+	[IDREG_IDX(SYS_ID_AA64MMFR0_EL1)] = &id_aa64mmfr0_el1_info,
+	[IDREG_IDX(SYS_ID_AA64MMFR1_EL1)] = &id_aa64mmfr1_el1_info,
+	[IDREG_IDX(SYS_ID_AA64MMFR2_EL1)] = &id_aa64mmfr2_el1_info,
+};
+
+static int validate_id_reg(const struct kvm_vcpu *vcpu, u32 id, u64 val)
+{
+	const struct id_reg_info_ft *id_reg = GET_ID_REG_INFO(id);
+	u64 limit, tmp_val;
+	int err;
+
+	if (id_reg) {
+		limit = id_reg->vcpu_limit_val;
+		/*
+		 * Replace the fields that are indicated in ignore_mask with
+		 * the value in the limit to not have arm64_check_features_kvm()
+		 * check the field in @val.
+		 */
+		tmp_val = val & ~id_reg->ignore_mask;
+		tmp_val |= (limit & id_reg->ignore_mask);
+	} else {
+		limit = read_sanitised_ftr_reg(id);
+		tmp_val = val;
+	}
+
+	/* Check if the value indicates any feature that is not in the limit. */
+	err = arm64_check_features_kvm(id, tmp_val, limit);
+	if (err)
+		return err;
+
+	if (id_reg && id_reg->validate)
+		/* Run the ID register specific validity check. */
+		err = id_reg->validate(vcpu, id_reg, val);
+
+	return err;
+}
+
+static bool is_id_reg(u32 id)
+{
+	return (sys_reg_Op0(id) == 3 && sys_reg_Op1(id) == 0 &&
+		sys_reg_CRn(id) == 0 && sys_reg_CRm(id) >= 0 &&
+		sys_reg_CRm(id) < 8);
+}
+
+static u64 read_kvm_id_reg(struct kvm *kvm, u32 id)
+{
+	return kvm->arch.id_regs[IDREG_IDX(id)];
+}
+
+static int __modify_kvm_id_reg(struct kvm *kvm, u32 id, u64 val,
+		u64 preserve_mask)
+{
+	u64 old, new;
+
+	lockdep_assert_held(&kvm->lock);
+
+	old = kvm->arch.id_regs[IDREG_IDX(id)];
+
+	/* Preserve the value at the bit position set in preserve_mask */
+	new = old & preserve_mask;
+	new |= (val & ~preserve_mask);
+
+	/* Don't allow to modify ID register value after KVM_RUN on any vCPUs */
+	if (kvm->arch.ran_once && new != old)
+		return -EBUSY;
+
+	WRITE_ONCE(kvm->arch.id_regs[IDREG_IDX(id)], new);
+
+	return 0;
+}
+
+static int modify_kvm_id_reg(struct kvm *kvm, u32 id, u64 val,
+		u64 preserve_mask)
+{
+	int ret;
+
+	mutex_lock(&kvm->lock);
+	ret = __modify_kvm_id_reg(kvm, id, val, preserve_mask);
+	mutex_unlock(&kvm->lock);
+
+	return ret;
+}
+
+static int write_kvm_id_reg(struct kvm *kvm, u32 id, u64 val)
+{
+	return modify_kvm_id_reg(kvm, id, val, 0);
+}
+
+/*
+ * KVM basically forces all vCPUs of the guest to have a uniform value for
+ * each ID register (it means KVM_SET_ONE_REG for a vCPU affects all
+ * the vCPUs of the guest), and the id_regs[] of kvm_arch holds values
+ * of ID registers for the guest.  However, there is an exception for
+ * ID register fields corresponding to CPU features that can be
+ * configured per vCPU by KVM_ARM_VCPU_INIT, or etc (e.g. PMUv3, SVE, etc).
+ * For such fields, all vCPUs that have the feature will have a non-zero
+ * uniform value, which can be updated by userspace, but the vCPUs that
+ * don't have the feature will have zero for the fields.
+ * Values that @id_regs holds are for vCPUs that have such features.  So,
+ * to get the ID register value for a vCPU that doesn't have those features,
+ * the corresponding fields in id_regs[] needs to be cleared.
+ * A bitmask of the fields are provided by id_reg_info_ft's vcpu_mask(), and
+ * __write_id_reg() and __read_id_reg() take care of those fields using
+ * the bitmask.
+ */
+static int __write_id_reg(const struct kvm_vcpu *vcpu, u32 id, u64 val)
+{
+	const struct id_reg_info_ft *id_reg = GET_ID_REG_INFO(id);
+	u64 mask = 0;
+
+	if (id_reg && id_reg->vcpu_mask)
+		mask = id_reg->vcpu_mask(vcpu, id_reg);
+
+   /*
+    * Update the ID register for the guest with @val, except for fields
+    * that are set in the mask, which indicates fields for opt-in
+    * features that are not configured for the vCPU.
+    */
+	return modify_kvm_id_reg(vcpu->kvm, id, val, mask);
+}
+
+static void id_reg_info_init_all(void)
+{
+	int i;
+	struct id_reg_info_ft *id_reg;
+
+	for (i = 0; i < ARRAY_SIZE(id_reg_info_table); i++) {
+		id_reg = (struct id_reg_info_ft *)id_reg_info_table[i];
+		if (!id_reg)
+			continue;
+
+		id_reg_info_init(id_reg);
+	}
+}
+
+/*
+ * Check if the given id indicates AArch32 ID register encoding.
+ */
+static bool is_aarch32_id_reg(u32 id)
+{
+	u32 crm, op2;
+
+	if (!is_id_reg(id))
+		return false;
+
+	crm = sys_reg_CRm(id);
+	op2 = sys_reg_Op2(id);
+	if (crm == 1 || crm == 2 || (crm == 3 && (op2 != 3 && op2 != 7)))
+		/* AArch32 ID register */
+		return true;
+
+	return false;
+}
+#endif /* CONFIG_ARCH_PHYTIUM */
+
 /*
  * ARMv8.1 mandates at least a trivial LORegion implementation, where all the
  * RW registers are RES0 (which we can implement as RAZ/WI). On an ARMv8.0
@@ -345,10 +774,14 @@ static bool trap_loregion(struct kvm_vcpu *vcpu,
 			  struct sys_reg_params *p,
 			  const struct sys_reg_desc *r)
 {
-	u64 val = read_sanitised_ftr_reg(SYS_ID_AA64MMFR1_EL1);
+	u64 val;
 	u32 sr = sys_reg((u32)r->Op0, (u32)r->Op1,
 			 (u32)r->CRn, (u32)r->CRm, (u32)r->Op2);
 
+	if (read_cpuid_implementor() == ARM_CPU_IMP_PHYTIUM)
+		val = read_kvm_id_reg(vcpu->kvm, SYS_ID_AA64MMFR1_EL1);
+	else
+		val = read_sanitised_ftr_reg(SYS_ID_AA64MMFR1_EL1);
 	if (!(val & (0xfUL << ID_AA64MMFR1_LOR_SHIFT))) {
 		kvm_inject_undefined(vcpu);
 		return false;
@@ -1153,6 +1586,15 @@ static u64 read_id_reg(struct kvm_vcpu *vcpu,
 			 (u32)r->CRn, (u32)r->CRm, (u32)r->Op2);
 	u64 val = raz ? 0 : kvm_get_id_reg(vcpu, id);
 
+	if (read_cpuid_implementor() == ARM_CPU_IMP_PHYTIUM) {
+		const struct id_reg_info_ft *id_reg = GET_ID_REG_INFO(id);
+
+		val = read_kvm_id_reg(vcpu->kvm, id);
+		if (id_reg && id_reg->vcpu_mask)
+			/* Clear fields for opt-in features that are not configured. */
+			val &= ~(id_reg->vcpu_mask(vcpu, id_reg));
+	}
+
 	if (id == SYS_ID_AA64PFR0_EL1) {
 		if (!vcpu_has_sve(vcpu))
 			val &= ~(0xfUL << ID_AA64PFR0_SVE_SHIFT);
@@ -1246,8 +1688,8 @@ static unsigned int sve_visibility(const struct kvm_vcpu *vcpu,
 }
 
 static int set_id_aa64pfr0_el1(struct kvm_vcpu *vcpu,
-			       const struct sys_reg_desc *rd,
-			       const struct kvm_one_reg *reg, void __user *uaddr)
+				   const struct sys_reg_desc *rd,
+				   const struct kvm_one_reg *reg, void __user *uaddr)
 {
 	const u64 id = sys_reg_to_index(rd);
 	int err;
@@ -1255,6 +1697,9 @@ static int set_id_aa64pfr0_el1(struct kvm_vcpu *vcpu,
 	u8 csv2;
 	u32 reg_id = sys_reg((u32)rd->Op0, (u32)rd->Op1, (u32)rd->CRn,
 			     (u32)rd->CRm, (u32)rd->Op2);
+
+	if (read_cpuid_implementor() == ARM_CPU_IMP_PHYTIUM)
+		return set_id_reg(vcpu, rd, reg, uaddr);
 
 	err = reg_from_user(&val, uaddr, id);
 	if (err)
@@ -1300,6 +1745,47 @@ static int __set_id_reg(struct kvm_vcpu *vcpu,
 	err = reg_from_user(&val, uaddr, id);
 	if (err)
 		return err;
+
+	if (read_cpuid_implementor() == ARM_CPU_IMP_PHYTIUM) {
+		u8 csv2;
+		u32 encoding = reg_to_encoding(rd);
+
+		if (val == read_id_reg(vcpu, rd, raz))
+			/* The value is same as the current value. Nothing to do. */
+			return 0;
+
+		/*
+		 * Don't allow to modify the register's value if the register is raz,
+		 * or the reg doesn't have the id_reg_info.
+		 */
+		if (raz || !GET_ID_REG_INFO(encoding))
+			return -EINVAL;
+
+		/*
+		 * Skip the validation of AArch32 ID registers if the system doesn't
+		 * 32bit EL0 (their value are UNKNOWN).
+		 */
+		if (system_supports_32bit_el0() || !is_aarch32_id_reg(encoding)) {
+			err = validate_id_reg(vcpu, encoding, val);
+			if (err)
+				return err;
+		}
+
+		/*
+		 * Allow AA64PFR0_EL1.CSV2 to be set from userspace as long as
+		 * it doesn't promise more than what is actually provided (the
+		 * guest could otherwise be covered in ectoplasmic residue).
+		 */
+		if (encoding == SYS_ID_AA64PFR0_EL1) {
+			csv2 = cpuid_feature_extract_unsigned_field(val, ID_AA64PFR0_CSV2_SHIFT);
+			if (csv2 > 1 ||
+				(csv2 && arm64_get_spectre_v2_state() != SPECTRE_UNAFFECTED))
+				return -EINVAL;
+			vcpu->kvm->arch.pfr0_csv2 = csv2;
+		}
+
+		return __write_id_reg(vcpu, encoding, val);
+	}
 
 	if (raz) {
 		if (val != read_id_reg(vcpu, rd, raz))
@@ -1530,7 +2016,7 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	/* AArch64 ID registers */
 	/* CRm=4 */
 	{ SYS_DESC(SYS_ID_AA64PFR0_EL1), .access = access_id_reg,
-	  .get_user = get_id_reg, .set_user = set_id_aa64pfr0_el1, },
+	.get_user = get_id_reg, .set_user = set_id_aa64pfr0_el1, },
 	ID_SANITISED(ID_AA64PFR1_EL1),
 	ID_UNALLOCATED(4,2),
 	ID_UNALLOCATED(4,3),
@@ -1834,10 +2320,18 @@ static bool trap_dbgidr(struct kvm_vcpu *vcpu,
 	if (p->is_write) {
 		return ignore_write(vcpu, p);
 	} else {
-		u64 dfr = read_sanitised_ftr_reg(SYS_ID_AA64DFR0_EL1);
-		u64 pfr = read_sanitised_ftr_reg(SYS_ID_AA64PFR0_EL1);
-		u32 el3 = !!cpuid_feature_extract_unsigned_field(pfr, ID_AA64PFR0_EL3_SHIFT);
+		u64 dfr, pfr;
+		u32 el3;
 
+		if (read_cpuid_implementor() == ARM_CPU_IMP_PHYTIUM) {
+			dfr = read_kvm_id_reg(vcpu->kvm, SYS_ID_AA64DFR0_EL1);
+			pfr = read_kvm_id_reg(vcpu->kvm, SYS_ID_AA64PFR0_EL1);
+			el3 = !!cpuid_feature_extract_unsigned_field(pfr, ID_AA64PFR0_EL3_SHIFT);
+		} else {
+			dfr = read_sanitised_ftr_reg(SYS_ID_AA64DFR0_EL1);
+			pfr = read_sanitised_ftr_reg(SYS_ID_AA64DFR0_EL1);
+			el3 = !!cpuid_feature_extract_unsigned_field(pfr, ID_AA64PFR0_EL3_SHIFT);
+		}
 		p->regval = ((((dfr >> ID_AA64DFR0_WRPS_SHIFT) & 0xf) << 28) |
 			     (((dfr >> ID_AA64DFR0_BRPS_SHIFT) & 0xf) << 24) |
 			     (((dfr >> ID_AA64DFR0_CTX_CMPS_SHIFT) & 0xf) << 20)
@@ -2873,6 +3367,7 @@ int kvm_arm_copy_sys_reg_indices(struct kvm_vcpu *vcpu, u64 __user *uindices)
 	return write_demux_regids(uindices);
 }
 
+
 void kvm_sys_reg_table_init(void)
 {
 	unsigned int i;
@@ -2907,4 +3402,38 @@ void kvm_sys_reg_table_init(void)
 			break;
 	/* Clear all higher bits. */
 	cache_levels &= (1 << (i*3))-1;
+
+	if (read_cpuid_implementor() == ARM_CPU_IMP_PHYTIUM)
+		id_reg_info_init_all();
 }
+
+#ifdef CONFIG_ARCH_PHYTIUM
+/*
+ * Set the guest's ID registers that are defined in sys_reg_descs[]
+ * with ID_SANITISED() to the host's sanitized value.
+ */
+void set_default_id_regs(struct kvm *kvm)
+{
+	int i;
+	u32 id;
+	const struct sys_reg_desc *rd;
+	u64 val;
+	struct id_reg_info_ft *idr;
+
+	for (i = 0; i < ARRAY_SIZE(sys_reg_descs); i++) {
+		rd = &sys_reg_descs[i];
+		if (rd->access != access_id_reg)
+			/* Not ID register or hidden/reserved ID register */
+			continue;
+
+		id = reg_to_encoding(rd);
+		if (WARN_ON_ONCE(!is_id_reg(id)))
+			/* Shouldn't happen */
+			continue;
+
+		idr = GET_ID_REG_INFO(id);
+		val = idr ? idr->vcpu_limit_val : read_sanitised_ftr_reg(id);
+		WARN_ON_ONCE(write_kvm_id_reg(kvm, id, val));
+	}
+}
+#endif

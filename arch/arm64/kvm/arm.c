@@ -201,6 +201,9 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 	}
 #endif
 
+	if (read_cpuid_implementor() == ARM_CPU_IMP_PHYTIUM)
+		set_default_id_regs(kvm);
+
 	return ret;
 out_free_stage2_pgd:
 	kvm_free_stage2_pgd(&kvm->arch.mmu);
