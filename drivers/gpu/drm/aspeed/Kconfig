@@ -7,7 +7,7 @@ config DRM_ASPEED_GFX
 	select DRM_KMS_HELPER
 	select DRM_GEM_DMA_HELPER
 	select DMA_CMA if HAVE_DMA_CONTIGUOUS
-	select CMA if HAVE_DMA_CONTIGUOUS
+	select CMA if HAVE_DMA_CONTIGUOUS && !X86
 	select MFD_SYSCON
 	help
 	  Chose this option if you have an ASPEED AST2500 SOC Display
