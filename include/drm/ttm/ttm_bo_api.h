@@ -157,7 +157,7 @@ struct ttm_buffer_object {
 
 	struct dma_fence *moving;
 	unsigned priority;
-	unsigned pin_count;
+	KABI_FILL_HOLE(unsigned pin_count)
 
 	/**
 	 * Special members that are protected by the reserve lock
