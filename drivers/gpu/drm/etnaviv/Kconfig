@@ -10,7 +10,7 @@ config DRM_ETNAVIV
 	select TMPFS
 	select WANT_DEV_COREDUMP
 	select CMA if HAVE_DMA_CONTIGUOUS
-	select DMA_CMA if HAVE_DMA_CONTIGUOUS
+	select DMA_CMA if HAVE_DMA_CONTIGUOUS && !X86
 	select DRM_SCHED
 	help
 	  DRM driver for Vivante GPUs.
