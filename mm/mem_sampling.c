@@ -144,6 +144,41 @@ static int numa_migrate_prep(struct page *page, struct vm_area_struct *vma,
 	return mpol_misplaced(page, vma, addr);
 }
 
+/* NUMA hinting page access point for trans huge pmds */
+void do_huge_pmd_numa_access(struct vm_area_struct *vma, u64 vaddr, struct page *page)
+{
+	int page_nid = NUMA_NO_NODE;
+	int target_nid, last_cpupid = (-1 & LAST_CPUPID_MASK);
+	bool migrated = false;
+	int flags = 0;
+	u64 haddr = vaddr & HPAGE_PMD_MASK;
+
+	page = compound_head(page);
+	page_nid = page_to_nid(page);
+	last_cpupid = page_cpupid_last(page);
+	target_nid = numa_migrate_prep(page, vma, haddr, page_nid,
+				       &flags);
+
+	if (target_nid == NUMA_NO_NODE) {
+		put_page(page);
+		goto out;
+	}
+
+	migrated = migrate_misplaced_page(page, vma, target_nid);
+	if (migrated) {
+		flags |= TNF_MIGRATED;
+		page_nid = target_nid;
+	} else {
+		flags |= TNF_MIGRATE_FAIL;
+	}
+
+out:
+	trace_mm_numa_migrating(haddr, page_nid, target_nid, flags&TNF_MIGRATED);
+	if (page_nid != NUMA_NO_NODE)
+		task_numa_fault(last_cpupid, page_nid, HPAGE_PMD_NR,
+				flags);
+}
+
 /*
  * Called from task_work context to act upon the page access.
  *
@@ -161,6 +196,11 @@ static void do_numa_access(struct task_struct *p, u64 vaddr, u64 paddr)
 	int last_cpupid;
 	int target_nid;
 	int flags = 0;
+	pgd_t *pgd;
+	p4d_t *p4d;
+	pud_t *pud;
+	pmd_t *pmd = NULL;
+	pmd_t pmde;
 
 	if (!mm)
 		return;
@@ -190,9 +230,31 @@ static void do_numa_access(struct task_struct *p, u64 vaddr, u64 paddr)
 	if (unlikely(!PageLRU(page)))
 		goto out_unlock;
 
-	/* TODO: handle PTE-mapped THP or PMD-mapped THP*/
-	if (PageCompound(page))
+	if (PageCompound(page)) {
+		pgd = pgd_offset(mm, vaddr);
+		if (!pgd_present(*pgd))
+			goto out_unlock;
+
+		p4d = p4d_offset(pgd, vaddr);
+		if (!p4d_present(*p4d))
+			goto out_unlock;
+
+		pud = pud_offset(p4d, vaddr);
+		if (!pud_present(*pud))
+			goto out_unlock;
+
+		pmd = pmd_offset(pud, vaddr);
+		if (!pmd)
+			goto out_unlock;
+		pmde = *pmd;
+
+		barrier();
+		if (pmd_trans_huge(pmde) || pmd_devmap(pmde))
+			/* handle PMD-mapped THP */
+			do_huge_pmd_numa_access(vma, vaddr, page);
+		/* TODO: handle PTE-mapped THP */
 		goto out_unlock;
+	}
 
 	/*
 	 * Flag if the page is shared between multiple address spaces. This
