@@ -1487,6 +1487,7 @@ int migrate_pages(struct list_head *from, new_page_t get_new_page,
 	struct page *page2;
 	int swapwrite = current->flags & PF_SWAPWRITE;
 	int rc, nr_subpages;
+	bool nosplit = (reason == MR_NUMA_MISPLACED);
 
 	if (!swapwrite)
 		current->flags |= PF_SWAPWRITE;
@@ -1527,8 +1528,9 @@ retry:
 				 * pages are added to the tail of the list so
 				 * we encounter them after the rest of the list
 				 * is processed.
+				 * THP NUMA acces migrate doesn't split THP to retry.
 				 */
-				if (is_thp) {
+				if (is_thp && !nosplit) {
 					lock_page(page);
 					rc = split_huge_page_to_list(page, from);
 					unlock_page(page);
@@ -2082,11 +2084,32 @@ static struct page *alloc_misplaced_dst_page(struct page *page,
 	return newpage;
 }
 
+static struct page *alloc_misplaced_dst_page_thp(struct page *page,
+						 unsigned long data)
+{
+	int nid = (int) data;
+	struct page *newpage;
+
+	newpage = alloc_pages_node(nid, (GFP_TRANSHUGE_LIGHT | __GFP_THISNODE),
+				   HPAGE_PMD_ORDER);
+	if (!newpage)
+		goto out;
+
+	prep_transhuge_page(newpage);
+
+out:
+	return newpage;
+}
+
 static int numamigrate_isolate_page(pg_data_t *pgdat, struct page *page)
 {
 	int page_lru;
 
 	VM_BUG_ON_PAGE(compound_order(page) && !PageTransHuge(page), page);
+
+	/* Do not migrate THP mapped by multiple processes */
+	if (PageTransHuge(page) && total_mapcount(page) > 1)
+		return 0;
 
 	/* Avoid migrating to a node that is nearly full */
 	if (!migrate_balanced_pgdat(pgdat, compound_nr(page)))
@@ -2141,6 +2164,21 @@ int migrate_misplaced_page(struct page *page, struct vm_area_struct *vma,
 	int isolated;
 	int nr_remaining;
 	LIST_HEAD(migratepages);
+	new_page_t *new;
+	bool compound;
+	unsigned int nr_pages = thp_nr_pages(page);
+
+	/*
+	 * PTE mapped THP or HugeTLB page can't reach here so the page could
+	 * be either base page or THP.  And it must be head page if it is
+	 * THP.
+	 */
+	compound = PageTransHuge(page);
+
+	if (compound)
+		new = alloc_misplaced_dst_page_thp;
+	else
+		new = alloc_misplaced_dst_page;
 
 	/*
 	 * Don't migrate file pages that are mapped in multiple processes
@@ -2162,19 +2200,18 @@ int migrate_misplaced_page(struct page *page, struct vm_area_struct *vma,
 		goto out;
 
 	list_add(&page->lru, &migratepages);
-	nr_remaining = migrate_pages(&migratepages, alloc_misplaced_dst_page,
-				     NULL, node, MIGRATE_ASYNC,
-				     MR_NUMA_MISPLACED);
+	nr_remaining = migrate_pages(&migratepages, *new, NULL, node,
+				     MIGRATE_ASYNC, MR_NUMA_MISPLACED);
 	if (nr_remaining) {
 		if (!list_empty(&migratepages)) {
 			list_del(&page->lru);
-			dec_node_page_state(page, NR_ISOLATED_ANON +
-					page_is_file_lru(page));
+			mod_node_page_state(page_pgdat(page), NR_ISOLATED_ANON +
+					page_is_file_lru(page), -nr_pages);
 			putback_lru_page(page);
 		}
 		isolated = 0;
 	} else
-		count_vm_numa_event(NUMA_PAGE_MIGRATE);
+		count_vm_numa_events(NUMA_PAGE_MIGRATE, nr_pages);
 	BUG_ON(!list_empty(&migratepages));
 	return isolated;
 
