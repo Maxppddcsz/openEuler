@@ -1741,7 +1741,7 @@ void __init swiotlb_cvm_update_mem_attributes(void)
 	void *vaddr;
 	unsigned long bytes;
 
-	if (!is_cvm_world() || !is_swiotlb_allocated())
+	if (!is_virtcca_cvm_world() || !is_swiotlb_allocated())
 		return;
 	vaddr = phys_to_virt(io_tlb_default_mem.defpool.start);
 	bytes = PAGE_ALIGN(io_tlb_default_mem.defpool.nslabs << IO_TLB_SHIFT);

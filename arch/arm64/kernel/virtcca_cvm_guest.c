@@ -75,7 +75,7 @@ static int __set_memory_encrypted(unsigned long addr,
 			int numpages,
 			bool encrypt)
 {
-	if (!is_cvm_world())
+	if (!is_virtcca_cvm_world())
 		return 0;
 
 	WARN_ON(!__is_lm_address(addr));
