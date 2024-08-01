@@ -3510,6 +3510,7 @@ xfs_bmap_btalloc(
 	 */
 	if (xfs_inode_forcealign(ap->ip) && align) {
 		args.alignment = align;
+		args.minlen = ap->minlen = align;
 		if (stripe_align == 0 || stripe_align % align)
 			stripe_align = align;
 	} else {
