@@ -85,6 +85,74 @@ int kvm_arch_vcpu_should_kick(struct kvm_vcpu *vcpu)
 	return kvm_vcpu_exiting_guest_mode(vcpu) == IN_GUEST_MODE;
 }
 
+#ifdef CONFIG_ARM64_HDBSS
+bool __read_mostly enable_hdbss;
+
+static int kvm_cap_arm_enable_hdbss(struct kvm *kvm,
+				    struct kvm_enable_cap *cap)
+{
+	unsigned long i;
+	struct kvm_vcpu *vcpu;
+	struct page *hdbss_pg;
+	int size = cap->args[0];
+
+	if (!system_supports_hdbss()) {
+		kvm_err("This system does not support HDBSS!\n");
+		return -EINVAL;
+	}
+
+	if (size < 0 || size > HDBSS_MAX_SIZE) {
+		kvm_err("Invalid HDBSS buffer size: %d!\n", size);
+		return -EINVAL;
+	}
+
+	/* Enable the HDBSS feature if size > 0, otherwise disable it. */
+	if (size) {
+		kvm->arch.vtcr |= VTCR_EL2_HD | VTCR_EL2_HDBSS;
+
+		kvm_for_each_vcpu(i, vcpu, kvm) {
+			hdbss_pg = alloc_pages(GFP_KERNEL, size);
+			if (!hdbss_pg) {
+				kvm_err("Alloc HDBSS buffer failed!\n");
+				return -EINVAL;
+			}
+
+			vcpu->arch.hdbss.br_el2 = HDBSSBR_EL2(page_to_phys(hdbss_pg), size);
+			vcpu->arch.hdbss.prod_el2 = 0;
+
+			/*
+			 * We should kick vcpus out of guest mode here to
+			 * load new vtcr value to vtcr_el2 register when
+			 * re-enter guest mode.
+			 */
+			kvm_vcpu_kick(vcpu);
+		}
+
+		enable_hdbss = true;
+		kvm_info("Enable HDBSS success, HDBSS buffer size: %d\n", size);
+	} else if (enable_hdbss) {
+		kvm->arch.vtcr &= ~(VTCR_EL2_HD | VTCR_EL2_HDBSS);
+
+		kvm_for_each_vcpu(i, vcpu, kvm) {
+			/* Kick vcpus to flush hdbss buffer. */
+			kvm_vcpu_kick(vcpu);
+
+			hdbss_pg = phys_to_page(HDBSSBR_BADDR(vcpu->arch.hdbss.br_el2));
+			if (hdbss_pg)
+				__free_pages(hdbss_pg, HDBSSBR_SZ(vcpu->arch.hdbss.br_el2));
+
+			vcpu->arch.hdbss.br_el2 = 0;
+			vcpu->arch.hdbss.prod_el2 = 0;
+		}
+
+		enable_hdbss = false;
+		kvm_info("Disable HDBSS success\n");
+	}
+
+	return 0;
+}
+#endif
+
 int kvm_vm_ioctl_enable_cap(struct kvm *kvm,
 			    struct kvm_enable_cap *cap)
 {
@@ -132,6 +200,11 @@ int kvm_vm_ioctl_enable_cap(struct kvm *kvm,
 		}
 		mutex_unlock(&kvm->slots_lock);
 		break;
+#ifdef CONFIG_ARM64_HDBSS
+	case KVM_CAP_ARM_HW_DIRTY_STATE_TRACK:
+		r = kvm_cap_arm_enable_hdbss(kvm, cap);
+		break;
+#endif
 	default:
 		r = -EINVAL;
 		break;
@@ -347,6 +420,11 @@ int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 		r = sdev_enable;
 		break;
 #endif
+#ifdef CONFIG_ARM64_HDBSS
+	case KVM_CAP_ARM_HW_DIRTY_STATE_TRACK:
+		r = system_supports_hdbss();
+		break;
+#endif
 	default:
 		r = 0;
 	}
@@ -475,6 +553,30 @@ static void update_steal_time(struct kvm_vcpu *vcpu)
 }
 #endif
 
+#ifdef CONFIG_ARM64_HDBSS
+static void kvm_arm_load_hdbss(struct kvm_vcpu *vcpu)
+{
+	if (!enable_hdbss)
+		return;
+
+	dsb(sy);
+	isb();
+	write_sysreg_s(vcpu->arch.hdbss.br_el2, SYS_HDBSSBR_EL2);
+	write_sysreg_s(vcpu->arch.hdbss.prod_el2, SYS_HDBSSPROD_EL2);
+}
+
+static void kvm_arm_save_hdbss(struct kvm_vcpu *vcpu)
+{
+	if (!enable_hdbss)
+		return;
+
+	dsb(sy);
+	isb();
+	vcpu->arch.hdbss.br_el2 = read_sysreg_s(SYS_HDBSSBR_EL2);
+	vcpu->arch.hdbss.prod_el2 = read_sysreg_s(SYS_HDBSSPROD_EL2);
+}
+#endif
+
 void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 {
 	struct kvm_s2_mmu *mmu;
@@ -520,6 +622,10 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 		vcpu_ptrauth_disable(vcpu);
 	kvm_arch_vcpu_load_debug_state_flags(vcpu);
 
+#ifdef CONFIG_ARM64_HDBSS
+	kvm_arm_load_hdbss(vcpu);
+#endif
+
 	if (!cpumask_test_cpu(cpu, vcpu->kvm->arch.supported_cpus))
 		vcpu_set_on_unsupported_cpu(vcpu);
 
@@ -531,6 +637,10 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 
 void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
 {
+#ifdef CONFIG_ARM64_HDBSS
+	kvm_arm_save_hdbss(vcpu);
+#endif
+
 	kvm_arch_vcpu_put_debug_state_flags(vcpu);
 	kvm_arch_vcpu_put_fp(vcpu);
 	if (has_vhe())
@@ -1626,7 +1736,19 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
 
 void kvm_arch_sync_dirty_log(struct kvm *kvm, struct kvm_memory_slot *memslot)
 {
+#ifdef CONFIG_ARM64_HDBSS
+	/*
+	 * Flush all CPUs' dirty log buffers to the dirty_bitmap.  Called
+	 * before reporting dirty_bitmap to userspace.  KVM flushes the buffers
+	 * on all VM-Exits, thus we only need to kick running vCPUs to force a
+	 * VM-Exit.
+	 */
+	struct kvm_vcpu *vcpu;
+	unsigned long i;
 
+	kvm_for_each_vcpu(i, vcpu, kvm)
+		kvm_vcpu_kick(vcpu);
+#endif
 }
 
 static int kvm_vm_ioctl_set_device_addr(struct kvm *kvm,
