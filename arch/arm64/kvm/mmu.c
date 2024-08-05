@@ -871,7 +871,11 @@ int kvm_init_stage2_mmu(struct kvm *kvm, struct kvm_s2_mmu *mmu, unsigned long t
 	u64 mmfr0, mmfr1;
 	u32 phys_shift;
 
+#ifdef CONFIG_HISI_VIRTCCA_HOST
+	if ((type & ~KVM_VM_TYPE_ARM_IPA_SIZE_MASK) && (!kvm_is_virtcca_cvm(kvm)))
+#else
 	if (type & ~KVM_VM_TYPE_ARM_IPA_SIZE_MASK)
+#endif
 		return -EINVAL;
 
 	phys_shift = KVM_VM_TYPE_ARM_IPA_SIZE(type);
@@ -1391,6 +1395,23 @@ static bool kvm_vma_mte_allowed(struct vm_area_struct *vma)
 	return vma->vm_flags & VM_MTE_ALLOWED;
 }
 
+#ifdef CONFIG_HISI_VIRTCCA_HOST
+static int kvm_cvm_map_ipa(struct kvm *kvm, phys_addr_t ipa, kvm_pfn_t pfn,
+	unsigned long map_size, enum kvm_pgtable_prot prot)
+{
+	struct page *dst_page = pfn_to_page(pfn);
+	phys_addr_t dst_phys = page_to_phys(dst_page);
+
+	if (WARN_ON(!(prot & KVM_PGTABLE_PROT_W)))
+		return -EFAULT;
+
+	if (prot & KVM_PGTABLE_PROT_DEVICE)
+		return kvm_cvm_map_ipa_mmio(kvm, ipa, dst_phys, map_size);
+
+	return 0;
+}
+#endif
+
 static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 			  struct kvm_memory_slot *memslot, unsigned long hva,
 			  unsigned long fault_status)
@@ -1414,6 +1435,12 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 
 	fault_granule = 1UL << ARM64_HW_PGTABLE_LEVEL_SHIFT(fault_level);
 	write_fault = kvm_is_write_fault(vcpu);
+#ifdef CONFIG_HISI_VIRTCCA_HOST
+	if (vcpu_is_tec(vcpu)) {
+		write_fault = true;
+		prot = KVM_PGTABLE_PROT_R | KVM_PGTABLE_PROT_W;
+	}
+#endif
 	exec_fault = kvm_vcpu_trap_is_exec_fault(vcpu);
 	VM_BUG_ON(write_fault && exec_fault);
 	vcpu->stat.mabt_exit_stat++;
@@ -1595,6 +1622,12 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 					     memcache,
 					     KVM_PGTABLE_WALK_HANDLE_FAULT |
 					     KVM_PGTABLE_WALK_SHARED);
+#ifdef CONFIG_HISI_VIRTCCA_HOST
+	if (kvm_is_virtcca_cvm(kvm)) {
+		ret = kvm_cvm_map_ipa(kvm, fault_ipa, pfn, vma_pagesize, prot);
+		WARN_ON(ret);
+	}
+#endif
 
 	/* Mark the page dirty only if the fault is handled successfully */
 	if (writable && !ret) {
