@@ -7,8 +7,11 @@
 
 #include <uapi/linux/kvm.h>
 
-enum cvm_state {
-	CVM_STATE_NONE,
+#define CVM_MSI_ORIG_IOVA 0x8000000
+#define CVM_MSI_IOVA_OFFSET (-0x1000000)
+
+enum virtcca_cvm_state {
+	CVM_STATE_NONE = 1,
 	CVM_STATE_NEW,
 	CVM_STATE_ACTIVE,
 	CVM_STATE_DYING
@@ -36,7 +39,7 @@ struct tmi_cvm_params {
 };
 
 struct cvm {
-	enum cvm_state state;
+	enum virtcca_cvm_state state;
 	u32 cvm_vmid;
 	u64 rd;
 	u64 loader_start;
@@ -48,33 +51,62 @@ struct cvm {
 	bool is_cvm;
 };
 
+struct virtcca_cvm {
+	enum virtcca_cvm_state state;
+	u32 cvm_vmid;
+	u64 rd;
+	u64 loader_start;
+	u64 image_end;
+	u64 initrd_start;
+	u64 dtb_end;
+	u64 ram_size;
+	struct kvm_numa_info numa_info;
+	struct tmi_cvm_params *params;
+	bool is_mapped;
+};
+
 /*
  * struct cvm_tec - Additional per VCPU data for a CVM
  */
-struct cvm_tec {
+struct virtcca_cvm_tec {
 	u64 tec;
 	bool tec_created;
 	void *tec_run;
 };
 
+struct cvm_ttt_addr {
+	struct list_head list;
+	u64 addr;
+};
+
+struct iommu_group {};
+
 int kvm_init_tmm(void);
 int kvm_cvm_enable_cap(struct kvm *kvm, struct kvm_enable_cap *cap);
-int kvm_init_cvm_vm(struct kvm *kvm);
 void kvm_destroy_cvm(struct kvm *kvm);
-int kvm_create_tec(struct kvm_vcpu *vcpu);
+int kvm_finalize_vcpu_tec(struct kvm_vcpu *vcpu);
 void kvm_destroy_tec(struct kvm_vcpu *vcpu);
 int kvm_tec_enter(struct kvm_vcpu *vcpu);
 int handle_cvm_exit(struct kvm_vcpu *vcpu, int rec_run_status);
 int kvm_arm_create_cvm(struct kvm *kvm);
 void kvm_free_rd(struct kvm *kvm);
-int cvm_create_rd(struct kvm *kvm);
 int cvm_psci_complete(struct kvm_vcpu *calling, struct kvm_vcpu *target);
-int kvm_arch_tec_init(struct kvm_vcpu *vcpu);
 
 void kvm_cvm_unmap_destroy_range(struct kvm *kvm);
 
-#define CVM_TTT_BLOCK_LEVEL 2
-#define CVM_TTT_MAX_LEVEL   3
+int kvm_cvm_map_range(struct kvm *kvm);
+int cvm_arm_smmu_domain_set_kvm(struct iommu_group *group);
+int kvm_cvm_map_unmap_ipa_range(struct kvm *kvm, phys_addr_t ipa_base, phys_addr_t pa,
+	unsigned long map_size, uint32_t is_map);
+int kvm_cvm_map_ipa_mmio(struct kvm *kvm, phys_addr_t ipa_base,
+	phys_addr_t pa, unsigned long map_size);
+
+#define CVM_TTT_BLOCK_LEVEL	2
+#define CVM_TTT_MAX_LEVEL	3
+
+#define CVM_MAP_IPA_RAM	1
+#define CVM_MAP_IPA_SMMU	2
+#define CVM_MAP_IPA_UNPROTECTED	4
 
 #define CVM_PAGE_SHIFT		12
 #define CVM_PAGE_SIZE		BIT(CVM_PAGE_SHIFT)
