@@ -22,6 +22,16 @@
 
 #include "io-pgtable-arm.h"
 
+#ifdef CONFIG_HISI_VIRTCCA_HOST
+#include <asm/kvm_tmi.h>
+#include <asm/kvm_emulate.h>
+#include <asm/kvm_tmm.h>
+#include <linux/kvm_host.h>
+#include <linux/kvm.h>
+#include <asm/kvm.h>
+#include "../virt/kvm/vfio.h"
+#endif
+
 #define ARM_LPAE_MAX_ADDR_BITS		52
 #define ARM_LPAE_S2_MAX_CONCAT_PAGES	16
 #define ARM_LPAE_MAX_LEVELS		4
@@ -498,6 +508,41 @@ static arm_lpae_iopte arm_lpae_prot_to_pte(struct arm_lpae_io_pgtable *data,
 	return pte;
 }
 
+#ifdef CONFIG_HISI_VIRTCCA_HOST
+static int arm_lpae_cvm_map_unmap_pages(struct arm_lpae_io_pgtable *data, unsigned long iova,
+	phys_addr_t paddr, size_t size, uint32_t is_map)
+{
+	struct arm_smmu_domain *smmu_domain = (struct arm_smmu_domain *)data->iop.cookie;
+	int ret = 0;
+	struct kvm *kvm;
+	u64 loader_start;
+	u64 ram_size;
+	static bool smmu_mapped = false;
+
+	kvm = smmu_domain->kvm;
+	if (kvm && kvm_is_virtcca_cvm(kvm) && virtcca_cvm_state(kvm) != CVM_STATE_DYING) {
+		struct virtcca_cvm *virtcca_cvm = (struct virtcca_cvm *)kvm->arch.virtcca_cvm;
+
+		loader_start = virtcca_cvm->loader_start;
+		ram_size = virtcca_cvm->ram_size;
+		if (!smmu_mapped && iova >= loader_start &&
+			iova < loader_start + ram_size &&
+			is_map && !virtcca_cvm->is_mapped) {
+			ret = kvm_cvm_map_range(kvm);
+			if (!ret)
+				smmu_mapped = true;
+			WARN_ON(ret);
+		} else if (iova < loader_start) {
+			if (iova == CVM_MSI_ORIG_IOVA)
+				iova += CVM_MSI_IOVA_OFFSET;
+			ret = kvm_cvm_map_unmap_ipa_range(kvm, iova, paddr, size, is_map);
+			WARN_ON(ret);
+		}
+	}
+	return ret;
+}
+#endif
+
 static int arm_lpae_map_pages(struct io_pgtable_ops *ops, unsigned long iova,
 			      phys_addr_t paddr, size_t pgsize, size_t pgcount,
 			      int iommu_prot, gfp_t gfp, size_t *mapped)
@@ -522,6 +567,11 @@ static int arm_lpae_map_pages(struct io_pgtable_ops *ops, unsigned long iova,
 		return 0;
 
 	prot = arm_lpae_prot_to_pte(data, iommu_prot);
+
+#ifdef CONFIG_HISI_VIRTCCA_HOST
+	ret = arm_lpae_cvm_map_unmap_pages(data, iova, paddr, pgsize * pgcount, true);
+#endif
+
 	ret = __arm_lpae_map(data, iova, paddr, pgsize, pgcount, prot, lvl,
 			     ptep, gfp, mapped);
 	/*
@@ -707,6 +757,16 @@ static size_t arm_lpae_unmap_pages(struct io_pgtable_ops *ops, unsigned long iov
 		iaext = ~iaext;
 	if (WARN_ON(iaext))
 		return 0;
+
+#ifdef CONFIG_HISI_VIRTCCA_HOST
+	int ret;
+
+	ret = arm_lpae_cvm_map_unmap_pages(data, iova, 0, pgsize * pgcount, false);
+	WARN_ON(ret);
+	if (ret)
+		pr_err("%s %d failed to unmap pages, iova %lx, size %lx\n",
+			__func__, __LINE__, iova, pgsize);
+#endif
 
 	return __arm_lpae_unmap(data, gather, iova, pgsize, pgcount,
 				data->start_level, ptep);
