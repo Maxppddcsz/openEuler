@@ -4497,6 +4497,12 @@ static inline void overload_clear(struct rq *rq) {}
 static inline void overload_set(struct rq *rq) {}
 #endif
 
+#ifdef CONFIG_SCHED_KEEP_ON_CORE
+static int core_has_spare(int cpu);
+#else
+static inline int core_has_spare(int cpu) { return 0; }
+#endif
+
 #else /* CONFIG_SMP */
 
 #define UPDATE_TG	0x0
@@ -4523,6 +4529,7 @@ static inline int newidle_balance(struct rq *rq, struct rq_flags *rf)
 static inline void rq_idle_stamp_update(struct rq *rq) {}
 static inline void rq_idle_stamp_clear(struct rq *rq) {}
 static inline int try_steal(struct rq *this_rq, struct rq_flags *rf) { return 0; }
+static inline int core_has_spare(int cpu) { return 0; }
 static inline void overload_clear(struct rq *rq) {}
 static inline void overload_set(struct rq *rq) {}
 
@@ -8210,6 +8217,13 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	}
 #endif
 
+#ifdef CONFIG_SCHED_KEEP_ON_CORE
+	if (static_branch_likely(&sched_smt_present) &&
+	    sched_feat(KEEP_ON_CORE))
+		if (core_has_spare(new_cpu))
+			new_cpu = cpumask_first(cpu_smt_mask((new_cpu)));
+#endif
+
 	rcu_read_unlock();
 
 #ifdef CONFIG_QOS_SCHED_DYNAMIC_AFFINITY
@@ -9699,6 +9713,14 @@ int can_migrate_task(struct task_struct *p, struct lb_env *env)
 		if (ret > 0)
 			return ret - 1;
 	}
+#endif
+
+#ifdef CONFIG_SCHED_KEEP_ON_CORE
+	if (static_branch_likely(&sched_smt_present) &&
+	    sched_feat(KEEP_ON_CORE))
+		if (core_has_spare(env->dst_cpu) &&
+		    cpumask_first(cpu_smt_mask((env->dst_cpu))) != env->dst_cpu)
+			return 0;
 #endif
 
 	/*
@@ -13186,6 +13208,20 @@ out:
 	if (!stolen && any_overload)
 		schedstat_inc(dst_rq->steal_fail);
 	return stolen;
+}
+#endif
+
+#ifdef CONFIG_SCHED_KEEP_ON_CORE
+int sysctl_sched_util_keep_on_core = 100;
+
+static int core_has_spare(int cpu)
+{
+	int core_id = cpumask_first(cpu_smt_mask(cpu));
+	struct rq *rq = cpu_rq(core_id);
+	unsigned long util = rq->cfs.avg.util_avg;
+	unsigned long capacity = rq->cpu_capacity;
+
+	return util * 100 < capacity * sysctl_sched_util_keep_on_core;
 }
 #endif
 
