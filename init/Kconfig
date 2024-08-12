@@ -1370,6 +1370,15 @@ config SCHED_STEAL
 
 	  If unsure, say N here.
 
+config SCHED_KEEP_ON_CORE
+	bool "Prefer physical cores when migrating tasks"
+	depends on SMP
+	default n
+	help
+	  Only when the load of the physical core exceeds the set threshold,
+	  the task will be migrated, otherwise the task will keep on the
+	  physical core.
+
 config CHECKPOINT_RESTORE
 	bool "Checkpoint/restore support"
 	select PROC_CHILDREN
