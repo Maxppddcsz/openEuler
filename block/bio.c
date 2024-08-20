@@ -245,6 +245,12 @@ fallback:
 void bio_uninit(struct bio *bio)
 {
 	bio_disassociate_task(bio);
+#ifdef CONFIG_BLK_BIO_ALLOC_TASK
+	if (bio->pid) {
+		put_pid(bio->pid);
+		bio->pid = NULL;
+	}
+#endif
 }
 EXPORT_SYMBOL(bio_uninit);
 
@@ -288,6 +294,10 @@ void bio_init(struct bio *bio, struct bio_vec *table,
 
 #ifdef CONFIG_BLK_BIO_ALLOC_TIME
 	bio->bi_alloc_time_ns = blk_time_get_ns();
+#endif
+
+#ifdef CONFIG_BLK_BIO_ALLOC_TASK
+	bio->pid = find_get_pid(current->pid);
 #endif
 }
 EXPORT_SYMBOL(bio_init);
