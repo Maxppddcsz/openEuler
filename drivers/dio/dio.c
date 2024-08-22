@@ -140,6 +140,8 @@ int __init dio_find(int deviceid)
 			va = (void *)(pa + DIO_VIRADDRBASE);
 		else
 			va = ioremap(pa, PAGE_SIZE);
+		if (!va) 
+			return -ENOMEM;
 
 		if (copy_from_kernel_nofault(&i,
 				(unsigned char *)va + DIO_IDOFF, 1)) {
