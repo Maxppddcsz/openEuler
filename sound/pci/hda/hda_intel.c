@@ -276,6 +276,7 @@ enum {
 	AZX_DRIVER_ZHAOXIN,
 	AZX_DRIVER_ZXHDMI,
 	AZX_DRIVER_HYGON,
+	AZX_DRIVER_LOONGSON,
 	AZX_DRIVER_GENERIC,
 	AZX_NUM_DRIVERS, /* keep this as last entry */
 };
@@ -400,6 +401,7 @@ static const char * const driver_short_names[] = {
 	[AZX_DRIVER_ZHAOXIN] = "HDA Zhaoxin",
 	[AZX_DRIVER_ZXHDMI] = "HDA Zhaoxin GFX",
 	[AZX_DRIVER_HYGON] = "HDA Hygon",
+	[AZX_DRIVER_LOONGSON] = "HDA Loongson",
 	[AZX_DRIVER_GENERIC] = "HD-Audio Generic",
 };
 
@@ -715,6 +717,13 @@ static int azx_position_ok(struct azx *chip, struct azx_dev *azx_dev)
 	u32 wallclk;
 	unsigned int pos;
 	snd_pcm_uframes_t hwptr, target;
+
+	/*
+	 * The value of the WALLCLK register is always 0
+	 * on the Loongson controller, so we return directly.
+	 */
+	if (chip->driver_type == AZX_DRIVER_LOONGSON)
+		return 1;
 
 	wallclk = azx_readl(chip, WALLCLK) - azx_dev->core.start_wallclk;
 	if (wallclk < (azx_dev->core.period_wallclk * 2) / 3)
@@ -1945,6 +1954,12 @@ static int azx_first_init(struct azx *chip)
 	}
 #endif
 
+	if (chip->driver_type == AZX_DRIVER_LOONGSON) {
+		bus->polling_mode = 1;
+		bus->not_use_interrupts = 1;
+		bus->access_sdnctl_in_dword = 1;
+	}
+
 	chip->remap_diu_addr = NULL;
 
 	if (chip->driver_type == AZX_DRIVER_ZXHDMI)
@@ -2891,6 +2906,11 @@ static const struct pci_device_id azx_ids[] = {
 	/* Hygon HDAudio */
 	{ PCI_DEVICE(0x1d94, 0x14a9),
 	  .driver_data = AZX_DRIVER_HYGON | AZX_DCAPS_POSFIX_LPIB | AZX_DCAPS_NO_MSI },
+	/* Loongson HDAudio*/
+	{PCI_DEVICE(PCI_VENDOR_ID_LOONGSON, PCI_DEVICE_ID_LOONGSON_HDA),
+	  .driver_data = AZX_DRIVER_LOONGSON },
+	{PCI_DEVICE(PCI_VENDOR_ID_LOONGSON, PCI_DEVICE_ID_LOONGSON_HDMI),
+	  .driver_data = AZX_DRIVER_LOONGSON },
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, azx_ids);
