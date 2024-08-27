@@ -75,6 +75,7 @@ unsigned long huge_anon_orders_always __read_mostly;
 unsigned long huge_anon_orders_madvise __read_mostly;
 unsigned long huge_anon_orders_inherit __read_mostly;
 unsigned long huge_pcp_allow_orders __read_mostly;
+unsigned long huge_file_orders_always __read_mostly;
 
 unsigned long __thp_vma_allowable_orders(struct vm_area_struct *vma,
 					 unsigned long vm_flags,
@@ -655,8 +656,47 @@ static ssize_t thpsize_enabled_store(struct kobject *kobj,
 	return ret;
 }
 
+static ssize_t file_enabled_show(struct kobject *kobj,
+				 struct kobj_attribute *attr, char *buf)
+{
+	int order = to_thpsize(kobj)->order;
+	const char *output;
+
+	if (test_bit(order, &huge_file_orders_always))
+		output = "[always] never";
+	else
+		output = "always [never]";
+
+	return sysfs_emit(buf, "%s\n", output);
+}
+
+static ssize_t file_enabled_strore(struct kobject *kobj,
+				   struct kobj_attribute *attr,
+				   const char *buf, size_t count)
+{
+	int order = to_thpsize(kobj)->order;
+	ssize_t ret = count;
+
+	if (sysfs_streq(buf, "always"))
+		set_bit(order, &huge_file_orders_always);
+	else if (sysfs_streq(buf, "never"))
+		clear_bit(order, &huge_anon_orders_always);
+	else
+		ret = -EINVAL;
+
+	return ret;
+}
+
 static struct kobj_attribute thpsize_enabled_attr =
 	__ATTR(enabled, 0644, thpsize_enabled_show, thpsize_enabled_store);
+
+static struct kobj_attribute file_enabled_attr =
+	__ATTR(file_enabled, 0644, file_enabled_show, file_enabled_store);
+
+static struct attibute *file_ctrl_attrs[] = {
+	&file_enabled_attr.attr,
+	NULL,
+}
 
 static struct attribute *thpsize_attrs[] = {
 	&thpsize_enabled_attr.attr,
@@ -769,6 +809,13 @@ static int __init hugepage_init_sysfs(struct kobject **hugepage_kobj)
 	 * constant so we have to do this here.
 	 */
 	huge_anon_orders_inherit = BIT(PMD_ORDER);
+
+	/*
+	 * For pagecache, default to enabling all orders. powerpc's PMD_ORDER
+	 * (and therefore THP_ORDERS_ALL_FILE_DEFAULT) isn't a compile-time
+	 * const so we have to do this here.
+	 */
+	huge_file_orders_always = THP_ORDERS_ALL_FILE_DEFAULT;
 
 	*hugepage_kobj = kobject_create_and_add("transparent_hugepage", mm_kobj);
 	if (unlikely(!*hugepage_kobj)) {

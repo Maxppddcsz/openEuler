@@ -1916,6 +1916,7 @@ repeat:
 no_page:
 	if (!folio && (fgp_flags & FGP_CREAT)) {
 		unsigned order = FGF_GET_ORDER(fgp_flags);
+		unsigned long orders;
 		int err;
 
 		if ((fgp_flags & FGP_WRITE) && mapping_can_writeback(mapping))
@@ -1931,13 +1932,14 @@ no_page:
 
 		if (!mapping_large_folio_support(mapping))
 			order = 0;
-		if (order > MAX_PAGECACHE_ORDER)
-			order = MAX_PAGECACHE_ORDER;
+		orders = file_orders_always() | BIT(0);
+		orders &= BIT(order + 1) - 1;
 		/* If we're not aligned, allocate a smaller folio */
 		if (index & ((1UL << order) - 1))
-			order = __ffs(index);
+			orders &= BIT(__ffs(index) + 1) - 1;
+		order = highest_order(orders);
 
-		do {
+		while (order) {
 			gfp_t alloc_gfp = gfp;
 
 			err = -ENOMEM;
@@ -1956,7 +1958,9 @@ no_page:
 				break;
 			folio_put(folio);
 			folio = NULL;
-		} while (order-- > 0);
+
+			order = next_order(&orders, order);
+		};
 
 		if (err == -EEXIST)
 			goto repeat;
