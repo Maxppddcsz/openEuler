@@ -3206,6 +3206,7 @@ static struct file *do_sync_mmap_readahead(struct vm_fault *vmf)
 	struct file *fpin = NULL;
 	unsigned long vm_flags = vmf->vma->vm_flags;
 	unsigned int mmap_miss;
+	int exec_order = file_exec_order();
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	/* Try enable thp for exec mapping by default */
@@ -3246,6 +3247,16 @@ static struct file *do_sync_mmap_readahead(struct vm_fault *vmf)
 		}
 	}
 #endif
+
+	/* If explicit order is set for exec mappings, use it. */
+	if ((vm_flags && VM_EXEC) && exec_order >= 0) {
+		fpin = maybe_unlock_mmap_for_io(vmf, fpin);
+		ra->size = 1UL << exec_order;
+		ra->async_size = 0;
+		ractl._index &= ~((unsigned long)ra->size - 1);
+		page_cache_ra_order(&ractl, ra, exec_order);
+		return fpin;
+	}
 
 	/* If we don't want any read-ahead, don't bother */
 	if (vm_flags & VM_RAND_READ)

@@ -111,10 +111,16 @@ extern unsigned long huge_anon_orders_madvise;
 extern unsigned long huge_anon_orders_inherit;
 extern unsigned long huge_pcp_allow_orders;
 extern unsigned long huge_file_orders_always;
+extern int huge_file_exec_order;
 
 static inline unsigned long file_orders_always(void)
 {
 	return READ_ONCE(huge_file_orders_always);
+}
+
+static inline int file_exec_order(void)
+{
+	return READ_ONCE(huge_file_exec_order);
 }
 
 static inline bool hugepage_global_enabled(void)
@@ -383,6 +389,11 @@ static inline spinlock_t *pud_trans_huge_lock(pud_t *pud,
 static inline unsigned long file_orders_always(void)
 {
 	 return 0;
+}
+
+static inline int file_exec_order(void)
+{
+	return -1;
 }
 
 /**
