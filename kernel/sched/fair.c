@@ -5783,7 +5783,7 @@ unlock_all:
 	return ret;
 }
 #else
-static void destroy_auto_affinity(struct task_group *tg) {}
+static void __maybe_unused destroy_auto_affinity(struct task_group *tg) {}
 
 #ifdef CONFIG_QOS_SCHED_DYNAMIC_AFFINITY
 static inline bool prefer_cpus_valid(struct task_struct *p);
