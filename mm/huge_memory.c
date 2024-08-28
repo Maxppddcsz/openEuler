@@ -77,6 +77,7 @@ unsigned long huge_anon_orders_inherit __read_mostly;
 unsigned long huge_pcp_allow_orders __read_mostly;
 unsigned long huge_file_orders_always __read_mostly;
 int huge_file_exec_order __read_mostly = -1;
+static bool anon_orders_configured;
 
 unsigned long __thp_vma_allowable_orders(struct vm_area_struct *vma,
 					 unsigned long vm_flags,
@@ -825,7 +826,10 @@ static int __init hugepage_init_sysfs(struct kobject **hugepage_kobj)
 	 * disable all other sizes. powerpc's PMD_ORDER isn't a compile-time
 	 * constant so we have to do this here.
 	 */
-	huge_anon_orders_inherit = BIT(PMD_ORDER);
+	if (!annon_orders_configured) {
+		huge_anon_orders_inherit = BIT(PMD_ORDER);
+		anon_orders_configured = true;
+	}
 
 	/*
 	 * For pagecache, default to enabling all orders. powerpc's PMD_ORDER
@@ -994,6 +998,57 @@ out:
 	return ret;
 }
 __setup("transparent_hugepage=", setup_transparent_hugepage);
+
+static int __init setup_thp_anon(char *str)
+{
+	unsigned long size;
+	char *state;
+	int order;
+	int ret = 0;
+
+	if (!str)
+		goto out;
+
+	size = (unsigned long)memparse(str, &state);
+	order = ilog2(size >> PAGE_SHIFT);
+	if (*state != ':' || !is_power_of_2(size) || size <= PAGE_SIZE ||
+	    !BIT(order) & THP_ORDERS_ALL_ANON)
+		goto out;
+
+	state++;
+
+	if (!strcmp(state, "always")) {
+		clear_bit(order, &huge_anon_orders_inherit);
+		clear_bit(order, &huge_anon_orders_madvise);
+		set_bit(order, &huge_anon_orders_always);
+		ret = 1;
+	} else if (!strcmp(state, "inherit")) {
+		clear_bit(order, &huge_anon_orders_always);
+		clear_bit(order, &huge_anon_orders_madvise);
+		set_bit(order, &huge_anon_orders_inherit);
+		ret = 1;
+	} else if (!strcmp(state, "madvise")) {
+		clear_bit(order, &huge_anon_orders_always);
+		clear_bit(order, &huge_anon_orders_inherit);
+		set_bit(order, &huge_anon_orders_madvise);
+		ret = 1;
+	} else if (!strcmp(state, "never")) {
+		clear_bit(order, &huge_anon_orders_always);
+		clear_bit(order, &huge_anon_orders_inherit);
+		clear_bit(order, &huge_anon_orders_madvise);
+		ret = 1;
+	}
+
+	if (ret)
+		anon_orders_configured = true;
+
+out:
+	if (!ret)
+		pr_warn("thp_anon=%s: cannot parse, ignored\n", str);
+	return ret;
+}
+
+__setup("thp_anon=", setup_thp_anon);
 
 pmd_t maybe_pmd_mkwrite(pmd_t pmd, struct vm_area_struct *vma)
 {
