@@ -5363,6 +5363,7 @@ static void affinity_domain_up(struct task_group *tg)
 		if (IS_DOMAIN_SET(level + 1, ad->domain_mask) &&
 		    cpumask_weight(ad->domains[level + 1]) > 0) {
 			ad->curr_level = level + 1;
+			sched_grid_zone_update(false);
 			return;
 		}
 		level++;
@@ -5383,6 +5384,7 @@ static void affinity_domain_down(struct task_group *tg)
 
 		if (IS_DOMAIN_SET(level - 1, ad->domain_mask)) {
 			ad->curr_level = level - 1;
+			sched_grid_zone_update(false);
 			return;
 		}
 		level--;
@@ -5454,6 +5456,7 @@ static int tg_update_affinity_domain_down(struct task_group *tg, void *data)
 		}
 
 	}
+	sched_grid_zone_update(false);
 	raw_spin_unlock_irqrestore(&auto_affi->lock, flags);
 
 	return 0;
@@ -5512,6 +5515,7 @@ void stop_auto_affinity(struct auto_affinity *auto_affi)
 	raw_spin_unlock_irq(&auto_affi->lock);
 
 	smart_grid_usage_dec();
+	sched_grid_zone_update(false);
 	mutex_unlock(&smart_grid_used_mutex);
 }
 
@@ -5713,6 +5717,8 @@ int init_auto_affinity(struct task_group *tg)
 
 	auto_affi->tg = tg;
 	tg->auto_affinity = auto_affi;
+	INIT_LIST_HEAD(&auto_affi->af_list);
+	sched_grid_zone_add_af(auto_affi);
 	return 0;
 }
 
@@ -5727,6 +5733,7 @@ static void destroy_auto_affinity(struct task_group *tg)
 		smart_grid_usage_dec();
 
 	hrtimer_cancel(&auto_affi->period_timer);
+	sched_grid_zone_del_af(auto_affi);
 	free_affinity_domains(&auto_affi->ad);
 
 	kfree(tg->auto_affinity);

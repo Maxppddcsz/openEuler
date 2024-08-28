@@ -18,6 +18,7 @@
 #include "../../fs/io-wq.h"
 #include "../smpboot.h"
 
+#include <linux/sched/grid_qos.h>
 #include "pelt.h"
 
 #define CREATE_TRACE_POINTS
@@ -5977,6 +5978,7 @@ void __init sched_init_smp(void)
 
 	sched_smp_initialized = true;
 
+	sched_grid_zone_init();
 	init_auto_affinity(&root_task_group);
 }
 
@@ -7087,15 +7089,21 @@ static int cpu_affinity_stat_show(struct seq_file *sf, void *v)
 	struct auto_affinity *auto_affi = tg->auto_affinity;
 	struct affinity_domain *ad;
 	int i;
+	struct cpumask *hot_cpus;
+	struct cpumask *warm_cpus;
 
 	if (unlikely(!auto_affi))
 		return -EPERM;
 
 	ad = &auto_affi->ad;
+	hot_cpus = sched_grid_zone_cpumask(SMART_GRID_ZONE_HOT);
+	warm_cpus = sched_grid_zone_cpumask(SMART_GRID_ZONE_WARM);
 	seq_printf(sf, "period_active %d\n", auto_affi->period_active);
 	seq_printf(sf, "dcount %d\n", ad->dcount);
 	seq_printf(sf, "domain_mask 0x%x\n", ad->domain_mask);
 	seq_printf(sf, "curr_level %d\n", ad->curr_level);
+	seq_printf(sf, "zone hot %*pbl\n", cpumask_pr_args(hot_cpus));
+	seq_printf(sf, "zone warm %*pbl\n", cpumask_pr_args(warm_cpus));
 	for (i = 0; i < ad->dcount; i++)
 		seq_printf(sf, "sd_level %d, cpu list %*pbl, stay_cnt %llu\n",
 			i, cpumask_pr_args(ad->domains[i]),
