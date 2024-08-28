@@ -317,7 +317,7 @@ A higher value may increase memory footprint for some workloads.
 File-Backed Hugepages
 ---------------------
 
-The kernel will automatically select an appropriate THP size file_backed
+The kernel will automatically select an appropriate THP size file-backed
 memory from a set of allowed sizes. By default all THP sizes that the page cache
 supports are allowed, but this set can be modified with one of::
 
@@ -358,9 +358,22 @@ For example, the following will set 64K THP to ``always``::
 
 	thp_anon=64K:always
 
-``thp_anon=`` may be specified multiple times to configure all THP size as
+``thp_anon=`` may be specified multiple times to configure all THP sizes as
 required. If ``thp_anon=`` is specified at least once, any anon THP sizes
 not explicitly configured on the command line are implicitly set to
+``never``.
+
+Each supported file-backed THP size can be controlled by passing
+``thp_file=<size>[KMG]:<state>``, where ``<size>`` is the THP size and
+``<state>>`` is one of ``always``, ``always+exec`` or ``never``.
+
+For example, the following will set 64K THP to ``always+exec``::
+
+	thp_file=64K:always+exec
+
+``thp_file=`` may be specified multiple times to configure all THP sizes as
+required. If ``thp_file=`` is specified at least once,any file-backed THP
+sizes not explicitly configured on the command line are implicitly set to
 ``never``.
 
 Hugepages in tmpfs/shmem
