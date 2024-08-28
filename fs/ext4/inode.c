@@ -3017,23 +3017,29 @@ static int ext4_da_should_update_i_disksize(struct folio *folio,
 
 static int ext4_da_do_write_end(struct address_space *mapping,
 			loff_t pos, unsigned len, unsigned copied,
-			struct page *page)
+			struct folio *folio)
 {
 	struct inode *inode = mapping->host;
 	loff_t old_size = inode->i_size;
 	bool disksize_changed = false;
 	loff_t new_i_size;
 
+	if (unlikely(!folio_buffers(folio))) {
+		folio_unlock(folio);
+		folio_put(folio);
+		return -EIO;
+	}
 	/*
 	 * block_write_end() will mark the inode as dirty with I_DIRTY_PAGES
 	 * flag, which all that's needed to trigger page writeback.
 	 */
-	copied = block_write_end(NULL, mapping, pos, len, copied, page, NULL);
+	copied = block_write_end(NULL, mapping, pos, len, copied,
+			&folio->page, NULL);
 	new_i_size = pos + copied;
 
 	/*
-	 * It's important to update i_size while still holding page lock,
-	 * because page writeout could otherwise come in and zero beyond
+	 * It's important to update i_size while still holding folio lock,
+	 * because folio writeout could otherwise come in and zero beyond
 	 * i_size.
 	 *
 	 * Since we are holding inode lock, we are sure i_disksize <=
@@ -3051,14 +3057,14 @@ static int ext4_da_do_write_end(struct address_space *mapping,
 
 		i_size_write(inode, new_i_size);
 		end = (new_i_size - 1) & (PAGE_SIZE - 1);
-		if (copied && ext4_da_should_update_i_disksize(page_folio(page), end)) {
+		if (copied && ext4_da_should_update_i_disksize(folio, end)) {
 			ext4_update_i_disksize(inode, new_i_size);
 			disksize_changed = true;
 		}
 	}
 
-	unlock_page(page);
-	put_page(page);
+	folio_unlock(folio);
+	folio_put(folio);
 
 	if (old_size < pos)
 		pagecache_isize_extended(inode, old_size, pos);
@@ -3097,10 +3103,10 @@ static int ext4_da_write_end(struct file *file,
 		return ext4_write_inline_data_end(inode, pos, len, copied,
 						  folio);
 
-	if (unlikely(copied < len) && !PageUptodate(page))
+	if (unlikely(copied < len) && !folio_test_uptodate(folio))
 		copied = 0;
 
-	return ext4_da_do_write_end(mapping, pos, len, copied, &folio->page);
+	return ext4_da_do_write_end(mapping, pos, len, copied, folio);
 }
 
 /*
@@ -3878,7 +3884,7 @@ retry:
 		 * ext4_count_free_blocks() is non-zero, a commit
 		 * should free up blocks.
 		 */
-		if (ret == -ENOSPC && ext4_count_free_clusters(sb)) {
+		if (ret == -ENOSPC && journal && ext4_count_free_clusters(sb)) {
 			jbd2_journal_force_commit_nested(journal);
 			goto retry;
 		}
@@ -3976,17 +3982,18 @@ static int ext4_iomap_write_begin(struct file *file,
 	*fsdata = delalloc ? (void *)0 : (void *)FALL_BACK_TO_NONDELALLOC;
 
 retry:
-	iter.pos = pos;
-	iter.len = len;
-
 	folio = iomap_get_folio(&iter, pos, len);
 	if (IS_ERR(folio))
 		return PTR_ERR(folio);
 
-	WARN_ON_ONCE(pos + len > folio_pos(folio) + folio_size(folio));
+	if (pos + len > folio_pos(folio) + folio_size(folio))
+		len = folio_pos(folio) + folio_size(folio) - pos;
 
 	if (iomap_is_fully_dirty(folio, offset_in_folio(folio, pos), len))
 		goto out;
+
+	iter.pos = pos;
+	iter.len = len;
 
 	do {
 		int length;
