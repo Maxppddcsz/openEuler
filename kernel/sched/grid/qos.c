@@ -174,6 +174,7 @@ int sched_grid_zone_update(bool is_locked)
 		raw_spin_lock_irqsave(&sg_zone.lock, flags);
 
 	cpumask_clear(&sg_zone.cpus[SMART_GRID_ZONE_HOT]);
+	cpumask_clear(&sg_zone.cpus[SMART_GRID_ZONE_WARM]);
 
 	list_for_each(pos, &sg_zone.af_list_head) {
 		af_pos = list_entry(pos, struct auto_affinity, af_list);
@@ -200,6 +201,7 @@ int sched_grid_zone_update(bool is_locked)
 	if (!is_locked)
 		raw_spin_unlock_irqrestore(&sg_zone.lock, flags);
 
+	cpufreq_smart_grid_start_sync();
 	return 0;
 }
 
