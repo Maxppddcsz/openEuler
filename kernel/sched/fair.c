@@ -5327,8 +5327,6 @@ static void smart_grid_usage_dec(void)
 
 static inline struct cpumask *task_prefer_cpus(struct task_struct *p)
 {
-	struct affinity_domain *ad;
-
 	if (!smart_grid_used() ||
 	    !task_group(p)->auto_affinity)
 		return p->prefer_cpus;
@@ -5336,8 +5334,7 @@ static inline struct cpumask *task_prefer_cpus(struct task_struct *p)
 	if (task_group(p)->auto_affinity->mode == 0)
 		return &p->cpus_allowed;
 
-	ad = &task_group(p)->auto_affinity->ad;
-	return ad->domains[ad->curr_level];
+	return sched_grid_prefer_cpus(p);
 }
 
 static inline int dynamic_affinity_mode(struct task_struct *p)
