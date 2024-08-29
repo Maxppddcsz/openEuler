@@ -3113,7 +3113,8 @@ static int __ovs_nla_copy_actions(struct net *net, const struct nlattr *attr,
 /* 'key' must be the masked key. */
 int ovs_nla_copy_actions(struct net *net, const struct nlattr *attr,
 			 const struct sw_flow_key *key,
-			 struct sw_flow_actions **sfa, bool log)
+			 struct sw_flow_actions **sfa, bool log
+			 u32 depth)
 {
 	int err;
 
