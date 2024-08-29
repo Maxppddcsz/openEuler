@@ -1357,9 +1357,8 @@ void set_process_cpu_timer(struct task_struct *tsk, unsigned int clkid,
 			}
 		}
 
-		if (!*newval)
-			return;
-		*newval += now;
+		if (*newval)
+			*newval += now;
 	}
 
 	/*
