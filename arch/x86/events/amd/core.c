@@ -652,6 +652,7 @@ static void amd_pmu_cpu_starting(int cpu)
 static void amd_pmu_cpu_dead(int cpu)
 {
 	struct cpu_hw_events *cpuhw;
+	amd_pmu_cpu_reset(cpu);
 
 	amd_pmu_cpu_reset(cpu);
 
